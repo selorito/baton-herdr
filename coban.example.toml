@@ -1,0 +1,15 @@
+# Example coban configuration. Copy to ./coban.toml or point COBAN_CONFIG at it.
+# Every key can be overridden by an environment variable:
+#   COBAN_<SECTION>__<KEY>, e.g. COBAN_LOGGING__LEVEL=debug
+# Secrets (e.g. COBAN_TELEGRAM__BOT_TOKEN) belong in .env, never in this file.
+
+[herdr]
+# herdr API socket. herdr's default is $XDG_CONFIG_HOME/herdr/herdr.sock.
+socket_path = "~/.config/herdr/herdr.sock"
+
+[database]
+path = "~/.local/share/coban/coban.db"
+
+[logging]
+# debug | info | warning | error | critical
+level = "info"

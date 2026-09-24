@@ -1,0 +1,39 @@
+# Secrets and local configuration: never commit
+.env
+.env.*
+!.env.example
+coban.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Rust
+/target/
+
+# Local runtime data
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local planning notes
+.local/
