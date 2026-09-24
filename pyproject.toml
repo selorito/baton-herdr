@@ -10,7 +10,11 @@ dependencies = [
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "structlog>=26.1.0",
+    "typer>=0.27.2",
 ]
+
+[project.scripts]
+coban = "coban.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]
