@@ -21,7 +21,7 @@ jobs:
         with:
           enable-cache: true
       - uses: extractions/setup-just@v4
-      - run: just check-py
+      - run: just check-py fixtures-audit
 
   rust:
     runs-on: ubuntu-latest

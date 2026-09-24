@@ -6,7 +6,7 @@ default:
     @just --list
 
 # Every check CI runs. Must be green before merging.
-check: check-py check-rs
+check: check-py check-rs fixtures-audit
 
 # Python: lint, format, types, import boundaries, tests with coverage.
 check-py:
@@ -22,6 +22,10 @@ check-rs:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --workspace --locked
+
+# Fail if anything under fixtures/ contains a path outside the sandbox, an email or a key.
+fixtures-audit:
+    uv run tools/capture/capture.py audit fixtures
 
 # Apply formatting and safe lint fixes.
 fmt:
