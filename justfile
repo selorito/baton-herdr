@@ -8,12 +8,13 @@ default:
 # Every check CI runs. Must be green before merging.
 check: check-py
 
-# Python: lint, format, types, tests with coverage.
+# Python: lint, format, types, import boundaries, tests with coverage.
 check-py:
     uv sync --locked
     uv run ruff check .
     uv run ruff format --check .
     uv run mypy
+    uv run lint-imports
     uv run pytest --cov --cov-report=term
 
 # Apply formatting and safe lint fixes.

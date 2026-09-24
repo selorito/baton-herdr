@@ -23,6 +23,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "hypothesis>=6.168.1",
+    "import-linter>=2.15",
     "mypy>=2.3.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
@@ -81,3 +82,36 @@ source = ["coban"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+[tool.importlinter]
+root_package = "coban"
+
+[[tool.importlinter.contracts]]
+id = "core-is-pure"
+name = "coban.core imports no other coban package"
+type = "forbidden"
+source_modules = ["coban.core"]
+forbidden_modules = [
+  "coban.herdr", "coban.adapters", "coban.ledger",
+  "coban.recovery", "coban.budget", "coban.scheduler",
+  "coban.api", "coban.telegram", "coban.cli",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "interfaces -> services -> infra -> core"
+type = "layers"
+containers = ["coban"]
+exhaustive = true
+layers = [
+  "api : telegram : cli",
+  "recovery : budget : scheduler",
+  "herdr | adapters | ledger",
+  "core",
+]
+
+[[tool.importlinter.contracts]]
+id = "adapters-independent"
+name = "agent adapters do not import each other"
+type = "independence"
+modules = ["coban.adapters.*"]
