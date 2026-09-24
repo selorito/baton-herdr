@@ -27,6 +27,11 @@ check-rs:
 fixtures-audit:
     uv run tools/capture/capture.py audit fixtures
 
+# Regenerate fixtures/herdr from the installed herdr. Needs a running server;
+# pass e.g. `--herdr-session NAME` to target a named session.
+fixtures-herdr *ARGS:
+    uv run tools/capture/capture.py {{ARGS}} herdr-ref
+
 # Apply formatting and safe lint fixes.
 fmt:
     uv run ruff check --fix .
