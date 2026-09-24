@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -168,3 +169,28 @@ def test_socket_path_follows_herdr_lookup() -> None:
         "/h/.config/herdr/sessions/t/herdr.sock"
     )
     assert capture.resolve_socket_path({}, home, None) == Path("/h/.config/herdr/herdr.sock")
+
+
+def test_iter_jsonl_tolerates_control_characters_and_broken_lines(tmp_path: Path) -> None:
+    log = tmp_path / "log.jsonl"
+    log.write_text('{"type": "a", "text": "x\ty"}\n{not json\n\n[1]\n{"type": "b"}\n')
+
+    assert [r["type"] for r in capture.iter_jsonl(log)] == ["a", "b"]
+
+
+def test_iter_opencode_db_reads_sessions_and_messages(tmp_path: Path) -> None:
+    db = tmp_path / "opencode.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE session (id TEXT, time_created INT, tokens_input INT)")
+        conn.execute("CREATE TABLE message (data TEXT, time_created INT)")
+        conn.execute("INSERT INTO session VALUES ('s1', 1, 42)")
+        conn.execute(
+            """INSERT INTO message VALUES ('{"role": "assistant", "tokens": {"input": 7}}', 1)"""
+        )
+
+    records = list(capture.iter_opencode_db(db))
+
+    assert records == [
+        {"type": "sqlite:session", "row": {"id": "s1", "time_created": 1, "tokens_input": 42}},
+        {"type": "sqlite:message", "data": {"role": "assistant", "tokens": {"input": 7}}},
+    ]

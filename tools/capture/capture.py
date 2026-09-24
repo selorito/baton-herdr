@@ -29,13 +29,18 @@ import os
 import re
 import shlex
 import socket
+import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = REPO_ROOT / "fixtures"
@@ -467,9 +472,42 @@ def record_kind(record: dict[str, Any]) -> str:
     return f"{record.get('type')}/{inner}" if inner else str(record.get("type"))
 
 
+_USAGE_MARKERS = ('"usage"', '"token_count"', '"total_token_usage"', '"tokens"', '"tokens_input"')
+
+
 def has_usage(record: dict[str, Any]) -> bool:
     text = json.dumps(record)
-    return '"usage"' in text or '"token_count"' in text or '"total_token_usage"' in text
+    return any(marker in text for marker in _USAGE_MARKERS)
+
+
+def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    """Yield JSON objects, tolerating raw control characters and skipping broken lines.
+
+    Claude Code transcripts have been seen with a raw control character inside
+    a string and with a line that does not parse at all.
+    """
+    with path.open(encoding="utf-8") as source:
+        for line in source:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line, strict=False)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict):
+                yield record
+
+
+def iter_opencode_db(path: Path) -> Iterator[dict[str, Any]]:
+    """Yield OpenCode session rows and message ``data`` documents, read-only."""
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute("SELECT * FROM session ORDER BY time_created"):
+            yield {"type": "sqlite:session", "row": dict(row)}
+        for (data,) in conn.execute("SELECT data FROM message ORDER BY time_created"):
+            message = json.loads(data, strict=False)
+            if isinstance(message, dict):
+                yield {"type": "sqlite:message", "data": message}
 
 
 def usage_sample(args: argparse.Namespace, _herdr: Herdr, masker: Masker) -> Path:
@@ -477,20 +515,16 @@ def usage_sample(args: argparse.Namespace, _herdr: Herdr, masker: Masker) -> Pat
     usage_kept = 0
     sanitizer = Sanitizer()
     out_lines: list[str] = []
-    with Path(args.input).expanduser().open(encoding="utf-8") as source:
-        for line in source:
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            if not isinstance(record, dict):
-                continue
-            kind = record_kind(record)
-            usage = has_usage(record)
-            if per_kind.get(kind, 0) >= args.per_kind and not (usage and usage_kept < args.usage):
-                continue
-            per_kind[kind] = per_kind.get(kind, 0) + 1
-            usage_kept += int(usage)
-            out_lines.append(json.dumps(sanitizer.clean(record), ensure_ascii=False))
+    source = Path(args.input).expanduser()
+    records = iter_opencode_db(source) if source.suffix == ".db" else iter_jsonl(source)
+    for record in records:
+        kind = record_kind(record)
+        usage = has_usage(record)
+        if per_kind.get(kind, 0) >= args.per_kind and not (usage and usage_kept < args.usage):
+            continue
+        per_kind[kind] = per_kind.get(kind, 0) + 1
+        usage_kept += int(usage)
+        out_lines.append(json.dumps(sanitizer.clean(record), ensure_ascii=False))
     out = Path(args.out) if args.out else FIXTURES_DIR / args.agent.value / "usage-sample.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(masker.mask("\n".join(out_lines)) + "\n", encoding="utf-8")
