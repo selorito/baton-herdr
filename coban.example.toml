@@ -4,8 +4,13 @@
 # Secrets (e.g. COBAN_TELEGRAM__BOT_TOKEN) belong in .env, never in this file.
 
 [herdr]
-# herdr API socket. herdr's default is $XDG_CONFIG_HOME/herdr/herdr.sock.
-socket_path = "~/.config/herdr/herdr.sock"
+# Leave both keys unset to find the socket the way herdr does:
+#   HERDR_SOCKET_PATH (set by herdr in every pane it starts), then
+#   HERDR_SESSION -> <config_dir>/sessions/<name>/herdr.sock, then
+#   <config_dir>/herdr.sock, where <config_dir> is $XDG_CONFIG_HOME/herdr or ~/.config/herdr.
+# An explicit socket_path overrides all of that; session overrides HERDR_SESSION.
+# socket_path = "~/.config/herdr/herdr.sock"
+# session = "work"
 
 [database]
 path = "~/.local/share/coban/coban.db"

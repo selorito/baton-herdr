@@ -16,8 +16,9 @@ serialized output. Keep them in ``.env`` or the environment, not in TOML.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import (
@@ -26,6 +27,9 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 CONFIG_PATH_ENV_VAR = "COBAN_CONFIG"
 DEFAULT_CONFIG_FILE = Path("coban.toml")
@@ -43,15 +47,76 @@ class _Section(BaseModel):
 
 
 class HerdrSettings(_Section):
-    # herdr's own default: $XDG_CONFIG_HOME/herdr/herdr.sock
-    socket_path: Path = Field(
-        default_factory=lambda: _xdg_dir("XDG_CONFIG_HOME", ".config") / "herdr" / "herdr.sock"
+    # Leave both unset to find the socket the way herdr does; see resolve_herdr_socket_path().
+    socket_path: Path | None = None
+    session: str | None = None
+
+    @field_validator("session")
+    @classmethod
+    def _valid_session_name(cls, value: str | None) -> str | None:
+        if value is not None and not is_valid_herdr_session_name(value):
+            msg = f"invalid herdr session name: {value!r}"
+            raise ValueError(msg)
+        return value
+
+
+# Mirrors herdr's socket lookup (herdr src/session.rs, src/config/io.rs):
+#   1. HERDR_SOCKET_PATH (src/api/mod.rs SOCKET_PATH_ENV_VAR)
+#   2. HERDR_SESSION=<name> -> <config_dir>/sessions/<name>/herdr.sock
+#   3. <config_dir>/herdr.sock
+# where <config_dir> is $XDG_CONFIG_HOME/herdr, else ~/.config/herdr.
+# herdr injects HERDR_SOCKET_PATH into every pane it launches
+# (src/integration/env.rs apply_pane_base_env) and into plugin panes
+# (src/app/api/plugins/panes.rs), so when coban runs inside herdr, step 1 is
+# what points it at the right server.
+# Not mirrored: debug herdr builds use "herdr-dev" instead of "herdr".
+HERDR_SOCKET_PATH_ENV_VAR = "HERDR_SOCKET_PATH"
+HERDR_SESSION_ENV_VAR = "HERDR_SESSION"
+HERDR_DEFAULT_SESSION_NAME = "default"
+_HERDR_SOCKET_FILE = "herdr.sock"
+_HERDR_SESSION_NAME_MAX_BYTES = 64
+_HERDR_SESSION_NAME = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def is_valid_herdr_session_name(name: str) -> bool:
+    """Same rules as herdr's ``session::validate_name``."""
+    return (
+        len(name.encode()) <= _HERDR_SESSION_NAME_MAX_BYTES
+        and name not in {".", ".."}
+        and _HERDR_SESSION_NAME.fullmatch(name) is not None
     )
 
-    @field_validator("socket_path")
-    @classmethod
-    def _expand_user(cls, value: Path) -> Path:
-        return value.expanduser()
+
+def resolve_herdr_socket_path(
+    settings: HerdrSettings, *, env: Mapping[str, str], home: Path
+) -> Path:
+    """Return the herdr API socket coban should connect to.
+
+    Precedence: ``[herdr].socket_path`` > ``HERDR_SOCKET_PATH`` >
+    ``[herdr].session`` > ``HERDR_SESSION`` > herdr's default socket.
+
+    Pure: the environment and home directory are passed in. Empty environment
+    values count as unset.
+    """
+    if settings.socket_path is not None:
+        return _expand_home(settings.socket_path, home)
+    if socket_from_env := env.get(HERDR_SOCKET_PATH_ENV_VAR):
+        return Path(socket_from_env)
+
+    xdg_config_home = env.get("XDG_CONFIG_HOME")
+    config_dir = (Path(xdg_config_home) if xdg_config_home else home / ".config") / "herdr"
+
+    session = settings.session or env.get(HERDR_SESSION_ENV_VAR)
+    # Like herdr's session::active_name: "default" and invalid names mean no session.
+    if session and session != HERDR_DEFAULT_SESSION_NAME and is_valid_herdr_session_name(session):
+        return config_dir / "sessions" / session / _HERDR_SOCKET_FILE
+    return config_dir / _HERDR_SOCKET_FILE
+
+
+def _expand_home(path: Path, home: Path) -> Path:
+    if path.parts and path.parts[0] == "~":
+        return home.joinpath(*path.parts[1:])
+    return path
 
 
 class DatabaseSettings(_Section):
