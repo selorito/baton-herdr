@@ -194,3 +194,12 @@ def test_iter_opencode_db_reads_sessions_and_messages(tmp_path: Path) -> None:
         {"type": "sqlite:session", "row": {"id": "s1", "time_created": 1, "tokens_input": 42}},
         {"type": "sqlite:message", "data": {"role": "assistant", "tokens": {"input": 7}}},
     ]
+
+
+def test_unwrap_herdr_output_handles_envelopes_and_bare_objects() -> None:
+    assert capture.unwrap_herdr_output({"id": "x", "result": {"pane": 1}}) == {"pane": 1}
+    # agent explain --json prints the explanation without an envelope.
+    bare = {"agent": "claude", "state": "idle", "matched_rule": None}
+    assert capture.unwrap_herdr_output(bare) == bare
+    with pytest.raises(capture.HerdrApiError, match="agent_not_found"):
+        capture.unwrap_herdr_output({"id": "x", "error": {"code": "agent_not_found"}})

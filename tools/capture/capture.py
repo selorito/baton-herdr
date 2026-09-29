@@ -185,16 +185,13 @@ class Herdr:
         proc = subprocess.run(
             self.argv(*args), capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False
         )
-        # herdr prints the success envelope on stdout and the error envelope on stderr.
+        # herdr prints success on stdout and the error envelope on stderr.
         try:
-            envelope: dict[str, Any] = json.loads(proc.stdout or proc.stderr)
+            output: dict[str, Any] = json.loads(proc.stdout or proc.stderr)
         except json.JSONDecodeError as err:
             msg = f"`{shlex.join(self.argv(*args))}` returned no JSON: {proc.stderr.strip()}"
             raise CaptureError(msg) from err
-        if "error" in envelope:
-            raise HerdrApiError(envelope["error"])
-        result: dict[str, Any] = envelope["result"]
-        return result
+        return unwrap_herdr_output(output)
 
     def version(self) -> str:
         return self.text("--version").strip().removeprefix("herdr ").strip()
@@ -202,6 +199,21 @@ class Herdr:
     def pane(self, pane_id: str) -> dict[str, Any]:
         pane: dict[str, Any] = self.call("pane", "get", pane_id)["pane"]
         return pane
+
+
+def unwrap_herdr_output(output: dict[str, Any]) -> dict[str, Any]:
+    """Return the payload of a herdr CLI JSON response.
+
+    Most commands wrap success as ``{"id", "result"}``, but ``agent explain --json``
+    (herdr 0.9.1) prints the bare explanation object. Errors are always
+    ``{"id", "error"}``.
+    """
+    if "error" in output and "id" in output:
+        raise HerdrApiError(output["error"])
+    if "result" in output and "id" in output:
+        result: dict[str, Any] = output["result"]
+        return result
+    return output
 
 
 class HerdrApiError(CaptureError):
