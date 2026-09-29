@@ -150,3 +150,22 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
    as a constraint on how aggressively it resumes work. This deserves an ADR before M2.
 9. **Pane width is not exposed by herdr 0.9.1** (`PaneInfo` has `scroll.viewport_rows` only),
    so fixtures record `cols: null`.
+
+## herdr CLI notes
+
+JSON output shapes of the herdr 0.9.1 commands coban uses, verified locally on 2026-09-29
+against a running server:
+
+| Command | Success (stdout, exit 0) | Failure (stderr, exit 1) |
+|---------|--------------------------|--------------------------|
+| `pane get <id>`, `pane list`, `server agent-manifests --json` | `{"id", "result": {...}}` | `{"id", "error": {"code", "message"}}` |
+| `agent explain <id> --json` | **bare object** `{"agent", "state", "matched_rule", "fallback_reason", "evaluated_rules", …}` | `{"id", "error"}`, e.g. `agent_not_found` for a pane without an agent |
+| `api schema --json` | **bare object** (the JSON Schema) | not observed |
+| `pane read <id>` | plain text | `{"id", "error"}`, e.g. `pane_not_found` |
+
+A client must accept both success shapes and read the error envelope from stderr.
+
+On Claude Code 2.1.281's first-run theme picker, `agent explain` returned `state: "idle"`
+with `matched_rule: null` and `fallback_reason: "default_known_agent_idle_fallback"`: herdr
+reports idle for a known agent when no rule matches, even though the agent is waiting for a
+choice. coban must not treat herdr's `idle` as "ready for a prompt" without its own check.

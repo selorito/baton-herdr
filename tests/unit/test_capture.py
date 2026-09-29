@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -142,7 +143,7 @@ def test_record_events_writes_masked_events_and_raises_on_events_lost() -> None:
         '{"id":"x","error":{"code":"events_lost","message":"lagged"}}',
     ]
     sink = io.StringIO()
-    with pytest.raises(capture.HerdrApiError, match="events_lost"):
+    with pytest.raises(capture.HerdrError, match="events_lost"):
         capture.record_events(io.StringIO("\n".join(lines)), sink, MASKER, max_events=None)
 
     written = [json.loads(line) for line in sink.getvalue().splitlines()]
@@ -201,5 +202,72 @@ def test_unwrap_herdr_output_handles_envelopes_and_bare_objects() -> None:
     # agent explain --json prints the explanation without an envelope.
     bare = {"agent": "claude", "state": "idle", "matched_rule": None}
     assert capture.unwrap_herdr_output(bare) == bare
-    with pytest.raises(capture.HerdrApiError, match="agent_not_found"):
+    with pytest.raises(capture.HerdrError, match="agent_not_found"):
         capture.unwrap_herdr_output({"id": "x", "error": {"code": "agent_not_found"}})
+
+
+def test_masker_redacts_oauth_query_parameters() -> None:
+    url = (
+        "https://claude.ai/oauth/authorize?client_id=abc&response_type=code"
+        "&code_challenge=Xy9_Qw-1&code_challenge_method=S256&state=s7aTe&code=c0de42"
+    )
+    assert MASKER.mask(url) == (
+        "https://claude.ai/oauth/authorize?client_id=abc&response_type=code"
+        "&code_challenge=<redacted>&code_challenge_method=S256&state=<redacted>&code=<redacted>"
+    )
+    assert audit_text(Path("u.txt"), MASKER.mask(url), MASKER) == []
+    assert {f.kind for f in audit_text(Path("u.txt"), url, MASKER)} == {"oauth_query_param"}
+
+
+class FakeHerdr(capture.Herdr):
+    """Returns canned CLI outputs keyed by the first two arguments."""
+
+    def __init__(self, outputs: dict[tuple[str, str], tuple[int, str, str]]) -> None:
+        super().__init__()
+        object.__setattr__(self, "outputs", outputs)
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
+        code, out, err = self.outputs[(args[0], args[1])]  # type: ignore[attr-defined]
+        return subprocess.CompletedProcess(list(args), code, out, err)
+
+
+ERROR = '{"id":"cli:x","error":{"code":"pane_not_found","message":"pane w9:p9 not found"}}'
+
+
+def test_call_returns_result_bare_object_or_raises_herdr_error() -> None:
+    herdr = FakeHerdr(
+        {
+            ("pane", "get"): (0, '{"id":"cli:pane:get","result":{"pane":{"pane_id":"w1:p1"}}}', ""),
+            ("agent", "explain"): (0, '{"agent":"claude","state":"idle"}', ""),
+            ("pane", "list"): (1, "", ERROR),
+        }
+    )
+    assert herdr.pane("w1:p1") == {"pane_id": "w1:p1"}
+    assert herdr.call("agent", "explain", "w1:p1", "--json") == {"agent": "claude", "state": "idle"}
+    with pytest.raises(capture.HerdrError) as caught:
+        herdr.call("pane", "list")
+    assert (caught.value.code, caught.value.message) == ("pane_not_found", "pane w9:p9 not found")
+
+
+def test_text_raises_herdr_error_from_stderr_envelope() -> None:
+    herdr = FakeHerdr({("pane", "read"): (1, "", ERROR)})
+    with pytest.raises(capture.HerdrError, match="pane_not_found"):
+        herdr.text("pane", "read", "w9:p9")
+
+
+def test_explain_failure_is_recorded_not_raised() -> None:
+    herdr = FakeHerdr(
+        {("agent", "explain"): (1, "", ERROR.replace("pane_not_found", "agent_not_found"))}
+    )
+    explain, reason = capture.explain_pane(herdr, "w1:p1")
+    assert explain == {"error": {"code": "agent_not_found", "message": "pane w9:p9 not found"}}
+    assert reason == "agent explain failed: agent_not_found"
+
+
+def test_snap_stops_with_a_clear_message_when_the_pane_is_missing() -> None:
+    herdr = FakeHerdr({("pane", "get"): (1, "", ERROR)})
+    args = capture.build_parser().parse_args(
+        ["snap", "--pane", "w9:p9", "--agent", "claude", "--scenario", "idle"]
+    )
+    with pytest.raises(capture.CaptureError, match=r"cannot read pane w9:p9: .*pane_not_found"):
+        capture.snap(args, herdr, MASKER)

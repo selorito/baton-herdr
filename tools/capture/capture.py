@@ -100,6 +100,11 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?\s*[:=]\s*[\"']?)"
     r"(?![0-9]+(?:[\"',\s}]|$))(?!<)([^\s\"',;}]{8,})"
 )
+# OAuth values in URLs, e.g. the login links agents print on first run.
+_OAUTH_QUERY = re.compile(
+    r"(?i)([?&](?:code|state|code_challenge|code_verifier|access_token|id_token|refresh_token)=)"
+    r"(?!<)[^&\s\"'#<>]+"
+)
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _OTHER_HOME = re.compile(r"(/home/|/Users/)(?!<user>)[^/\s\"'<>:]+")
 _ROOT_HOME = re.compile(r"(?<![\w.~-])/root(?=/|\b)")
@@ -137,6 +142,7 @@ class Masker:
     def mask(self, text: str) -> str:
         for name, pattern in _SECRET_RULES:
             text = pattern.sub(f"<{name}>", text)
+        text = _OAUTH_QUERY.sub(lambda m: f"{m.group(1)}{REDACTED}", text)
         text = _SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", text)
         text = _EMAIL.sub("<email>", text)
         for pattern, placeholder in self._identity:
@@ -171,26 +177,42 @@ class Herdr:
             base += ["--session", self.session]
         return [*base, *args]
 
+    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                self.argv(*args),
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_S,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as err:
+            msg = f"`{shlex.join(self.argv(*args))}` could not run: {err}"
+            raise CaptureError(msg) from err
+
     def text(self, *args: str) -> str:
-        proc = subprocess.run(
-            self.argv(*args), capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False
-        )
+        """Run a plain-text command such as ``pane read``; errors still come as JSON."""
+        proc = self._run(*args)
         if proc.returncode != 0:
+            error = _error_envelope(proc.stderr)
+            if error is not None:
+                raise HerdrError(error)
             msg = f"`{shlex.join(self.argv(*args))}` failed: {proc.stderr.strip() or proc.stdout}"
             raise CaptureError(msg)
         return proc.stdout
 
     def call(self, *args: str) -> dict[str, Any]:
-        """Run a JSON-envelope command and return its ``result`` object."""
-        proc = subprocess.run(
-            self.argv(*args), capture_output=True, text=True, timeout=COMMAND_TIMEOUT_S, check=False
-        )
+        """Run a ``--json`` command and return its payload (see :func:`unwrap_herdr_output`)."""
+        proc = self._run(*args)
         # herdr prints success on stdout and the error envelope on stderr.
         try:
-            output: dict[str, Any] = json.loads(proc.stdout or proc.stderr)
+            output = json.loads(proc.stdout or proc.stderr)
         except json.JSONDecodeError as err:
             msg = f"`{shlex.join(self.argv(*args))}` returned no JSON: {proc.stderr.strip()}"
             raise CaptureError(msg) from err
+        if not isinstance(output, dict):
+            msg = f"`{shlex.join(self.argv(*args))}` returned JSON that is not an object"
+            raise CaptureError(msg)
         return unwrap_herdr_output(output)
 
     def version(self) -> str:
@@ -202,24 +224,40 @@ class Herdr:
 
 
 def unwrap_herdr_output(output: dict[str, Any]) -> dict[str, Any]:
-    """Return the payload of a herdr CLI JSON response.
+    """Return the payload of a herdr 0.9.1 CLI JSON response.
 
-    Most commands wrap success as ``{"id", "result"}``, but ``agent explain --json``
-    (herdr 0.9.1) prints the bare explanation object. Errors are always
-    ``{"id", "error"}``.
+    Verified shapes: ``{"id", "result"}`` from ``pane get``, ``pane list`` and
+    ``server agent-manifests --json``; a bare object from ``agent explain --json``
+    and ``api schema --json``; ``{"id", "error": {"code", "message"}}`` on stderr
+    (exit 1) for every failing command, including ``pane read``.
     """
-    if "error" in output and "id" in output:
-        raise HerdrApiError(output["error"])
-    if "result" in output and "id" in output:
+    if "id" in output and isinstance(output.get("error"), dict):
+        raise HerdrError(output["error"])
+    if "id" in output and "result" in output:
         result: dict[str, Any] = output["result"]
         return result
     return output
 
 
-class HerdrApiError(CaptureError):
+def _error_envelope(stderr: str) -> dict[str, Any] | None:
+    try:
+        output = json.loads(stderr)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(output, dict) and isinstance(output.get("error"), dict):
+        error: dict[str, Any] = output["error"]
+        return error
+    return None
+
+
+class HerdrError(CaptureError):
+    """herdr answered with an error envelope."""
+
     def __init__(self, error: dict[str, Any]) -> None:
         self.error = error
-        super().__init__(f"herdr error {error.get('code')}: {error.get('message')}")
+        self.code: str | None = error.get("code")
+        self.message: str | None = error.get("message")
+        super().__init__(f"herdr error {self.code}: {self.message}")
 
 
 # --------------------------------------------------------------------------- sandbox
@@ -281,19 +319,25 @@ def agent_version(agent: Agent) -> dict[str, Any]:
 
 
 def snap(args: argparse.Namespace, herdr: Herdr, masker: Masker) -> Path:
-    pane = herdr.pane(args.pane)
+    try:
+        pane = herdr.pane(args.pane)
+    except CaptureError as err:
+        msg = f"cannot read pane {args.pane}: {err}"
+        raise CaptureError(msg) from err
     check_sandbox(pane, args.sandbox, allow_outside=args.allow_outside_sandbox)
 
     lines = str(args.lines)
-    screen = herdr.text("pane", "read", args.pane, "--source", "recent", "--lines", lines)
-    screen_ansi = herdr.text(
-        "pane", "read", args.pane, "--source", "recent", "--lines", lines, "--format", "ansi"
-    )
-    detection = herdr.text("pane", "read", args.pane, "--source", "detection")
     try:
-        explain: dict[str, Any] = herdr.call("agent", "explain", args.pane, "--json")
-    except HerdrApiError as err:
-        explain = {"error": err.error}
+        screen = herdr.text("pane", "read", args.pane, "--source", "recent", "--lines", lines)
+        screen_ansi = herdr.text(
+            "pane", "read", args.pane, "--source", "recent", "--lines", lines, "--format", "ansi"
+        )
+        detection = herdr.text("pane", "read", args.pane, "--source", "detection")
+    except CaptureError as err:
+        msg = f"cannot read the screen of pane {args.pane}: {err}"
+        raise CaptureError(msg) from err
+    # explain is best effort: a screen herdr cannot classify is still worth keeping.
+    explain, explain_error = explain_pane(herdr, args.pane)
 
     moment = utc_now()
     scroll = pane.get("scroll") or {}
@@ -314,6 +358,7 @@ def snap(args: argparse.Namespace, herdr: Herdr, masker: Masker) -> Path:
         },
         "recent_lines": args.lines,
         "note": args.note,
+        "explain_error": explain_error,
     }
 
     out: Path = FIXTURES_DIR / args.agent.value / args.scenario.value / stamp(moment)
@@ -329,6 +374,16 @@ def snap(args: argparse.Namespace, herdr: Herdr, masker: Masker) -> Path:
     for name, content in files.items():
         (out / name).write_text(content, encoding="utf-8")
     return out
+
+
+def explain_pane(herdr: Herdr, pane_id: str) -> tuple[dict[str, Any], str | None]:
+    """Return herdr's explanation, or an ``{"error": ...}`` stand-in and a short reason."""
+    try:
+        return herdr.call("agent", "explain", pane_id, "--json"), None
+    except HerdrError as err:
+        return {"error": err.error}, f"agent explain failed: {err.code}"
+    except CaptureError as err:
+        return {"error": {"code": None, "message": str(err)}}, "agent explain failed"
 
 
 # --------------------------------------------------------------------------- watch
@@ -390,7 +445,7 @@ def record_events(reader: TextIO, sink: TextIO, masker: Masker, *, max_events: i
                 continue
             message: dict[str, Any] = json.loads(line)
             if "error" in message:
-                raise HerdrApiError(message["error"])
+                raise HerdrError(message["error"])
             if message.get("result", {}).get("type") == "subscription_started":
                 sys.stderr.write("subscribed; waiting for events (Ctrl+C to stop)\n")
                 continue
@@ -576,6 +631,7 @@ def audit_text(path: Path, text: str, masker: Masker) -> list[Finding]:
         checks: list[tuple[str, re.Pattern[str]]] = [
             *_SECRET_RULES,
             ("secret_assignment", _SECRET_ASSIGNMENT),
+            ("oauth_query_param", _OAUTH_QUERY),
             ("email", _EMAIL),
             ("absolute_home_path", _ABSOLUTE_HOME),
             ("encoded_project_path", _ENCODED_PROJECT),
