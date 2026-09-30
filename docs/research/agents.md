@@ -19,7 +19,7 @@ Screen texts marked "pending capture" will be confirmed by the sandbox captures 
 | Component | Version | Install method | Source |
 |-----------|---------|----------------|--------|
 | herdr | 0.9.1 (stable, protocol 22) | GitHub release binary, SHA256 checked, `~/.local/bin/herdr` | verified locally |
-| Claude Code | 2.1.281 | native installer `curl -fsSL https://claude.ai/install.sh \| bash` | verified locally; [official docs](https://code.claude.com/docs/en/setup) |
+| Claude Code | 2.1.281 installed on 2026-09-24; auto-updated to 2.1.285 before the captures | native installer `curl -fsSL https://claude.ai/install.sh \| bash` | verified locally; [official docs](https://code.claude.com/docs/en/setup) |
 | Codex CLI | 0.156.1 | `npm install -g @openai/codex` | verified locally; [README](https://github.com/openai/codex) |
 | Gemini CLI | 0.61.0 | `npm install -g @google/gemini-cli` (needs Node ≥ 20, `engines` in package.json) | verified locally; [README](https://github.com/google-gemini/gemini-cli) |
 | OpenCode | 1.18.32 | `curl -fsSL https://opencode.ai/install \| bash` → `~/.opencode/bin` | verified locally; [official docs](https://opencode.ai/docs/) |
@@ -43,7 +43,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 
 | Topic | Finding | Source |
 |-------|---------|--------|
-| Tested version | 2.1.281. Local transcripts span 2.1.207–2.1.280. | verified locally |
+| Tested version | Captures: 2.1.285 (the native install updated itself from 2.1.281 without asking). Local transcripts span 2.1.207–2.1.280. | verified locally |
 | Launch | `claude` in the project directory. | [official docs](https://code.claude.com/docs/en/setup) |
 | Resume | `claude --resume <session-id>` (works from any directory since 2.1.223), `claude --continue` (latest in cwd), `claude --resume` (picker), `--fork-session` to branch. Unknown id → `No conversation found with session ID: <id>`. | [official docs](https://code.claude.com/docs/en/sessions) |
 | Resume after long idle | Pro/Max: resuming a session idle > ~1 h and > 100k tokens opens a "Resume from summary / as-is / don't ask again" dialog before the first message. This is a resume-time blocker the adapter must answer. | [official docs](https://code.claude.com/docs/en/sessions#resume-from-a-summary) |
@@ -71,11 +71,11 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | Launch | `codex` in the project directory. | [README](https://github.com/openai/codex) |
 | Resume | `codex resume [SESSION_ID]` (UUID or name), `--last` (latest in cwd), `--all` (any directory); `codex exec resume` for non-interactive runs. | [official docs](https://learn.chatgpt.com/docs/developer-commands?surface=cli) |
 | herdr's resume command | `codex resume <id>` from the herdr Codex integration (hook v5). | [herdr source v0.9.1 `src/agent_resume.rs`](https://github.com/herdrdev/herdr/blob/v0.9.1/src/agent_resume.rs); herdr docs |
-| Where the session id comes from | Rollout file name `rollout-<timestamp>-<uuid>.jsonl` and `session_meta.payload.id` (first record); `agent_session` in herdr with the integration. A resumed session is reported to write a new rollout file that keeps the original id: UNVERIFIED (only seen in a search summary of [discussion #3827](https://github.com/openai/codex/discussions/3827)). | verified locally; herdr docs |
+| Where the session id comes from | Rollout file name `rollout-<timestamp>-<uuid>.jsonl` and `session_meta.payload.id` (first record); `agent_session` in herdr with the integration. On 0.156.1, `codex resume <id>` followed by a new turn **appended to the same rollout file** (one `session_meta`, 92 → 103 records); older reports of a second file ([discussion #3827](https://github.com/openai/codex/discussions/3827)) did not reproduce. | verified locally; herdr docs |
 | Log location | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`CODEX_HOME` moves `~/.codex`). Also present: `session_index.jsonl`, `state_5.sqlite`, `logs_2.sqlite` (contents not inspected). | verified locally; `CODEX_HOME`: herdr docs |
 | Log format | JSONL `{timestamp, type, payload}`. Counts across 21 local files: `event_msg/token_count` 4925, `response_item/*` (message, reasoning, function_call, …), `event_msg/{task_started, task_complete, turn_aborted, context_compacted, user_message, agent_message, …}`, `turn_context`, `session_meta`, `compacted`. | verified locally |
 | Token fields | `event_msg/token_count.payload.info`: `total_token_usage` and `last_token_usage`, each `{input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens}`, plus `model_context_window`. `info` is `null` on the first event of a session. | verified locally |
-| Aggregation | `total_token_usage` is cumulative per session: use the last `token_count` in a rollout, or sum `last_token_usage`. `cached_input_tokens` looked like a subset of `input_tokens` (17.1 M of 17.9 M in one session); this is inferred from the numbers, not documented. Whether totals continue or restart after a resume is UNVERIFIED. | verified locally |
+| Aggregation | `total_token_usage` is cumulative per session: use the last `token_count` in a rollout, or sum `last_token_usage`. `cached_input_tokens` looked like a subset of `input_tokens` (17.1 M of 17.9 M in one session); this is inferred from the numbers, not documented. After a resume the cumulative total continued (142108 → 157002 `total_tokens`). | verified locally |
 | Quota / reset data | Every `token_count` carries `rate_limits`: `primary` (`window_minutes: 300`) and `secondary` (`window_minutes: 10080`), each `{used_percent, window_minutes, resets_at}` with `resets_at` in Unix seconds, plus `limit_id`, `plan_type`, `credits`, `rate_limit_reached_type`. Fields differ between versions (older files have no `limit_id`). **This is the best structured quota source of the four agents.** | verified locally |
 | Limit message | `You've hit your usage limit. Upgrade to Pro (…) or try again in 3 hours 2 minutes.` (0.27.0); `You've hit your usage limit. Upgrade to Pro (…), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Feb 23rd, 2026 9:01 PM.`; business seats: `… send a request to your admin or try again at Apr 12th, 2026 3:31 PM.` The absolute time has no zone (local time assumed: UNVERIFIED). Text for 0.156.1: pending capture. | GitHub issues [#3031](https://github.com/openai/codex/issues/3031), [#12299](https://github.com/openai/codex/issues/12299), [#16917](https://github.com/openai/codex/issues/16917) |
 | Context full | Log shows `compacted` records and `event_msg/context_compacted` (22 each locally); `model_context_window` gives the size. The on-screen text and the auto-compaction threshold are UNVERIFIED. | verified locally |
@@ -111,7 +111,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | herdr's resume command | `opencode --session <id>`, using the id from herdr's OpenCode plugin (v5, needs OpenCode ≥ 1.18.29). The plugin also reports lifecycle state (working / idle / blocked), unlike the Claude and Codex hooks. | [herdr source v0.9.1 `src/agent_resume.rs`](https://github.com/herdrdev/herdr/blob/v0.9.1/src/agent_resume.rs); herdr docs |
 | Where the session id comes from | `session.id` in the database; `opencode session list`; `agent_session` in herdr with the plugin. | schema verified locally; official docs |
 | Storage | SQLite, `~/.local/share/opencode/opencode.db` (`opencode db path`), WAL mode. Tables include `session`, `message`, `part`, `event`, `project`. `message.data` and `part.data` are JSON text. | verified locally |
-| Token fields | `session` row totals: `tokens_input`, `tokens_output`, `tokens_reasoning`, `tokens_cache_read`, `tokens_cache_write`, `cost`, `model`. Per-message fields inside `message.data`: pending local run. `opencode stats [--days N] [--models]` prints totals. | schema verified locally; [official docs: CLI](https://opencode.ai/docs/cli/) |
+| Token fields | `session` row totals: `tokens_input`, `tokens_output`, `tokens_reasoning`, `tokens_cache_read`, `tokens_cache_write`, `cost`, `model`. Per assistant message in `message.data`: `tokens{total, input, output, reasoning, cache{read, write}}`, `cost`, `modelID`, `providerID`, `finish`. `opencode stats [--days N] [--models]` prints totals. | schema verified locally; [official docs: CLI](https://opencode.ai/docs/cli/) |
 | Aggregation | Read the `session` totals from a read-only SQLite connection (the file is live and in WAL mode). | verified locally (schema) |
 | Limit message | Provider-dependent. OpenCode's own retry layer shows `Free limit reached`, `<name> usage limit reached. It will reset in <duration>. …` (OpenCode Go), `Provider is overloaded`, `Too Many Requests`, or the provider's message, and retries on `retry-after` headers. On-screen rendering: pending capture. | [source v1.18.32 `session/retry.ts`](https://github.com/anomalyco/opencode/blob/v1.18.32/packages/opencode/src/session/retry.ts) |
 | Context full | UNVERIFIED (not researched in the docs; pending capture). | — |
@@ -169,3 +169,71 @@ On Claude Code 2.1.281's first-run theme picker, `agent explain` returned `state
 with `matched_rule: null` and `fallback_reason: "default_known_agent_idle_fallback"`: herdr
 reports idle for a known agent when no rule matches, even though the agent is waiting for a
 choice. coban must not treat herdr's `idle` as "ready for a prompt" without its own check.
+
+## Capture findings (2026-09-30)
+
+Observed while recording `fixtures/<agent>/` in the sandbox, driving the agents through the
+herdr CLI (`herdr agent prompt`, `herdr agent wait --until …`, `herdr pane send-keys`). All
+rows are **verified locally**; the capture directory holding the evidence is named.
+
+### Across agents
+
+1. **herdr's `idle` is a fallback, not a positive signal.** Whenever a known agent shows a
+   screen no rule matches, `agent explain` returns `state: idle`,
+   `fallback_reason: default_known_agent_idle_fallback`. This covered every first-run dialog
+   and every resume picker below. coban needs its own "ready for a prompt" check.
+2. **`done` depends on what the human is looking at.** herdr reports `done` only when a turn
+   ends in a tab that is not active; in the active tab of a focused window it goes straight to
+   `idle` (herdr `src/app/actions.rs`, `active_tab_suppresses_notifications`). Infer completion
+   from the `working → idle|done` transition in the event stream, not from `done`.
+3. **A crash reads as `agent: null`, `agent_status: unknown`**, and `agent explain` fails with
+   `agent_not_found`. That state is also what a plain shell pane looks like, so it is not a
+   crash signal by itself: combine it with `herdr pane process-info` and the previous status.
+   (`fixtures/*/crashed/`)
+4. **`kill -9` can leave the terminal in a bad state.** After killing Claude Code, mouse
+   reporting stayed enabled and mouse movement was typed into the shell as commands; `reset`
+   did not recover the pane. The recovery engine should restart an agent in a fresh pane, or
+   reset the terminal and verify it before launching.
+5. **Agents update themselves.** Claude Code went 2.1.281 → 2.1.285 and Gemini CLI printed
+   "Update successful! The new version will be used on your next run" with no prompt; Codex
+   asks on every start. Fixtures must record the CLI version (they do, in `meta.json`), and
+   detection rules need to be checked against new versions continuously.
+6. **Permission and question are told apart by herdr for Claude** (`bash_permission_prompt`
+   vs `live_blocked_form`), which lets coban choose between approve/deny buttons and a free-text
+   reply in Telegram. For other agents coban has to classify the blocker itself.
+7. **Timing a capture by hand does not work.** Use
+   `herdr agent wait <pane> --until working|blocked|done` and capture when it returns.
+
+### Claude Code 2.1.285
+
+| Observation | Evidence |
+|-------------|----------|
+| The default permission mode is now auto mode: a Bash command did not raise a permission prompt. `--permission-mode default` was needed to see one. Blocked-on-permission will be rarer than the manifest suggests. | `blocked_permission/` (captured with `--permission-mode default`) |
+| Permission prompt → `blocked`, rule `bash_permission_prompt`. Question tool dialog → `blocked`, rule `live_blocked_form`. Working → `osc_title_working`. Idle → `live_prompt_box`. | `blocked_permission/`, `blocked_question/`, `working/`, `idle/` |
+| First-run theme picker and the `claude --resume` session picker are classified `idle` by fallback. | `resume_prompt/` |
+| With the herdr integration installed, `pane get` carries `agent_session {kind: "id", source: "herdr:claude", value: <uuid>}`; on exit Claude prints `claude --resume <uuid>`. | `idle/` (after resume), `pane.json` |
+| Resuming a crashed session from the picker restored the conversation and showed a recap line. | `idle/` "after resuming a crashed session" |
+
+### Codex CLI 0.156.1
+
+| Observation | Evidence |
+|-------------|----------|
+| Three start-up blockers, all classified `idle` by fallback: "Trust this folder?" (herdr's `trust_directory` rule expects older wording), "Hooks need review" (after installing the herdr hook), and "Update available · 0.156.1 → 0.159.2" with Update / Skip / Skip until next version (herdr's `startup_update` rule expects older wording). The update prompt returns on **every** start, including `codex resume`. | `blocked_permission/` (first two), `blocked_question/` (update) |
+| A model configured in `config.toml` that the account cannot use ends the turn with a red `{"type":"error","status":400,…}` line; herdr shows `done`. The adapter must detect error lines, not just status. | `done/` (first capture) |
+| Edit approval in a read-only sandbox → `blocked`, rule `osc_title_blocked` (title contains `Action Required`). `-a untrusted` no longer exists; approval policies are `on-request` and `never`. | `blocked_permission/` (third capture) |
+| Asked to ask a question, Codex asked in plain text and ended the turn: herdr reports `done`, not `blocked`. A question is indistinguishable from completion without reading the text. | `blocked_question/` (second capture) |
+| Working → `osc_title_working`. There is no idle rule; idle and done both come from the fallback. | `working/`, `idle/`, `done/` |
+| `codex resume` opens a picker ("Resume a previous session"), classified `idle` by fallback. `codex resume <id>` resumes directly. | `resume_prompt/` |
+| Every `token_count` in the sandbox rollout carries `rate_limits` (now also `individual_limit`, `spend_control_reached`). | `usage-sample.jsonl` |
+
+### OpenCode 1.18.32
+
+| Observation | Evidence |
+|-------------|----------|
+| Works without credentials on free models (`opencode -m opencode/big-pickle`); no first-run dialogs. | `idle/` |
+| With the herdr plugin, state comes from the plugin, not the screen: `agent explain` reports `working` / `blocked` with `matched_rule: null` and no fallback, and `agent_session {source: "herdr:opencode", value: "ses_…"}` is set. | `working/`, `blocked_permission/`, `pane.json` |
+| Bash ran **without** a permission prompt by default. A prompt appeared for writing outside the project: "△ Permission required · Access external directory /tmp" with Allow once / Allow always / Reject. | `blocked_permission/` |
+| The question tool shows a real dialog (options plus "Type your own answer") and herdr reports `blocked`. | `blocked_question/` |
+| `opencode --continue` resumed the crashed session with no picker; the `/sessions` dialog is the picker. | `idle/` (after resume), `resume_prompt/` |
+| The footer shows context use, e.g. `14.2K (7%)`: an on-screen context signal. | any `screen.txt` |
+
