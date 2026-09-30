@@ -239,12 +239,17 @@ rows are **verified locally**; the capture directory holding the evidence is nam
 
 ### Gemini CLI 0.61.0 (first-run only)
 
-The Gemini round stopped at sign-in, which needs the account owner. Captured so far:
+The Gemini round was **skipped**: "Sign in with Google" did not complete on this machine
+(the dialog returned with "Failed to sign in. Message: Authentication timed out after 5
+minutes", suggesting `NO_BROWSER=true` as an alternative). Only first-run screens were
+captured. Until an authenticated round is done, everything about Gemini beyond these rows
+comes from documentation and source code, and the Gemini adapter should be built last in M2.
 
 | Observation | Evidence |
 |-------------|----------|
 | First-run "Do you trust the files in this folder?" dialog, then "How would you like to authenticate for this project?" (Sign in with Google / Use Gemini API Key / Vertex AI). | `blocked_permission/`, `blocked_question/` |
 | During both dialogs herdr had **not detected an agent at all**: `pane get` shows `agent: null`, `agent_status: unknown`, `agent explain` fails with `agent_not_found`, and the event subscription delivered no events. Whether herdr detects Gemini after sign-in is UNVERIFIED. | `pane.json`, `explain.json` in both captures |
+| A failed sign-in returns to the authentication dialog with an error line; the process stays alive and herdr still reports no agent. | `blocked_question/` (second capture) |
 | On start the CLI printed "Update successful! The new version will be used on your next run." without asking. | `screen.txt` |
 
 Not captured: idle, working, blocked on tool approval, question, done, crash, resume, the

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "gemini",
+  "agent_cli": {
+    "version": "0.62.0",
+    "error": null
+  },
+  "scenario": "blocked_question",
+  "captured_at": "2026-09-30T09:04:09.664599+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p6",
+  "herdr_agent": null,
+  "herdr_agent_status": "unknown",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "sign-in failed: authentication timed out after 5 minutes; dialog is shown again",
+  "explain_error": "agent explain failed: agent_not_found"
+}

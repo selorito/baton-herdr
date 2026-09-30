@@ -1,0 +1,87 @@
+ │                                                                                                                                                                                                                                               │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+ Gemini CLI is restarting to apply the trust changes...
+
+ ▝▜▄      ▗█▀▀▜▙▝█▛▀▀▌▜██▖▟██▘▜█▘▜██▖▝█▛▝█▛
+   ▝▜▄    █▌     █▙▟  ▐█▝█▛▐█ ▐█ ▐█▝█▖█▌ █▌
+  ▗▟▀     ▜▙ ▝█▛ █▌▝ ▖▐█   ▐█ ▐█ ▐█ ▝██▌ █▌
+ ▝▀        ▀▀▀▀▘▝▀▀▀▀▘▀▀▘  ▀▀▘▀▀▘▀▀▘ ▝▀▀▝▀▀
+
+ Gemini CLI v0.62.0
+
+
+
+Tips for getting started:
+1. Create GEMINI.md files to customize your interactions
+2. /help for more information
+3. Ask coding questions, edit code or run commands
+4. Be specific for the best results
+
+ℹ Attempting to open authentication page in your browser.
+  Otherwise navigate to:
+  https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A34813%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo
+  .email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com
+
+ℹ Waiting for authentication...
+
+ℹ Authentication succeeded
+
+ℹ Attempting to open authentication page in your browser.
+  Otherwise navigate to:
+  https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A40269%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo
+  .email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com
+
+ℹ Waiting for authentication...
+
+ℹ Authentication succeeded
+
+ℹ Attempting to open authentication page in your browser.
+  Otherwise navigate to:
+  https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A41525%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo
+  .email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com
+
+ℹ Waiting for authentication...
+
+ℹ Authentication succeeded
+
+ℹ Attempting to open authentication page in your browser.
+  Otherwise navigate to:
+  https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A39443%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo
+  .email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com
+
+ℹ Waiting for authentication...
+
+ℹ Authentication succeeded
+
+ℹ Attempting to open authentication page in your browser.
+  Otherwise navigate to:
+  https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A45799%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo
+  .email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com
+
+ℹ Waiting for authentication...
+
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                                                                                 │
+│ ⠦ Waiting for authentication... (Press Esc or Ctrl+C to cancel)                                                                                                                                                                                 │
+
+╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                                                                                 │
+│ ? Get started                                                                                                                                                                                                                                   │
+│                                                                                                                                                                                                                                                 │
+│   How would you like to authenticate for this project?                                                                                                                                                                                          │
+│                                                                                                                                                                                                                                                 │
+│   ● 1. Sign in with Google                                                                                                                                                                                                                      │
+│     2. Use Gemini API Key                                                                                                                                                                                                                       │
+│     3. Vertex AI                                                                                                                                                                                                                                │
+│                                                                                                                                                                                                                                                 │
+│   Failed to sign in. Message: Authentication timed out after 5 minutes. The browser tab may have gotten stuck in a loading state. Please try again or use NO_BROWSER=true for manual authentication.                                            │
+│                                                                                                                                                                                                                                                 │
+│   (Use Enter to select)                                                                                                                                                                                                                         │
+│                                                                                                                                                                                                                                                 │
+│   Terms of Services and Privacy Notice for Gemini CLI                                                                                                                                                                                           │
+│                                                                                                                                                                                                                                                 │
+│   https://geminicli.com/docs/resources/tos-privacy/                                                                                                                                                                                             │
+│                                                                                                                                                                                                                                                 │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

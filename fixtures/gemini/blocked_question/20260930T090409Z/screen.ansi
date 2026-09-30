@@ -1,0 +1,117 @@
+
+ [0m[38;2;71;150;228m▝[0m[38;2;102;136;217m▜[0m[38;2;132;122;206m▄[0m[38;2;164;113;167m [0m[38;2;195;103;127m [0m    [0m[38;2;255;255;255m▗█▀▀▜▙▝█▛▀▀▌▜██▖▟██▘▜█▘▜██▖▝█▛▝█▛[0m
+ [0m[38;2;71;150;228m [0m[38;2;102;136;217m [0m[38;2;132;122;206m▝[0m[38;2;164;113;167m▜[0m[38;2;195;103;127m▄[0m    [0m[38;2;255;255;255m█▌     █▙▟  ▐█▝█▛▐█ ▐█ ▐█▝█▖█▌ █▌[0m
+ [0m[38;2;71;150;228m [0m[38;2;102;136;217m▗[0m[38;2;132;122;206m▟[0m[38;2;164;113;167m▀[0m[38;2;195;103;127m [0m    [0m[38;2;255;255;255m▜▙ ▝█▛ █▌▝ ▖▐█   ▐█ ▐█ ▐█ ▝██▌ █▌[0m
+ [0m[38;2;71;150;228m▝[0m[38;2;102;136;217m▀[0m[38;2;132;122;206m [0m[38;2;153;116;180m [0m[38;2;174;109;153m [0m[38;2;195;103;127m [0m   [0m[38;2;255;255;255m ▀▀▀▀▘▝▀▀▀▀▘▀▀▘  ▀▀▘▀▀▘▀▀▘ ▝▀▀▝▀▀[0m
+
+ [0m[1m[38;2;255;255;255mGemini CLI[0m[38;2;175;175;175m v0.61.0[0m
+
+
+
+[0m[38;2;255;255;255mTips for getting started:[0m
+[0m[38;2;255;255;255m1. Create [0m[1m[38;2;255;255;255mGEMINI.md[0m[38;2;255;255;255m files to customize your interactions[0m
+[0m[38;2;255;255;255m2. [0m[38;2;175;175;175m/help[0m[38;2;255;255;255m for more information[0m
+[0m[38;2;255;255;255m3. Ask coding questions, edit code or run commands[0m
+[0m[38;2;255;255;255m4. Be specific for the best results[0m
+
+[0m[38;2;255;255;175mℹ Skipping project agents due to untrusted folder. To enable, ensure that the project root is trusted.[0m
+
+[0m[38;2;255;255;175mℹ Update successful! The new version will be used on your next run.[0m
+
+ [0m[38;2;255;255;175m╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+ [0m[38;2;255;255;175m│[0m                                                                                                                                                                                                                                               [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m [0m[1m[38;2;255;255;255mDo you trust the files in this folder?[0m                                                                                                                                                                                                        [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m                                                                                                                                                                                                                                               [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m [0m[38;2;255;255;255mTrusting a folder allows Gemini CLI to load its local configurations, including custom commands, hooks, MCP servers, agent skills, and settings. These configurations could execute code on your behalf or change the behavior of the CLI.[0m    [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m                                                                                                                                                                                                                                               [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m                                                                                                                                                                                                                                               [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m [0m[38;2;215;255;215m[48;2;81;59;72m●[0m[48;2;81;59;72m [0m[38;2;175;175;175m[48;2;81;59;72m1.[0m[48;2;81;59;72m [0m[38;2;215;255;215m[48;2;81;59;72mTrust folder (coban-sandbox)[0m                                                                                                                                                                                                             [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m [0m[38;2;255;255;255m [0m [0m[38;2;175;175;175m2.[0m [0m[38;2;255;255;255mTrust parent folder (dev)[0m                                                                                                                                                                                                                [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m [0m[38;2;255;255;255m [0m [0m[38;2;175;175;175m3.[0m [0m[38;2;255;255;255mDon't trust[0m                                                                                                                                                                                                                              [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m│[0m                                                                                                                                                                                                                                               [0m[38;2;255;255;175m│[0m
+ [0m[38;2;255;255;175m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+ [0m[38;2;255;255;175mGemini CLI is restarting to apply the trust changes...[0m
+
+ [0m[38;2;71;150;228m▝[0m[38;2;102;136;217m▜[0m[38;2;132;122;206m▄[0m[38;2;164;113;167m [0m[38;2;195;103;127m [0m    [0m[38;2;255;255;255m▗█▀▀▜▙▝█▛▀▀▌▜██▖▟██▘▜█▘▜██▖▝█▛▝█▛[0m
+ [0m[38;2;71;150;228m [0m[38;2;102;136;217m [0m[38;2;132;122;206m▝[0m[38;2;164;113;167m▜[0m[38;2;195;103;127m▄[0m    [0m[38;2;255;255;255m█▌     █▙▟  ▐█▝█▛▐█ ▐█ ▐█▝█▖█▌ █▌[0m
+ [0m[38;2;71;150;228m [0m[38;2;102;136;217m▗[0m[38;2;132;122;206m▟[0m[38;2;164;113;167m▀[0m[38;2;195;103;127m [0m    [0m[38;2;255;255;255m▜▙ ▝█▛ █▌▝ ▖▐█   ▐█ ▐█ ▐█ ▝██▌ █▌[0m
+ [0m[38;2;71;150;228m▝[0m[38;2;102;136;217m▀[0m[38;2;132;122;206m [0m[38;2;153;116;180m [0m[38;2;174;109;153m [0m[38;2;195;103;127m [0m   [0m[38;2;255;255;255m ▀▀▀▀▘▝▀▀▀▀▘▀▀▘  ▀▀▘▀▀▘▀▀▘ ▝▀▀▝▀▀[0m
+
+ [0m[1m[38;2;255;255;255mGemini CLI[0m[38;2;175;175;175m v0.62.0[0m
+
+
+
+[0m[38;2;255;255;255mTips for getting started:[0m
+[0m[38;2;255;255;255m1. Create [0m[1m[38;2;255;255;255mGEMINI.md[0m[38;2;255;255;255m files to customize your interactions[0m
+[0m[38;2;255;255;255m2. [0m[38;2;175;175;175m/help[0m[38;2;255;255;255m for more information[0m
+[0m[38;2;255;255;255m3. Ask coding questions, edit code or run commands[0m
+[0m[38;2;255;255;255m4. Be specific for the best results[0m
+
+[0m[38;2;255;255;175mℹ Attempting to open authentication page in your browser.[0m
+  [0m[38;2;255;255;175mOtherwise navigate to:[0m
+  [0m[38;2;135;175;255mhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A34813%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo[0m
+  [0m[38;2;135;175;255m.email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com[0m
+
+[0m[38;2;255;255;175mℹ Waiting for authentication...[0m
+
+[0m[38;2;255;255;175mℹ Authentication succeeded[0m
+
+[0m[38;2;255;255;175mℹ Attempting to open authentication page in your browser.[0m
+  [0m[38;2;255;255;175mOtherwise navigate to:[0m
+  [0m[38;2;135;175;255mhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A40269%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo[0m
+  [0m[38;2;135;175;255m.email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com[0m
+
+[0m[38;2;255;255;175mℹ Waiting for authentication...[0m
+
+[0m[38;2;255;255;175mℹ Authentication succeeded[0m
+
+[0m[38;2;255;255;175mℹ Attempting to open authentication page in your browser.[0m
+  [0m[38;2;255;255;175mOtherwise navigate to:[0m
+  [0m[38;2;135;175;255mhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A41525%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo[0m
+  [0m[38;2;135;175;255m.email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com[0m
+
+[0m[38;2;255;255;175mℹ Waiting for authentication...[0m
+
+[0m[38;2;255;255;175mℹ Authentication succeeded[0m
+
+[0m[38;2;255;255;175mℹ Attempting to open authentication page in your browser.[0m
+  [0m[38;2;255;255;175mOtherwise navigate to:[0m
+  [0m[38;2;135;175;255mhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A39443%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo[0m
+  [0m[38;2;135;175;255m.email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com[0m
+
+[0m[38;2;255;255;175mℹ Waiting for authentication...[0m
+
+[0m[38;2;255;255;175mℹ Authentication succeeded[0m
+
+[0m[38;2;255;255;175mℹ Attempting to open authentication page in your browser.[0m
+  [0m[38;2;255;255;175mOtherwise navigate to:[0m
+  [0m[38;2;135;175;255mhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A45799%2Foauth2callback&access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo[0m
+  [0m[38;2;135;175;255m.email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&state=<redacted>&response_type=code&client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com[0m
+
+[0m[38;2;255;255;175mℹ Waiting for authentication...[0m
+
+[0m[38;2;99;76;92m╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;99;76;92m│[0m                                                                                                                                                                                                                                                 [0m[38;2;99;76;92m│[0m
+[0m[38;2;99;76;92m│[0m ⠦ Waiting for authentication... (Press Esc or Ctrl+C to cancel)                                                                                                                                                                                 [0m[38;2;99;76;92m│[0m
+
+[0m[38;2;215;255;215m╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m [0m[38;2;215;175;255m? [0m[1m[38;2;255;255;255mGet started[0m                                                                                                                                                                                                                                   [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;255;255;255mHow would you like to authenticate for this project?[0m                                                                                                                                                                                          [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;215;255;215m[48;2;81;59;72m●[0m[48;2;81;59;72m [0m[38;2;215;255;215m[48;2;81;59;72m1.[0m[48;2;81;59;72m [0m[38;2;215;255;215m[48;2;81;59;72mSign in with Google[0m                                                                                                                                                                                                                      [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;255;255;255m [0m [0m[38;2;255;255;255m2.[0m [0m[38;2;255;255;255mUse Gemini API Key[0m                                                                                                                                                                                                                       [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;255;255;255m [0m [0m[38;2;255;255;255m3.[0m [0m[38;2;255;255;255mVertex AI[0m                                                                                                                                                                                                                                [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;255;135;175mFailed to sign in. Message: Authentication timed out after 5 minutes. The browser tab may have gotten stuck in a loading state. Please try again or use NO_BROWSER=true for manual authentication.[0m                                            [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;175;175;175m(Use Enter to select)[0m                                                                                                                                                                                                                         [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;255;255;255mTerms of Services and Privacy Notice for Gemini CLI[0m                                                                                                                                                                                           [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m   [0m[38;2;135;175;255mhttps://geminicli.com/docs/resources/tos-privacy/[0m                                                                                                                                                                                             [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m│[0m                                                                                                                                                                                                                                                 [0m[38;2;215;255;215m│[0m
+[0m[38;2;215;255;215m╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
