@@ -1,0 +1,87 @@
+
+  ┃                                                                                                                                                                                                        New session - 2026-09-30T08:02:11.
+  ┃  Review calc.py and test_calc.py. For each function, list edge cases the tests do not cover yet. Do not modify any files.                                                                              477Z
+  ┃
+                                                                                                                                                                                                           Context
+     ▣  Build · Big Pickle                                                                                                                                                                                 0 tokens
+                                                                                                                                                                                                           0% used
+                                                                                                                                                                                                           $0.00 spent
+
+                                                                                                                                                                                                           LSP
+                                                                                                                                                                                                           LSPs are disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                                                                                             ⬖ Getting started                ✕
+
+                                                                                                                                                                                                               OpenCode includes free models
+                                                                                                                                                                                                               so you can start immediately.
+
+                                                                                                                                                                                                               Connect from 75+ providers to
+                                                                                                                                                                                                               use other models, including
+                                                                                                                                                                                                               Claude, GPT, Gemini etc
+
+  ┃                                                                                                                                                                                                            Connect provider        /connect
+  ┃
+  ┃
+  ┃  Build · Big Pickle OpenCode Zen                                                                                                                                                                       ~/dev/coban-sandbox:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ■⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                                                                                                                                  tab agents  ctrl+p commands    • OpenCode 1.18.32

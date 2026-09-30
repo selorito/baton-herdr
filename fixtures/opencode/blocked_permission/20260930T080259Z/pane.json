@@ -1,0 +1,25 @@
+{
+  "agent": "opencode",
+  "agent_session": {
+    "agent": "opencode",
+    "kind": "id",
+    "source": "herdr:opencode",
+    "value": "ses_f0eaa226affewrK2hFnWEQjrgZ"
+  },
+  "agent_status": "blocked",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p7",
+  "revision": 3,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 88
+  },
+  "tab_id": "w1:t4",
+  "terminal_id": "term_65caeb5d714a86",
+  "terminal_title": "OC | calc.py and test_calc.py coverage gaps",
+  "terminal_title_stripped": "OC | calc.py and test_calc.py coverage gaps",
+  "workspace_id": "w1"
+}

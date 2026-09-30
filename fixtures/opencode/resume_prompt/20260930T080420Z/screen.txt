@@ -1,0 +1,87 @@
+
+     Wrote ok to /tmp/coban-sandbox-note.txt.                                                                                                                                                              calc.py and test_calc.py coverage
+                                                                                                                                                                                                           gaps
+     ▣  Build · Big Pickle · 11.6s
+                                                                                                                                                                                                           Context
+  ┃                                                                                                                                                                                                        14,208 tokens
+  ┃  calc.divide has a TODO about division by zero. Before changing anything, ask me which behaviour I want: raise ZeroDivisionError with a clear message, or return float('inf'). Wait for my answer.     7% used
+  ┃                                                                                                                                                                                                        $0.00 spent
+
+     + Thought: 4.2s                                                                                                                                                                                       LSP
+                                                                                                                                                                                                           LSPs are disabled
+  ┃
+  ┃  # Questions
+  ┃
+  ┃  How should calc.divide behave when b == 0?
+  ┃  Raise ZeroDivisionError with a clear message
+  ┃
+
+     + Thought: 5.1s
+
+     Answer received: raise with a clear message. Implementing that, and I'll treat 0 / 0 the same way (raising), since under this contract the whole zero-denominator case is an error and 0/0 has no
+     infinity value.
+
+  ┃                                                                               Sessions                                                                     esc
+  ┃  ← Edit calc.py
+  ┃                                                                               Search
+  ┃    13       return a * b
+  ┃    14                                                                         Today
+  ┃    15                                                                       ● calc.py and test_calc.py coverage gaps
+  ┃    16   def divide(a: float, b: float) -> float:
+  ┃    17 -     # TODO: decide how division by zero should behave.                pin/unpin ctrl+f  delete ctrl+d  rename ctrl+r
+  ┃                                                                                                                                                                   ro")
+  ┃    18       return a / b                                                                            19       return a / b
+  ┃
+
+     + Thought: 381ms
+
+  ┃
+  ┃  ← Edit test_calc.py
+  ┃
+  ┃    15                                                                                               15
+  ┃    16     def test_divide(self) -> None:                                                            16       def test_divide(self) -> None:
+  ┃    17         self.assertEqual(calc.divide(9, 3), 3)                                                17           self.assertEqual(calc.divide(9, 3), 3)
+  ┃    18                                                                                               18
+  ┃                                                                                                     19 +     def test_divide_by_zero(self) -> None:
+  ┃                                                                                                     20 +         with self.assertRaises(ZeroDivisionError):
+  ┃                                                                                                     21 +             calc.divide(1, 0)
+  ┃    19                                                                                               22
+  ┃                                                                                                     23 +     def test_divide_zero_by_zero(self) -> None:
+  ┃                                                                                                     24 +         with self.assertRaises(ZeroDivisionError):
+  ┃                                                                                                     25 +             calc.divide(0, 0)
+  ┃                                                                                                     26 +
+  ┃                                                                                                     27 +
+  ┃    20 if __name__ == "__main__":                                                                    28   if __name__ == "__main__":
+  ┃    21     unittest.main()                                                                           29       unittest.main()
+  ┃
+
+  ┃
+  ┃  $ python3 -m unittest -v 2>&1
+  ┃
+  ┃  test_add (test_calc.CalcTest) ... ok
+  ┃  test_divide (test_calc.CalcTest) ... ok
+  ┃  test_divide_by_zero (test_calc.CalcTest) ... ok
+  ┃  test_divide_zero_by_zero (test_calc.CalcTest) ... ok
+  ┃  test_multiply (test_calc.CalcTest) ... ok
+  ┃  test_subtract (test_calc.CalcTest) ... ok
+  ┃
+  ┃  ----------------------------------------------------------------------
+  ┃  Ran 6 tests in 0.000s
+  ┃
+  ┃  …
+  ┃
+  ┃  Click to expand                                                                                                                                                                                         ⬖ Getting started                ✕
+  ┃
+                                                                                                                                                                                                               OpenCode includes free models
+     calc.divide now raises ZeroDivisionError(f"cannot divide {a} by zero") for any zero denominator (calc.py:16), the resolved TODO is gone, and two tests pin the behavior — 6/6 pass.                       so you can start immediately.
+
+     If you'd rather have 0 / 0 behave differently from 1 / 0, say so and I'll split the guard.                                                                                                                Connect from 75+ providers to
+                                                                                                                                                                                                               use other models, including
+     ▣  Build · Big Pickle · 28.7s                                                                                                                                                                             Claude, GPT, Gemini etc
+
+  ┃                                                                                                                                                                                                            Connect provider        /connect
+  ┃
+  ┃
+  ┃  Build · Big Pickle OpenCode Zen                                                                                                                                                                       ~/dev/coban-sandbox:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ~/dev/coban-sandbox                                                                                                                                        14.2K (7%)  ctrl+p commands    • OpenCode 1.18.33

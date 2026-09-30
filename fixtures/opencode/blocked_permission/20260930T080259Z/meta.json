@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "opencode",
+  "agent_cli": {
+    "version": "1.18.33",
+    "error": null
+  },
+  "scenario": "blocked_permission",
+  "captured_at": "2026-09-30T08:02:59.406323+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p7",
+  "herdr_agent": "opencode",
+  "herdr_agent_status": "blocked",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "external directory access (write outside the project); bash ran without a prompt by default",
+  "explain_error": null
+}

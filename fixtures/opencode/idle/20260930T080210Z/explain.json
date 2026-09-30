@@ -1,0 +1,74 @@
+{
+  "agent": "opencode",
+  "cached_remote_version": "2026.06.10.1",
+  "evaluated_rules": [
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 2,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 2103,
+        "region_preview": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                       ▄\n                                                                  ..."
+      },
+      "id": "permission_required",
+      "matched": false,
+      "priority": 300,
+      "region": "whole_recent",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 4,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 2103,
+        "region_preview": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                       ▄\n                                                                  ..."
+      },
+      "id": "interrupt_hint_working",
+      "matched": false,
+      "priority": 110,
+      "region": "whole_recent",
+      "state": "working"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 0,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [
+          "(■|⬝){4,}"
+        ],
+        "region_bytes": 2103,
+        "region_preview": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                       ▄\n                                                                  ..."
+      },
+      "id": "progress_bar_working",
+      "matched": false,
+      "priority": 100,
+      "region": "whole_recent",
+      "state": "working"
+    }
+  ],
+  "fallback_reason": "default_known_agent_idle_fallback",
+  "local_override_shadowing_remote": false,
+  "manifest_source": "remote:~/.local/state/herdr/agent-detection/remote/opencode.toml",
+  "manifest_version": "2026.06.10.1",
+  "matched_rule": null,
+  "remote_update_error": null,
+  "remote_update_status": "current",
+  "screen_detection_skipped": false,
+  "skip_state_update": false,
+  "skipped_update_reason": null,
+  "state": "idle",
+  "visible_blocker": false,
+  "visible_idle": false,
+  "visible_working": false,
+  "warning": null
+}

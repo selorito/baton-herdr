@@ -1,0 +1,87 @@
+
+  ┃                                                                                                                                                                                                        calc.py and test_calc.py coverage
+  ┃  Review calc.py and test_calc.py. For each function, list edge cases the tests do not cover yet. Do not modify any files.                                                                              gaps
+  ┃
+                                                                                                                                                                                                           Context
+     I'll read both files first.                                                                                                                                                                           11,806 tokens
+                                                                                                                                                                                                           6% used
+     → Read calc.py                                                                                                                                                                                        $0.00 spent
+     → Read test_calc.py
+                                                                                                                                                                                                           LSP
+     + Thought: 3.4s                                                                                                                                                                                       LSPs are disabled
+
+     Both files read. Tests cover only positive-integer happy paths (2+3, 5-3, 4*3, 9/3), one case each.
+
+     Shared gaps (all four functions)
+
+     - Negative operands and negative results
+     - Zero as an operand
+     - Non-integer floats, and float precision (0.1 + 0.2 != 0.3)
+     - nan / inf propagation (e.g. 0 * inf → nan, inf - inf → nan)
+     - Very large/small magnitudes (overflow to inf)
+     - Type violations despite float annotations: str, None, bool, Decimal
+     - Wrong argument count / keyword-argument calls (expect TypeError)
+
+     add (calc.py:4)
+
+     - Commutativity is asserted nowhere (only add(2, 3), never add(3, 2))
+     - add(-2, -3), add(0, 0), add(0, -5)
+     - float('inf') + float('-inf') → nan
+     - Integer overflow past float range
+
+     subtract (calc.py:8)
+
+     - Equal operands → 0 (sign of zero: 0.0, -0.0)
+     - Negative result (subtract(3, 5))
+     - Mixed signs (subtract(-5, 3), subtract(-5, -3))
+     - Float precision: subtract(0.3, 0.1) ≠ 0.2
+     - Non-associativity, e.g. subtract(subtract(a, b), c) ≠ subtract(a, subtract(b, c))
+
+     multiply (calc.py:12)
+
+     - Sign combinations: negative×positive, positive×negative, negative×negative
+     - Zero product, and 0 * float('inf') → nan
+     - Float precision (0.1 * 3)
+     - Overflow: multiply(1e308, 10) → inf
+     - Distributivity over add — the one property the current tests hint at but never check
+
+     divide (calc.py:16) — highest risk
+
+     - Division by zero is entirely untested, and the behavior is still undecided (see the TODO at calc.py:17). Both divide(1, 0) and divide(0, 0) raise ZeroDivisionError today; the tests will pass
+       regardless of which contract you pick, so they don't protect you when you resolve the TODO.
+     - Non-exact division: divide(1, 3), divide(10, 4) — no assertAlmostEqual helper exists yet
+     - Sign handling and negative zero: divide(-6, 3), divide(1, -3), divide(0, -5) → -0.0
+     - divide(float('inf'), 0) and nan operands
+     - Integer vs. true division: divide(1, 0) vs. integer inputs is unspecified by the annotations, which only say float but tests pass int
+
+     No files were modified.
+
+     ▣  Build · Big Pickle · 13.6s
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                                                                                             ⬖ Getting started                ✕
+
+                                                                                                                                                                                                               OpenCode includes free models
+                                                                                                                                                                                                               so you can start immediately.
+
+                                                                                                                                                                                                               Connect from 75+ providers to
+                                                                                                                                                                                                               use other models, including
+                                                                                                                                                                                                               Claude, GPT, Gemini etc
+
+  ┃                                                                                                                                                                                                            Connect provider        /connect
+  ┃
+  ┃
+  ┃  Build · Big Pickle OpenCode Zen                                                                                                                                                                       ~/dev/coban-sandbox:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   ~/dev/coban-sandbox                                                                                                                                        11.8K (6%)  ctrl+p commands    • OpenCode 1.18.32

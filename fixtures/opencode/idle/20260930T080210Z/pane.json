@@ -1,0 +1,19 @@
+{
+  "agent": "opencode",
+  "agent_status": "idle",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p7",
+  "revision": 2,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 88
+  },
+  "tab_id": "w1:t4",
+  "terminal_id": "term_65caeb5d714a86",
+  "terminal_title": "OpenCode",
+  "terminal_title_stripped": "OpenCode",
+  "workspace_id": "w1"
+}

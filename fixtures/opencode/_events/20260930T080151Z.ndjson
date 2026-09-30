@@ -1,0 +1,16 @@
+{"received_at": "2026-09-30T08:01:55.110999+00:00", "message": {"data": {"agent": "opencode", "agent_status": "idle", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:11.974546+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:25.459937+00:00", "message": {"data": {"agent": "opencode", "agent_status": "done", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:35.840431+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:40.057109+00:00", "message": {"data": {"agent": "opencode", "agent_status": "done", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:50.053116+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:02:51.461574+00:00", "message": {"data": {"agent": "opencode", "agent_status": "blocked", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:00.051147+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:01.760617+00:00", "message": {"data": {"agent": "opencode", "agent_status": "done", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:03.276162+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:10.025103+00:00", "message": {"data": {"agent": "opencode", "agent_status": "blocked", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:19.113139+00:00", "message": {"data": {"agent": "opencode", "agent_status": "working", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:32.139277+00:00", "message": {"data": {"agent": "opencode", "agent_status": "done", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:39.415882+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:03:46.783359+00:00", "message": {"data": {"agent": "opencode", "agent_status": "idle", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:04:23.596871+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p7", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}

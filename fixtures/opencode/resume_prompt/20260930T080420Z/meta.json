@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "opencode",
+  "agent_cli": {
+    "version": "1.18.33",
+    "error": null
+  },
+  "scenario": "resume_prompt",
+  "captured_at": "2026-09-30T08:04:20.420717+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p7",
+  "herdr_agent": "opencode",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "/sessions dialog inside the TUI",
+  "explain_error": null
+}
