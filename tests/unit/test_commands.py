@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
-from coban.core.commands import CommandRejectedError, cancel_task, complete_task, fail_task
+from coban.core.commands import (
+    CommandRejectedError,
+    cancel_task,
+    complete_task,
+    fail_task,
+    start_attempt,
+)
 from coban.core.events import (
     AttemptEnded,
     AttemptInterrupted,
@@ -28,7 +34,7 @@ from coban.core.projection import Board, apply, project
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 T1 = TaskId("t1")
-A1 = AttemptId("a1")
+A1 = AttemptId(UUID(int=1))
 
 
 def board_with(*events: Event) -> Board:
@@ -106,3 +112,24 @@ def test_command_events_have_distinct_ids() -> None:
     events = cancel_task(board.tasks[T1], at=NOW)
     assert len({e.event_id for e in events}) == len(events)
     assert uuid4() not in {e.event_id for e in events}
+
+
+def test_start_attempt_generates_the_attempt_id() -> None:
+    board = board_with(CREATED)
+
+    first = start_attempt(board.tasks[T1], AgentKind.CODEX, at=NOW)
+    second = start_attempt(board.tasks[T1], AgentKind.CODEX, at=NOW)
+
+    assert isinstance(first.attempt_id, UUID)
+    assert first.attempt_id != second.attempt_id
+    assert extend(board, [first]).tasks[T1].status is TaskStatus.RUNNING
+
+
+def test_start_attempt_is_rejected_while_another_is_live_or_the_task_is_closed() -> None:
+    running = board_with(CREATED, STARTED)
+    with pytest.raises(CommandRejectedError, match="already has a live attempt"):
+        start_attempt(running.tasks[T1], AgentKind.CODEX, at=NOW)
+
+    closed = extend(running, cancel_task(running.tasks[T1], at=NOW))
+    with pytest.raises(CommandRejectedError, match="already cancelled"):
+        start_attempt(closed.tasks[T1], AgentKind.CODEX, at=NOW)

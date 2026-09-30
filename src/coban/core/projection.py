@@ -18,6 +18,7 @@ from coban.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
+    AttemptLocated,
     AttemptResumed,
     AttemptStarted,
     StoredEvent,
@@ -143,14 +144,15 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
                 raise InvalidEventError(stored, "another attempt is still live")
             if any(a.attempt_id == event.attempt_id for a in task.attempts):
                 raise InvalidEventError(stored, "attempt id already used")
-            attempt = AttemptView(
-                attempt_id=event.attempt_id,
-                agent=event.agent,
-                pane_id=event.pane_id,
-                session_ref=event.session_ref,
-            )
+            attempt = AttemptView(attempt_id=event.attempt_id, agent=event.agent)
             return replace(task, attempts=(*task.attempts, attempt))
-        case AgentStateObserved() | AttemptInterrupted() | AttemptResumed() | AttemptEnded():
+        case (
+            AttemptLocated()
+            | AgentStateObserved()
+            | AttemptInterrupted()
+            | AttemptResumed()
+            | AttemptEnded()
+        ):
             live = task.live_attempt
             if live is None or live.attempt_id != event.attempt_id:
                 raise InvalidEventError(stored, "attempt is not the live attempt")
@@ -170,6 +172,12 @@ _CLOSED_AS = {
 def _apply_to_attempt(attempt: AttemptView, stored: StoredEvent) -> AttemptView:
     event = stored.event
     match event:
+        case AttemptLocated():
+            return replace(
+                attempt,
+                pane_id=event.pane_id or attempt.pane_id,
+                session_ref=event.session_ref or attempt.session_ref,
+            )
         case AgentStateObserved():
             return replace(attempt, agent_state=event.state)
         case AttemptInterrupted():
@@ -189,7 +197,6 @@ def _apply_to_attempt(attempt: AttemptView, stored: StoredEvent) -> AttemptView:
                 status=AttemptStatus.ACTIVE,
                 # What the screen showed before the interruption is stale now.
                 agent_state=AgentState.UNKNOWN,
-                pane_id=event.pane_id or attempt.pane_id,
                 interrupt_reason=None,
                 resume_not_before=None,
             )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 
@@ -8,6 +9,7 @@ from coban.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
+    AttemptLocated,
     AttemptResumed,
     AttemptStarted,
     Event,
@@ -32,8 +34,8 @@ from coban.core.projection import Board, InvalidEventError, apply, project
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 T1 = TaskId("t1")
-A1 = AttemptId("a1")
-A2 = AttemptId("a2")
+A1 = AttemptId(UUID(int=1))
+A2 = AttemptId(UUID(int=2))
 
 
 def log(*events: Event) -> list[StoredEvent]:
@@ -47,9 +49,7 @@ def created(task: TaskId = T1) -> TaskCreated:
 
 
 def started(attempt: AttemptId = A1, agent: AgentKind = AgentKind.CLAUDE) -> AttemptStarted:
-    return AttemptStarted(
-        occurred_at=NOW, task_id=T1, attempt_id=attempt, agent=agent, pane_id="w1:p6"
-    )
+    return AttemptStarted(occurred_at=NOW, task_id=T1, attempt_id=attempt, agent=agent)
 
 
 def observed(state: AgentState, attempt: AttemptId = A1) -> AgentStateObserved:
@@ -214,3 +214,36 @@ def test_ending_an_interrupted_attempt_clears_its_interruption() -> None:
     assert attempt.status is AttemptStatus.ENDED
     assert (attempt.interrupt_reason, attempt.resume_not_before) == (None, None)
     assert board.tasks[T1].status is TaskStatus.PENDING
+
+
+def located(pane_id: str | None = None, session_ref: str | None = None) -> AttemptLocated:
+    return AttemptLocated(
+        occurred_at=NOW, task_id=T1, attempt_id=A1, pane_id=pane_id, session_ref=session_ref
+    )
+
+
+def test_an_attempt_starts_without_a_location_and_learns_it_piece_by_piece() -> None:
+    board = project(log(created(), started()))
+    attempt = board.tasks[T1].attempts[0]
+    assert (attempt.pane_id, attempt.session_ref) == (None, None)
+
+    board = project(
+        log(
+            created(),
+            started(),
+            located(pane_id="w1:p6"),
+            located(session_ref="sess-1"),  # reported later by the agent's hook
+            located(pane_id="w2:p1"),  # restarted in another pane: same attempt
+        )
+    )
+    attempt = board.tasks[T1].attempts[0]
+    assert (attempt.attempt_id, attempt.pane_id, attempt.session_ref) == (A1, "w2:p1", "sess-1")
+
+
+def test_an_interrupted_attempt_can_be_relocated_but_an_ended_one_cannot() -> None:
+    waiting = project(log(created(), started(), located(pane_id="w1:p6"), CRASH))
+    moved = apply(waiting, StoredEvent(seq=5, event=located(pane_id="w3:p1")))
+    assert moved.tasks[T1].attempts[0].pane_id == "w3:p1"
+
+    with pytest.raises(InvalidEventError, match="not the live attempt"):
+        project(log(created(), started(), FAILED, located(pane_id="w1:p6")))

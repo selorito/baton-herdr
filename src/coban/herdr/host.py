@@ -122,6 +122,13 @@ class HerdrPaneHost:
     async def close_pane(self, pane_id: str) -> None:
         await self._call("pane.close", {"pane_id": pane_id})
 
+    async def find_session(self, session_ref: str) -> str | None:
+        for pane in (await self._call("pane.list", {}))["panes"]:
+            if (pane.get("agent_session") or {}).get("value") == session_ref:
+                found: str = pane["pane_id"]
+                return found
+        return None
+
     async def processes(self, pane_id: str) -> Sequence[PaneProcess]:
         info = (await self._call("pane.process_info", {"pane_id": pane_id}))["process_info"]
         return [

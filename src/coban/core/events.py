@@ -15,7 +15,15 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, TypeAdapter
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    TypeAdapter,
+    model_validator,
+)
 
 from coban.core.model import (
     AgentKind,
@@ -64,8 +72,27 @@ class _AttemptEvent(_Event):
 class AttemptStarted(_AttemptEvent):
     type: Literal["attempt.started"] = "attempt.started"
     agent: AgentKind
+
+
+class AttemptLocated(_AttemptEvent):
+    """Where the attempt can be reached now (ADR 0006).
+
+    ``pane_id`` changes when the agent is restarted in another pane;
+    ``session_ref`` is the agent's own session id, which arrives after start (a
+    hook reports it), may change, or may never be known. A field left ``None``
+    keeps its previous value.
+    """
+
+    type: Literal["attempt.located"] = "attempt.located"
     pane_id: str | None = None
     session_ref: str | None = None
+
+    @model_validator(mode="after")
+    def _says_something(self) -> AttemptLocated:
+        if self.pane_id is None and self.session_ref is None:
+            msg = "attempt.located needs a pane_id or a session_ref"
+            raise ValueError(msg)
+        return self
 
 
 class AgentStateObserved(_AttemptEvent):
@@ -84,7 +111,6 @@ class AttemptInterrupted(_AttemptEvent):
 
 class AttemptResumed(_AttemptEvent):
     type: Literal["attempt.resumed"] = "attempt.resumed"
-    pane_id: str | None = None
 
 
 class AttemptEnded(_AttemptEvent):
@@ -98,6 +124,7 @@ type Event = Annotated[
     | TaskFailed
     | TaskCancelled
     | AttemptStarted
+    | AttemptLocated
     | AgentStateObserved
     | AttemptInterrupted
     | AttemptResumed

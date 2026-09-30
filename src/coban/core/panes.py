@@ -90,6 +90,10 @@ class PaneHost(Protocol):
 
     async def close_pane(self, pane_id: str) -> None: ...
 
+    async def find_session(self, session_ref: str) -> str | None:
+        """Id of the pane that currently hosts the agent session, if any."""
+        ...
+
     async def processes(self, pane_id: str) -> Sequence[PaneProcess]:
         """Foreground processes of the pane, for crash detection."""
         ...

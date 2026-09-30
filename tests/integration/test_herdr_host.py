@@ -216,6 +216,17 @@ async def test_the_first_pane_creates_cobans_own_workspace(
     ]
 
 
+async def test_find_session_looks_across_all_panes(
+    herdr: tuple[StandInHerdr, HerdrPaneHost],
+) -> None:
+    stand_in, host = herdr
+    panes = [{"pane_id": "w1:p2"}, PANE | {"pane_id": "w4:p1"}]
+    stand_in.ok("pane.list", {"type": "pane_list", "panes": panes})
+
+    assert await host.find_session("sess-1") == "w4:p1"
+    assert await host.find_session("other") is None
+
+
 async def test_watch_reads_again_on_every_event_and_resubscribes_after_lost_events(
     herdr: tuple[StandInHerdr, HerdrPaneHost],
 ) -> None:

@@ -8,13 +8,13 @@ from datetime import UTC, datetime, timedelta
 from hypothesis import given
 from hypothesis import strategies as st
 
-from coban.core.commands import cancel_task, complete_task, fail_task
+from coban.core.commands import cancel_task, complete_task, fail_task, start_attempt
 from coban.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
+    AttemptLocated,
     AttemptResumed,
-    AttemptStarted,
     Event,
     StoredEvent,
     TaskCreated,
@@ -48,7 +48,7 @@ def _choices(board: Board) -> list[tuple[str, TaskId | None]]:
         if live is None:
             choices.append(("start", task.task_id))
         else:
-            choices += [("observe", task.task_id), ("end", task.task_id)]
+            choices += [("observe", task.task_id), ("locate", task.task_id), ("end", task.task_id)]
             active = live.status is AttemptStatus.ACTIVE
             choices.append(("interrupt" if active else "resume", task.task_id))
     return choices
@@ -70,9 +70,8 @@ def _build(
     if kind == "fail":
         return fail_task(task, at=at)
     if kind == "start":
-        attempt_id = AttemptId(f"{tid}-a{len(task.attempts) + 1}")
         agent = draw(st.sampled_from(AgentKind))
-        return [AttemptStarted(occurred_at=at, task_id=tid, attempt_id=attempt_id, agent=agent)]
+        return [start_attempt(task, agent, at=at, new_id=lambda: AttemptId(draw(st.uuids())))]
     live = task.live_attempt
     assert live is not None
     aid = live.attempt_id
@@ -84,6 +83,18 @@ def _build(
                 attempt_id=aid,
                 state=draw(st.sampled_from(AgentState)),
                 source=draw(st.sampled_from(ObservationSource)),
+            )
+        ]
+    if kind == "locate":
+        pane_id = draw(st.sampled_from([None, "w1:p1", "w1:p2"]))
+        session_ref = draw(st.sampled_from(["s1", "s2"] if pane_id is None else [None, "s1"]))
+        return [
+            AttemptLocated(
+                occurred_at=at,
+                task_id=tid,
+                attempt_id=aid,
+                pane_id=pane_id,
+                session_ref=session_ref,
             )
         ]
     if kind == "interrupt":

@@ -9,9 +9,9 @@ from uuid import UUID
 
 import pytest
 
-from coban.core.events import AttemptStarted, Event, StoredEvent, TaskCreated
+from coban.core.events import AttemptLocated, AttemptStarted, Event, StoredEvent, TaskCreated
 from coban.core.fakes import FixedClock, InMemoryEventStore
-from coban.core.model import AgentKind, AttemptId, TaskId
+from coban.core.model import AgentKind, TaskId, new_attempt_id
 from coban.core.ports import Clock, ConcurrencyError, DuplicateEventError, EventStore
 from coban.core.projection import project
 from coban.ledger import open_event_store
@@ -58,13 +58,19 @@ async def test_append_assigns_contiguous_positions_and_read_filters(store: Event
 
 
 async def test_events_come_back_equal_to_what_was_appended(store: EventStore) -> None:
+    attempt_id = new_attempt_id()
     events: list[Event] = [
         created("t1"),
         AttemptStarted(
             occurred_at=NOW + timedelta(seconds=1),
             task_id=TaskId("t1"),
-            attempt_id=AttemptId("a1"),
+            attempt_id=attempt_id,
             agent=AgentKind.CODEX,
+        ),
+        AttemptLocated(
+            occurred_at=NOW + timedelta(seconds=2),
+            task_id=TaskId("t1"),
+            attempt_id=attempt_id,
             pane_id="w1:p6",
             session_ref="01a0f150-e774-7033-83aa-cc01d8ac0577",
         ),
@@ -73,7 +79,7 @@ async def test_events_come_back_equal_to_what_was_appended(store: EventStore) ->
 
     assert await store.read() == list(appended)
     assert [s.event for s in appended] == events
-    assert project(await store.read()).last_seq == 2
+    assert project(await store.read()).last_seq == 3
 
 
 async def test_append_with_a_stale_expected_seq_writes_nothing(store: EventStore) -> None:

@@ -133,6 +133,12 @@ class FakePaneHost:
         self._known(pane_id)
         del self.observations[pane_id]
 
+    async def find_session(self, session_ref: str) -> str | None:
+        for pane_id, observation in self.observations.items():
+            if observation.session_ref == session_ref:
+                return pane_id
+        return None
+
     async def processes(self, pane_id: str) -> Sequence[PaneProcess]:
         self._known(pane_id)
         return list(self.process_lists.get(pane_id, []))

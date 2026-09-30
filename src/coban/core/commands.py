@@ -11,17 +11,47 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from coban.core.events import AttemptEnded, Event, TaskCancelled, TaskCompleted, TaskFailed
-from coban.core.model import AttemptOutcome
+from coban.core.events import (
+    AttemptEnded,
+    AttemptStarted,
+    Event,
+    TaskCancelled,
+    TaskCompleted,
+    TaskFailed,
+)
+from coban.core.model import AttemptOutcome, new_attempt_id
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
+    from coban.core.model import AgentKind, AttemptId
     from coban.core.projection import TaskView
 
 
 class CommandRejectedError(Exception):
     """The command does not make sense for the task as it is now."""
+
+
+def start_attempt(
+    task: TaskView,
+    agent: AgentKind,
+    *,
+    at: datetime,
+    new_id: Callable[[], AttemptId] = new_attempt_id,
+) -> AttemptStarted:
+    """Begin a new attempt with an identity coban generates.
+
+    Where the attempt runs (pane, agent session) is recorded separately with
+    ``attempt.located`` once it is known.
+    """
+    if task.status.is_terminal:
+        msg = f"task {task.task_id} is already {task.status.value}"
+        raise CommandRejectedError(msg)
+    if task.live_attempt is not None:
+        msg = f"task {task.task_id} already has a live attempt"
+        raise CommandRejectedError(msg)
+    return AttemptStarted(occurred_at=at, task_id=task.task_id, attempt_id=new_id(), agent=agent)
 
 
 def complete_task(task: TaskView, *, at: datetime) -> list[Event]:
