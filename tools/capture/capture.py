@@ -453,6 +453,9 @@ def record_events(reader: TextIO, sink: TextIO, masker: Masker, *, max_events: i
             sink.write(masker.mask(json.dumps(record, ensure_ascii=False)) + "\n")
             sink.flush()
             count += 1
+            # Echo a one-line summary: the file is the record, this shows it is alive.
+            data = message.get("data") or {}
+            sys.stderr.write(f"{count:>4} {message.get('event')} -> {data.get('agent_status')}\n")
             if max_events is not None and count >= max_events:
                 break
     except KeyboardInterrupt:

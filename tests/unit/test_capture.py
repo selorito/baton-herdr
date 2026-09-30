@@ -135,7 +135,9 @@ def test_audit_flags_leaks_and_accepts_masked_sandbox_text() -> None:
     }
 
 
-def test_record_events_writes_masked_events_and_raises_on_events_lost() -> None:
+def test_record_events_writes_masked_events_and_raises_on_events_lost(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     lines = [
         '{"id":"x","result":{"type":"subscription_started"}}',
         '{"event":"pane.agent_status_changed","data":{"pane_id":"w1:p1",'
@@ -149,6 +151,8 @@ def test_record_events_writes_masked_events_and_raises_on_events_lost() -> None:
     written = [json.loads(line) for line in sink.getvalue().splitlines()]
     assert len(written) == 1
     assert written[0]["message"]["data"]["title"] == "<user>@<host>: ~/dev/coban-sandbox"
+    # Each recorded event is echoed so the operator can see the recording is alive.
+    assert "   1 pane.agent_status_changed -> working" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
