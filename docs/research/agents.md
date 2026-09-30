@@ -286,6 +286,27 @@ dialog) asks in plain text and ends the turn, which herdr reports as `done`
 - The marker is a convention, not a guarantee: a missing marker must fall back to
   classifying the final message. The `pane.output_matched` subscription shape is in
   `fixtures/herdr/api-schema-0.9.1.json`; its matching behaviour is UNVERIFIED until tried.
-- The same mechanism can carry other signals (`[[COBAN:DONE]]`, `[[COBAN:BLOCKED]]`) if
-  needed; decide in the M2 adapter design.
+- Proposed extension (design note, not implemented): replace the single marker with one
+  small end-of-turn block that every task instruction asks for:
+
+  ```
+  [[COBAN:END status=question|done|blocked]]
+  ```
+
+  - `question`: the agent needs an answer; the text above the block is the question.
+  - `done`: the agent considers the task finished.
+  - `blocked`: the agent cannot continue for a reason it states above the block.
+
+  Rules for using it:
+  - **Screen detection stays the main path.** The block is an additional signal. It can
+    confirm or refine what the detector saw (turn a plain "turn ended" into `blocked_question`);
+    it never overrides a positive detection such as a permission dialog or a limit message.
+  - A missing, malformed or contradictory block means "no extra signal", never an error.
+  - `done` from the block is a claim by the agent, not proof: task completion still goes
+    through coban's own checks (and, where configured, a human).
+  - The block is matched on the detection snapshot at the end of a turn or through
+    `pane.output_matched`; only the last block of the last turn counts, so text quoted earlier
+    in the conversation cannot trigger it.
+  - One fixed grammar, three statuses, no free-form fields: anything richer belongs in the
+    text above the block.
 
