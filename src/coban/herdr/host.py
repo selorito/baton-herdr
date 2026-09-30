@@ -32,9 +32,17 @@ _ERRORS: dict[str, type[PaneHostError]] = {
 _AGENT_KINDS = {kind.value: kind for kind in AgentKind}
 
 
+DEFAULT_WORKSPACE_LABEL = "coban"
+
+
 class HerdrPaneHost:
-    def __init__(self, socket: HerdrSocket) -> None:
+    """Panes are opened in a workspace of coban's own, never in the user's workspaces."""
+
+    def __init__(
+        self, socket: HerdrSocket, *, workspace_label: str = DEFAULT_WORKSPACE_LABEL
+    ) -> None:
         self._socket = socket
+        self._workspace_label = workspace_label
 
     async def observe(self, pane_id: str) -> PaneObservation:
         pane = (await self._call("pane.get", {"pane_id": pane_id}))["pane"]
@@ -94,7 +102,20 @@ class HerdrPaneHost:
         await self._call("pane.send_keys", {"pane_id": pane_id, "keys": list(keys)})
 
     async def open_pane(self, *, cwd: str, label: str | None = None) -> str:
-        result = await self._call("tab.create", {"cwd": cwd, "label": label, "focus": False})
+        """Open a pane in coban's workspace, creating the workspace on first use."""
+        workspaces = (await self._call("workspace.list", {}))["workspaces"]
+        own = next((w for w in workspaces if w.get("label") == self._workspace_label), None)
+        if own is None:
+            params = {"cwd": cwd, "label": self._workspace_label, "focus": False}
+            result = await self._call("workspace.create", params)
+        else:
+            params = {
+                "workspace_id": own["workspace_id"],
+                "cwd": cwd,
+                "label": label,
+                "focus": False,
+            }
+            result = await self._call("tab.create", params)
         pane_id: str = result["root_pane"]["pane_id"]
         return pane_id
 

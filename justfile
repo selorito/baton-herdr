@@ -32,6 +32,10 @@ fixtures-audit:
 fixtures-herdr *ARGS:
     uv run tools/capture/capture.py {{ARGS}} herdr-ref
 
+# Live smoke test against the installed herdr, in a throwaway session. Not part of check or CI.
+smoke:
+    uv run pytest -m live -v
+
 # Apply formatting and safe lint fixes.
 fmt:
     uv run ruff check --fix .

@@ -19,10 +19,16 @@ uv sync                  # create .venv with Python 3.12 and all dependencies
 just check               # lint, type-check, import contracts and tests (Python and Rust)
 just fmt                 # format everything
 just test                # run tests only
+just smoke               # optional: live test against an installed herdr
 
 uv run coban version
 cargo run -p coban-detect -- --version
 ```
+
+`just smoke` needs the `herdr` binary on `PATH`. It starts its own headless herdr server in
+a throwaway named session (its own socket), drives a shell pane, then stops the server and
+deletes the session. It never touches a herdr session you have open, starts no agent, and is
+not part of `just check` or CI.
 
 Configuration: copy `coban.example.toml` to `coban.toml` (or set `COBAN_CONFIG`). Put secrets
 in `.env` (see `.env.example`). Any setting can be overridden with `COBAN_<SECTION>__<KEY>`.

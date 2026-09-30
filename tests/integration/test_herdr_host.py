@@ -32,6 +32,10 @@ PANE = {
     "agent_session": {"agent": "claude", "kind": "id", "source": "herdr:claude", "value": "sess-1"},
 }
 EXPLAIN = {"agent": "claude", "state": "idle", "matched_rule": {"id": "live_prompt_box"}}
+WORKSPACES = [
+    {"workspace_id": "w1", "label": "my project"},
+    {"workspace_id": "w2", "label": "coban"},
+]
 
 
 class StandInHerdr:
@@ -160,6 +164,7 @@ async def test_commands_use_herdrs_request_shapes(
     stand_in, host = herdr
     for method in ("agent.prompt", "pane.send_text", "pane.send_keys", "pane.close"):
         stand_in.ok(method, {"type": "ok"})
+    stand_in.ok("workspace.list", {"type": "workspace_list", "workspaces": WORKSPACES})
     stand_in.ok("tab.create", {"type": "tab_created", "tab": {}, "root_pane": {"pane_id": "w1:p9"}})
     stand_in.ok("pane.read", {"type": "pane_read", "read": {"text": "a\nb\n"}})
     processes = [{"pid": 42, "cmdline": "claude --resume x"}]
@@ -180,10 +185,34 @@ async def test_commands_use_herdrs_request_shapes(
         ("agent.prompt", {"target": "w1:p6", "text": "do it"}),
         ("pane.send_text", {"pane_id": "w1:p6", "text": "/exit"}),
         ("pane.send_keys", {"pane_id": "w1:p6", "keys": ["Enter"]}),
-        ("tab.create", {"cwd": "/work", "label": "task 1", "focus": False}),
+        ("workspace.list", {}),
+        (
+            "tab.create",
+            {"workspace_id": "w2", "cwd": "/work", "label": "task 1", "focus": False},
+        ),
         ("pane.read", {"pane_id": "w1:p6", "source": "recent", "lines": 50, "strip_ansi": True}),
         ("pane.process_info", {"pane_id": "w1:p6"}),
         ("pane.close", {"pane_id": "w1:p9"}),
+    ]
+
+
+async def test_the_first_pane_creates_cobans_own_workspace(
+    herdr: tuple[StandInHerdr, HerdrPaneHost],
+) -> None:
+    stand_in, host = herdr
+    stand_in.ok("workspace.list", {"type": "workspace_list", "workspaces": WORKSPACES[:1]})
+    created = {
+        "type": "workspace_created",
+        "workspace": {},
+        "tab": {},
+        "root_pane": {"pane_id": "w3:p1"},
+    }
+    stand_in.ok("workspace.create", created)
+
+    assert await host.open_pane(cwd="/work", label="task 1") == "w3:p1"
+    assert [(r["method"], r["params"]) for r in stand_in.requests] == [
+        ("workspace.list", {}),
+        ("workspace.create", {"cwd": "/work", "label": "coban", "focus": False}),
     ]
 
 

@@ -71,6 +71,7 @@ just check-py  # Python half of check
 just check-rs  # Rust half of check
 just fmt       # apply formatting and safe lint fixes
 just test      # test suites only
+just smoke     # live test against a real herdr in a throwaway session (not in check or CI)
 uv run coban version
 cargo run -p coban-detect -- --version
 ```
@@ -85,6 +86,9 @@ cargo run -p coban-detect -- --version
   "for later". `pyproject.toml`, `uv.lock`, `Cargo.toml` and `Cargo.lock` change only together
   with the code that imports the new dependency. Use the latest stable release and commit the
   lock files.
+- **Tests that need a real herdr carry `@pytest.mark.live`.** They are excluded from the
+  default run and CI, run with `just smoke`, must start their own named herdr session, and
+  must never open, read or close panes in a session the developer has open.
 - **No merge with red CI.** `just check` must be green locally and in CI.
 - **Conventional commits.** Lowercase type, optional scope, imperative subject, e.g.
   `feat(ledger): append events to sqlite`. Commits written with an AI agent end with a

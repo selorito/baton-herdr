@@ -80,7 +80,10 @@ warn_required_dynamic_aliases = true
 minversion = "9.0"
 testpaths = ["tests"]
 pythonpath = ["tools/capture"]
-addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra"]
+addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra", "-m", "not live"]
+markers = [
+  "live: needs a real herdr binary; excluded by default, run with `just smoke`",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
