@@ -1,0 +1,38 @@
+  
+  - [0m[1mBooleans: [0m[38;2;177;185;249madd(True, True) == 2 [0mis accepted because [0m[38;2;177;185;249mbool [0mis an [0m[38;2;177;185;249mint[0m.
+  - [0m[1mOther numeric types: [0m[38;2;177;185;249mDecimal[0m, [0m[38;2;177;185;249mFraction [0mand [0m[38;2;177;185;249mcomplex [0mwork individually, but [0m[38;2;177;185;249mDecimal [0mmixed with [0m[38;2;177;185;249mfloat [0mraises [0m[38;2;177;185;249mTypeError[0m.
+  - [0m[1mArity: [0mno test for missing or extra arguments.
+  - [0m[1mAssertion style: [0mevery test uses one [0m[38;2;177;185;249massertEqual [0mon ints, with no [0m[38;2;177;185;249massertAlmostEqual[0m, [0m[38;2;177;185;249massertRaises [0mor [0m[38;2;177;185;249msubTest [0mtables,
+    so float and error behaviour is untested throughout.
+
+  The first tests to add are division by zero (once the TODO is decided), a non-exact division, and a negative-result
+  subtraction. Those are the ones that would catch real implementation mistakes rather than document Python's numeric
+  semantics.
+
+[0m[38;2;153;153;153m✻ Cogitated for 23s · done 10:15[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun python3 -m unittest -v and summarize the result in one sentence.[0m[48;2;55;55;55m                                                    [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;255;255;255m● [0mAll 4 tests ([0m[38;2;177;185;249mtest_add[0m, [0m[38;2;177;185;249mtest_divide[0m, [0m[38;2;177;185;249mtest_multiply[0m, [0m[38;2;177;185;249mtest_subtract[0m) passed.
+
+[0m[38;2;153;153;153m✻ Baked for 2s · done 10:16[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun python3 -m unittest -v and summarize the result in one sentence.[0m[48;2;55;55;55m                                                    [0m
+
+  [0m[38;2;153;153;153mRan [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m shell command [0m
+
+[0m[38;2;255;255;255m● [0mSame result on the re-run: all 4 tests ([0m[38;2;177;185;249mtest_add[0m, [0m[38;2;177;185;249mtest_divide[0m, [0m[38;2;177;185;249mtest_multiply[0m, [0m[38;2;177;185;249mtest_subtract[0m) passed.
+
+[0m[38;2;153;153;153m✻ Baked for 2s · done 10:17[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;153;153;153m[48;2;55;55;55mRun python3 -m unittest -v and summarize the result in one sentence.[0m[48;2;55;55;55m                                                    [0m
+
+[0m[38;2;215;119;87m✢ Co[0m[38;2;235;159;127mnco[0m[38;2;215;119;87mcting… [0m
+[0m[38;2;153;153;153m  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits[0m
+                                                                                  [0m[38;2;78;186;101m✔ Update installed · Restart to update[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · esc to interrupt · ← for agents[0m

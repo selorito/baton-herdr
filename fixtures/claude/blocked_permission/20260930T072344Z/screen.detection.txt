@@ -1,0 +1,38 @@
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Ran 1 shell command
+
+● Same result on the re-run: all 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Baked for 2s · done 10:17
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Ran 1 shell command
+
+● Third run, same outcome: all 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Churned for 3s · done 10:21
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Running the unit test suite verbosely
+  ⎿  $ python3 -m unittest -v 2>&1
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" below
+
+   python3 -m unittest -v 2>&1
+   Run the unit test suite verbosely
+
+ This command requires approval
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don’t ask again for: python3 *
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+
+ Esc to cancel · Tab to amend

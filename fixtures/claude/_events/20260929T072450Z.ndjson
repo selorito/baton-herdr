@@ -1,0 +1,6 @@
+{"received_at": "2026-09-29T07:25:06.678687+00:00", "message": {"data": {"agent": "claude", "agent_status": "idle", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-29T07:27:35.489598+00:00", "message": {"data": {"agent": "claude", "agent_status": "working", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-29T07:27:38.612979+00:00", "message": {"data": {"agent": "claude", "agent_status": "done", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-29T07:28:01.859178+00:00", "message": {"data": {"agent": "claude", "agent_status": "idle", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-29T09:25:17.269825+00:00", "message": {"data": {"agent": "claude", "agent_status": "blocked", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-29T09:25:21.512003+00:00", "message": {"data": {"agent": "claude", "agent_status": "idle", "pane_id": "w1:p1", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "claude",
+  "agent_cli": {
+    "version": "2.1.285 (Claude Code)",
+    "error": null
+  },
+  "scenario": "working",
+  "captured_at": "2026-09-30T07:21:47.188405+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "claude",
+  "herdr_agent_status": "working",
+  "terminal": {
+    "rows": 38,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": null,
+  "explain_error": null
+}

@@ -1,0 +1,38 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.284[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mOpus 5.5 · Claude Pro[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m~/dev/coban-sandbox[0m
+
+  [0m[1mUpdated to latest. Got 19 features, 113 bugfixes, and 48 other changes.[0m
+  [0m[38;2;153;153;153mcode.claude.com/docs/en/changelog for details[0m
+
+  Opus 5.5 is now your default model and it draws down usage faster than Sonnet 5. Switch anytime with
+  [0m[38;2;177;185;249m/model[0m.
+  [0m[38;2;153;153;153m1 more notice hidden[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                    [0m[38;2;78;186;101m✔ Update installed · Restart to update[0m
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[2mTry "write a test for <filepath>"[0m
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;153;153;153m⏸ manual mode on · ? for shortcuts · ← for agents[0m

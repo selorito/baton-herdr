@@ -1,0 +1,38 @@
+
+  - Booleans: add(True, True) == 2 is accepted because bool is an int.
+  - Other numeric types: Decimal, Fraction and complex work individually, but Decimal mixed with float raises TypeError.
+  - Arity: no test for missing or extra arguments.
+  - Assertion style: every test uses one assertEqual on ints, with no assertAlmostEqual, assertRaises or subTest tables,
+    so float and error behaviour is untested throughout.
+
+  The first tests to add are division by zero (once the TODO is decided), a non-exact division, and a negative-result
+  subtraction. Those are the ones that would catch real implementation mistakes rather than document Python's numeric
+  semantics.
+
+✻ Cogitated for 23s · done 10:15
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Ran 1 shell command
+
+● All 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Baked for 2s · done 10:16
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Ran 1 shell command
+
+● Same result on the re-run: all 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Baked for 2s · done 10:17
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+✢ Concocting…
+  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+                                                                                  ✔ Update installed · Restart to update
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt · ← for agents

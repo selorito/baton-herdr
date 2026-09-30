@@ -1,0 +1,25 @@
+{
+  "agent": "claude",
+  "agent_session": {
+    "agent": "claude",
+    "kind": "id",
+    "source": "herdr:claude",
+    "value": "277e10ad-5928-4496-8663-148b479130cb"
+  },
+  "agent_status": "idle",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p6",
+  "revision": 3,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 88
+  },
+  "tab_id": "w1:t3",
+  "terminal_id": "term_65cae971e01055",
+  "terminal_title": "✳ calc.py and test_calc.py edge cases",
+  "terminal_title_stripped": "calc.py and test_calc.py edge cases",
+  "workspace_id": "w1"
+}

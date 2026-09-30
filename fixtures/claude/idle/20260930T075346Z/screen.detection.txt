@@ -1,0 +1,88 @@
+      20 +        with self.assertRaisesRegex(ZeroDivisionError, "cannot divide 1 by zero"):
+      21 +            calc.divide(1, 0)                                                                                                                                                                                                          ✕
+      22
+      23 +
+      24  if __name__ == "__main__":
+      25      unittest.main()
+
+  Ran 1 shell command
+
+● calc.divide now raises ZeroDivisionError with the message cannot divide {a} by zero when the divisor is zero, and the TODO is gone (calc.py:17). All 5
+  tests pass.
+
+  I also added test_divide_by_zero to test_calc.py, which you didn't explicitly ask for; it checks both the exception type and the message for divide(1,
+  0). The check is b == 0, so 0.0 and -0.0 raise as well.
+
+  Nothing is committed.
+
+✻ Brewed for 9s · done 10:28
+
+❯    Raise ZeroDivisionError with the message "division by zero is not allowed" and add a test for it.
+
+● Update(calc.py)
+  ⎿  Added 1 line, removed 1 line
+      15
+      16  def divide(a: float, b: float) -> float:
+      17      if b == 0:
+      18 -        raise ZeroDivisionError(f"cannot divide {a} by zero")
+      18 +        raise ZeroDivisionError("division by zero is not allowed")
+      19      return a / b
+
+● Update(test_calc.py)
+  ⎿  Added 2 lines, removed 1 line
+      17          self.assertEqual(calc.divide(9, 3), 3)
+      18
+      19      def test_divide_by_zero(self) -> None:
+      20 -        with self.assertRaisesRegex(ZeroDivisionError, "cannot divide 1 by zero"):
+      20 +        with self.assertRaises(ZeroDivisionError) as ctx:
+      21              calc.divide(1, 0)
+      22 +        self.assertEqual(str(ctx.exception), "division by zero is not allowed")
+      23
+      24
+      25  if __name__ == "__main__":                                                                                                                                                      No changes this session
+
+  Ran 1 shell command
+
+● calc.divide now raises ZeroDivisionError("division by zero is not allowed") on a zero divisor (calc.py:18), and all 5 tests pass.
+
+  Rather than adding a second test, I updated the existing test_divide_by_zero in test_calc.py to assert the exact new message for divide(1, 0).
+
+  Nothing is committed.
+
+✻ Worked for 3s · done 10:30
+
+※ recap: We reviewed calc.py for untested edge cases and then made divide raise ZeroDivisionError with "division by zero is not allowed", with a test;
+  all 5 tests pass. Next action: commit the two changed files if you want them saved. (disable recaps in /config)
+
+❯ Summarize in two sentences what calc.py does. Do not modify any files.
+
+● calc.py is a tiny calculator module with four functions — add, subtract, multiply and divide — that each take two numbers and return the result of the
+  corresponding arithmetic operator. The only extra logic is in divide, which raises ZeroDivisionError("division by zero is not allowed") when the
+  divisor is zero.
+
+✻ Cogitated for 1s · done 10:39
+
+❯    Raise ZeroDivisionError with the message "division by zero is not allowed" and add a test for it.
+
+  Ran 1 shell command
+
+● This is already in place from your earlier request, so I made no further changes. calc.divide raises ZeroDivisionError("division by zero is not
+  allowed") on a zero divisor (calc.py:18), and test_divide_by_zero in test_calc.py asserts that exact message for divide(1, 0).
+
+  I re-ran the suite to confirm: all 5 tests pass. The changes are still uncommitted.
+
+✻ Crunched for 4s · done 10:40
+
+❯ In one sentence, what does calc.add do? Do not modify any files.
+
+● calc.add takes two numbers, a and b, and returns their sum (a + b).
+
+✻ Worked for 1s · done 10:42
+
+※ recap: We reviewed calc.py's test gaps and made divide raise ZeroDivisionError("division by zero is not allowed") with a matching test; all 5 tests     +2 files edited before this session (show)
+  pass. Next action: commit the uncommitted changes to calc.py and test_calc.py if you want them kept. (disable recaps in /config)
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

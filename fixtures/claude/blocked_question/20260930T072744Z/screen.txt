@@ -1,0 +1,38 @@
+
+
+  Ran 1 shell command
+
+● Third run, same outcome: all 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Churned for 3s · done 10:21
+
+❯ Run python3 -m unittest -v and summarize the result in one sentence.
+
+  Ran 1 shell command
+
+● Fourth run, unchanged: all 4 tests (test_add, test_divide, test_multiply, test_subtract) passed.
+
+✻ Churned for 2s · done 10:23
+
+※ recap: We reviewed calc.py and test_calc.py for untested edge cases without changing any files, then ran the unittest
+  suite four times with all 4 tests passing each time. Next action: decide how divide should handle division by zero.
+  (disable recaps in /config)
+
+❯ calc.divide has a TODO about division by zero. Before changing anything, ask me which behaviour I want: raise
+  ZeroDivisionError with a clear message, or return float('inf'). Wait for my answer.
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Div by zero
+
+How should calc.divide behave when the divisor is zero?
+
+❯ 1. Raise ZeroDivisionError
+     Explicitly check for a zero divisor and raise ZeroDivisionError with a clear message. Callers must handle the
+     exception; errors cannot pass silently.
+  2. Return float('inf')
+     Return float('inf') instead of raising. Callers never see an exception, but the sign for negative numerators and the
+     0/0 case would still need defining.
+  3. Type something.
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

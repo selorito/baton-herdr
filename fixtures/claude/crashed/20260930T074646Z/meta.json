@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "claude",
+  "agent_cli": {
+    "version": "2.1.285 (Claude Code)",
+    "error": null
+  },
+  "scenario": "crashed",
+  "captured_at": "2026-09-30T07:46:46.059764+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": null,
+  "herdr_agent_status": "unknown",
+  "terminal": {
+    "rows": 46,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "kill -9, mouse reporting left enabled",
+  "explain_error": "agent explain failed: agent_not_found"
+}

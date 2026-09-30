@@ -1,0 +1,46 @@
+
+
+● calc.divide now raises ZeroDivisionError("division by zero is not allowed") on a zero divisor (calc.py:18), and all 5
+  tests pass.
+
+  Rather than adding a second test, I updated the existing test_divide_by_zero in test_calc.py to assert the exact new
+  message for divide(1, 0).
+
+  Nothing is committed.
+
+✻ Worked for 3s · done 10:30
+
+※ recap: We reviewed calc.py for untested edge cases and then made divide raise ZeroDivisionError with "division by zero
+  is not allowed", with a test; all 5 tests pass. Next action: commit the two changed files if you want them saved.
+  (disable recaps in /config)
+
+❯ Summarize in two sentences what calc.py does. Do not modify any files.
+
+● calc.py is a tiny calculator module with four functions — add, subtract, multiply and divide — that each take two
+  numbers and return the result of the corresponding arithmetic operator. The only extra logic is in divide, which raises
+  ZeroDivisionError("division by zero is not allowed") when the divisor is zero.
+
+✻ Cogitated for 1s · done 10:39
+
+❯    Raise ZeroDivisionError with the message "division by zero is not allowed" and add a test for it.
+
+  Ran 1 shell command
+
+● This is already in place from your earlier request, so I made no further changes. calc.divide raises
+  ZeroDivisionError("division by zero is not allowed") on a zero divisor (calc.py:18), and test_divide_by_zero in
+  test_calc.py asserts that exact message for divide(1, 0).
+
+  I re-ran the suite to confirm: all 5 tests pass. The changes are still uncommitted.
+
+✻ Crunched for 4s · done 10:40
+
+❯ In one sentence, what does calc.add do? Do not modify any files.
+
+● calc.add takes two numbers, a and b, and returns their sum (a + b).
+
+✻ Worked for 1s · done 10:42
+                                                                                  ✔ Update installed · Restart to update
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ commit this
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

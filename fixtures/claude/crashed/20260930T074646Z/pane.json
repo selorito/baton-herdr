@@ -1,0 +1,19 @@
+{
+  "agent_status": "unknown",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "label": "A",
+  "pane_id": "w1:p1",
+  "revision": 6,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 46
+  },
+  "tab_id": "w1:t1",
+  "terminal_id": "term_65cad9a99b6b71",
+  "terminal_title": "<user>@<host>: ~/dev/coban-sandbox",
+  "terminal_title_stripped": "<user>@<host>: ~/dev/coban-sandbox",
+  "workspace_id": "w1"
+}
