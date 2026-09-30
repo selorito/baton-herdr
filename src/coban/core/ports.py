@@ -25,6 +25,10 @@ class ConcurrencyError(Exception):
         super().__init__(f"expected last seq {expected_seq}, log is at {actual_seq}")
 
 
+class DuplicateEventError(Exception):
+    """An event with this ``event_id`` is already in the log."""
+
+
 class EventStore(Protocol):
     """Append-only, totally ordered event log."""
 
@@ -34,7 +38,9 @@ class EventStore(Protocol):
         """Append ``events`` atomically and return them with their positions.
 
         When ``expected_seq`` is given and is not the current last position,
-        nothing is written and :class:`ConcurrencyError` is raised.
+        nothing is written and :class:`ConcurrencyError` is raised. An
+        ``event_id`` that is already stored raises :class:`DuplicateEventError`,
+        also without writing anything.
         """
         ...
 

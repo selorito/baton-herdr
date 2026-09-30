@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from coban.core.events import Event, StoredEvent
-from coban.core.ports import ConcurrencyError
+from coban.core.ports import ConcurrencyError, DuplicateEventError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -24,6 +24,10 @@ class InMemoryEventStore:
         current = len(self._events)
         if expected_seq is not None and expected_seq != current:
             raise ConcurrencyError(expected_seq=expected_seq, actual_seq=current)
+        known = {stored.event.event_id for stored in self._events}
+        new_ids = [event.event_id for event in events]
+        if known.intersection(new_ids) or len(set(new_ids)) != len(new_ids):
+            raise DuplicateEventError
         stored = [
             StoredEvent(seq=current + offset, event=event)
             for offset, event in enumerate(events, start=1)
