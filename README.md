@@ -1,11 +1,10 @@
 # coban
 
-coban is an orchestrator for coding agents (Claude Code, Codex CLI, Gemini CLI, OpenCode)
+coban is an orchestrator for coding agents (Claude Code, Codex CLI and OpenCode in v1)
 running inside [herdr](https://github.com/herdrdev/herdr). It watches each agent through
 herdr's socket API and plugin system, resumes work an agent left unfinished, and assigns new
-tasks based on how much token quota each agent has left. The orchestrator service (cobanD) is
-written in Python. A small Rust binary (coban-detect) detects agent state from screen
-snapshots. Every change of state is recorded in an append-only event log.
+tasks based on how much token quota each agent has left. It is one Python process (cobanD)
+with a CLI and a Telegram bot. Every change of state is recorded in an append-only event log.
 
 **Status: pre-alpha.** Only the project skeleton exists; nothing is usable yet.
 

@@ -1,9 +1,13 @@
 ---
-status: accepted
+status: superseded by ADR 0007
 date: 2026-09-24
 ---
 
 # Hybrid Rust + Python architecture
+
+> **Superseded by [ADR 0007](0007-detector-in-python-first.md)** for the detector's
+> implementation language: the detector is written in Python first. The separation of the
+> detector behind an NDJSON contract defined by JSON Schema, decided here, still holds.
 
 ## Context and Problem Statement
 

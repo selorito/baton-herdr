@@ -1,20 +1,22 @@
 # coban
 
 Orchestrator that runs on top of [herdr](https://github.com/herdrdev/herdr). It keeps coding
-agents (Claude Code, Codex CLI, Gemini CLI, OpenCode) working until their tasks are finished
-and distributes work according to each agent's remaining token quota.
+agents (Claude Code, Codex CLI, OpenCode; Gemini CLI in v1.1) working until their tasks are
+finished and distributes work according to each agent's remaining token quota.
 
-Status: pre-alpha. Only the M0 skeleton exists.
+Status: pre-alpha. See `docs/ROADMAP.md` for what exists and what is next, and ADR 0008 for
+the scope of v1.
 
 ## Architecture
 
-- **cobanD** (`src/coban/`): Python 3.12 orchestrator service. FastAPI, Pydantic v2,
-  SQLAlchemy 2.0 async + aiosqlite, Alembic, aiogram 3, structlog.
-- **coban-detect** (`crates/coban-detect/`): Rust binary that reads agent screen snapshots and
-  reports agent state. tokio, serde, notify, regex, clap.
-- **web** (`web/`): React + Vite + TypeScript panel. Not started.
-- Rust ↔ Python: cobanD runs coban-detect as a subprocess and they exchange NDJSON. Every
-  message type is defined by a JSON Schema; the schema is the contract, not either codebase.
+- **cobanD** (`src/coban/`): one Python 3.12 process. Pydantic v2, SQLAlchemy 2 async +
+  aiosqlite, Alembic, structlog; aiogram 3 for the Telegram bot, which runs inside cobanD.
+- **Detector**: Python, with agent rule sets in `adapters/` (ADR 0007). Its interface is an
+  NDJSON contract defined by JSON Schema, so it can be replaced without touching callers.
+  `crates/coban-detect` is a stub kept for a possible Rust implementation; no Rust feature
+  work is planned unless the benchmark in `bench/` justifies it.
+- **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `web/` and `coban.api` are empty
+  placeholders.
 - herdr is used only through its socket API / CLI and its plugin system. herdr is never forked
   (ADR 0003).
 - The append-only event log is the single source of truth. Every other piece of state is a

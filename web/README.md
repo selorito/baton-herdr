@@ -1,3 +1,3 @@
 # web
 
-Placeholder for the React + Vite + TypeScript web panel. Not started yet.
+Placeholder for a web panel. Not part of v1 (ADR 0008).

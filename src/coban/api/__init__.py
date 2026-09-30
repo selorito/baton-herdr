@@ -1,1 +1,1 @@
-"""HTTP API (FastAPI) for the web panel and external clients."""
+"""HTTP API for external clients. Not part of v1 (ADR 0008); kept as an empty placeholder."""
