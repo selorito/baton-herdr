@@ -74,8 +74,9 @@ class TaskStatus(StrEnum):
     NEEDS_HUMAN = "needs_human"  # the active attempt waits for a person
     WAITING = "waiting"  # the attempt is interrupted and may be resumed
     COMPLETED = "completed"
+    FAILED = "failed"  # given up: no further attempts will be made
     CANCELLED = "cancelled"
 
     @property
     def is_terminal(self) -> bool:
-        return self in {TaskStatus.COMPLETED, TaskStatus.CANCELLED}
+        return self in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}

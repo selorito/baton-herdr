@@ -24,6 +24,7 @@ from coban.core.events import (
     TaskCancelled,
     TaskCompleted,
     TaskCreated,
+    TaskFailed,
 )
 from coban.core.model import (
     AgentKind,
@@ -68,8 +69,8 @@ class TaskView:
     task_id: TaskId
     title: str
     attempts: tuple[AttemptView, ...] = ()
-    completed: bool = False
-    cancelled: bool = False
+    # Set once, by task.completed / task.failed / task.cancelled.
+    closed_as: TaskStatus | None = None
 
     @property
     def live_attempt(self) -> AttemptView | None:
@@ -80,10 +81,8 @@ class TaskView:
 
     @property
     def status(self) -> TaskStatus:
-        if self.cancelled:
-            return TaskStatus.CANCELLED
-        if self.completed:
-            return TaskStatus.COMPLETED
+        if self.closed_as is not None:
+            return self.closed_as
         live = self.live_attempt
         if live is None:
             return TaskStatus.PENDING
@@ -133,12 +132,12 @@ def apply(board: Board, stored: StoredEvent) -> Board:
 def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
     event = stored.event
     match event:
-        case TaskCompleted():
+        case TaskCompleted() | TaskFailed() | TaskCancelled():
+            # A closed task never has a live attempt: the attempt's end must be
+            # its own event in the log, not something a reader has to infer.
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "an attempt is still live")
-            return replace(task, completed=True)
-        case TaskCancelled():
-            return replace(task, cancelled=True)
+            return replace(task, closed_as=_CLOSED_AS[event.type])
         case AttemptStarted():
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "another attempt is still live")
@@ -159,6 +158,13 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             return replace(task, attempts=(*task.attempts[:-1], updated))
         case _:
             raise InvalidEventError(stored, "event cannot be applied to an existing task")
+
+
+_CLOSED_AS = {
+    "task.completed": TaskStatus.COMPLETED,
+    "task.failed": TaskStatus.FAILED,
+    "task.cancelled": TaskStatus.CANCELLED,
+}
 
 
 def _apply_to_attempt(attempt: AttemptView, stored: StoredEvent) -> AttemptView:

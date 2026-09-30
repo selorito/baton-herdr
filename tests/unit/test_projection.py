@@ -15,6 +15,7 @@ from coban.core.events import (
     TaskCancelled,
     TaskCompleted,
     TaskCreated,
+    TaskFailed,
 )
 from coban.core.model import (
     AgentKind,
@@ -79,6 +80,7 @@ FAILED = ended(AttemptOutcome.FAILED)
 CRASH = interrupted(InterruptReason.CRASHED)
 COMPLETED = TaskCompleted(occurred_at=NOW, task_id=T1)
 CANCELLED = TaskCancelled(occurred_at=NOW, task_id=T1)
+GAVE_UP = TaskFailed(occurred_at=NOW, task_id=T1, reason="three attempts failed")
 
 
 def test_task_moves_through_a_rate_limited_attempt_to_completion() -> None:
@@ -187,6 +189,11 @@ def test_apply_does_not_modify_the_board_it_was_given() -> None:
             "attempt is still live",
         ),
         ([created(), CANCELLED, started()], "task is cancelled"),
+        # A task cannot be closed while an attempt is live, whatever the closing event.
+        ([created(), started(), CANCELLED], "attempt is still live"),
+        ([created(), started(), GAVE_UP], "attempt is still live"),
+        ([created(), started(), CRASH, CANCELLED], "attempt is still live"),
+        ([created(), GAVE_UP, started()], "task is failed"),
     ],
 )
 def test_events_that_cannot_follow_the_log_are_rejected(events: list[Event], reason: str) -> None:

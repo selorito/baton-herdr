@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from hypothesis import given
 from hypothesis import strategies as st
 
+from coban.core.commands import cancel_task, complete_task, fail_task
 from coban.core.events import (
     AgentStateObserved,
     AttemptEnded,
@@ -16,8 +17,6 @@ from coban.core.events import (
     AttemptStarted,
     Event,
     StoredEvent,
-    TaskCancelled,
-    TaskCompleted,
     TaskCreated,
 )
 from coban.core.fakes import InMemoryEventStore
@@ -43,10 +42,11 @@ def _choices(board: Board) -> list[tuple[str, TaskId | None]]:
     for task in board.tasks.values():
         if task.status.is_terminal:
             continue
-        choices.append(("cancel", task.task_id))
+        # Closing goes through the commands, which work whatever the attempt is doing.
+        choices += [("cancel", task.task_id), ("complete", task.task_id), ("fail", task.task_id)]
         live = task.live_attempt
         if live is None:
-            choices += [("start", task.task_id), ("complete", task.task_id)]
+            choices.append(("start", task.task_id))
         else:
             choices += [("observe", task.task_id), ("end", task.task_id)]
             active = live.status is AttemptStatus.ACTIVE
@@ -54,55 +54,58 @@ def _choices(board: Board) -> list[tuple[str, TaskId | None]]:
     return choices
 
 
-def _build(draw: st.DrawFn, kind: str, task: TaskView | None, board: Board, at: datetime) -> Event:
+def _build(
+    draw: st.DrawFn, kind: str, task: TaskView | None, board: Board, at: datetime
+) -> list[Event]:
     if task is None:
         new_id = TaskId(f"t{len(board.tasks) + 1}")
-        return TaskCreated(
-            occurred_at=at, task_id=new_id, title="t", instructions="i", workdir="/w"
-        )
+        return [
+            TaskCreated(occurred_at=at, task_id=new_id, title="t", instructions="", workdir="/")
+        ]
     tid = task.task_id
     if kind == "cancel":
-        return TaskCancelled(occurred_at=at, task_id=tid)
+        return cancel_task(task, at=at)
     if kind == "complete":
-        return TaskCompleted(occurred_at=at, task_id=tid)
+        return complete_task(task, at=at)
+    if kind == "fail":
+        return fail_task(task, at=at)
     if kind == "start":
-        return AttemptStarted(
-            occurred_at=at,
-            task_id=tid,
-            attempt_id=AttemptId(f"{tid}-a{len(task.attempts) + 1}"),
-            agent=draw(st.sampled_from(AgentKind)),
-        )
+        attempt_id = AttemptId(f"{tid}-a{len(task.attempts) + 1}")
+        agent = draw(st.sampled_from(AgentKind))
+        return [AttemptStarted(occurred_at=at, task_id=tid, attempt_id=attempt_id, agent=agent)]
     live = task.live_attempt
     assert live is not None
     aid = live.attempt_id
     if kind == "observe":
-        return AgentStateObserved(
-            occurred_at=at,
-            task_id=tid,
-            attempt_id=aid,
-            state=draw(st.sampled_from(AgentState)),
-            source=draw(st.sampled_from(ObservationSource)),
-        )
+        return [
+            AgentStateObserved(
+                occurred_at=at,
+                task_id=tid,
+                attempt_id=aid,
+                state=draw(st.sampled_from(AgentState)),
+                source=draw(st.sampled_from(ObservationSource)),
+            )
+        ]
     if kind == "interrupt":
         reason = draw(st.sampled_from(InterruptReason))
-        return AttemptInterrupted(occurred_at=at, task_id=tid, attempt_id=aid, reason=reason)
+        return [AttemptInterrupted(occurred_at=at, task_id=tid, attempt_id=aid, reason=reason)]
     if kind == "resume":
-        return AttemptResumed(occurred_at=at, task_id=tid, attempt_id=aid)
+        return [AttemptResumed(occurred_at=at, task_id=tid, attempt_id=aid)]
     outcome = draw(st.sampled_from(AttemptOutcome))
-    return AttemptEnded(occurred_at=at, task_id=tid, attempt_id=aid, outcome=outcome)
+    return [AttemptEnded(occurred_at=at, task_id=tid, attempt_id=aid, outcome=outcome)]
 
 
 @st.composite
 def event_logs(draw: st.DrawFn) -> list[StoredEvent]:
     board = Board()
     log: list[StoredEvent] = []
-    for index in range(draw(st.integers(min_value=0, max_value=40))):
+    for step in range(draw(st.integers(min_value=0, max_value=40))):
         kind, task_id = draw(st.sampled_from(_choices(board)))
         task = board.tasks[task_id] if task_id is not None else None
-        event = _build(draw, kind, task, board, START + timedelta(seconds=index))
-        stored = StoredEvent(seq=index + 1, event=event)
-        board = apply(board, stored)
-        log.append(stored)
+        for event in _build(draw, kind, task, board, START + timedelta(seconds=step)):
+            stored = StoredEvent(seq=len(log) + 1, event=event)
+            board = apply(board, stored)
+            log.append(stored)
     return log
 
 
@@ -133,8 +136,10 @@ def test_board_invariants_hold_after_every_valid_log(log: list[StoredEvent]) -> 
         )
         assert len({a.attempt_id for a in task.attempts}) == len(task.attempts)
         live = task.live_attempt
-        if task.status is TaskStatus.COMPLETED:
+        # A closed task never has an open attempt, however it was closed.
+        if task.status.is_terminal:
             assert live is None
+            assert all(a.status is AttemptStatus.ENDED for a in task.attempts)
         if task.status in {TaskStatus.RUNNING, TaskStatus.NEEDS_HUMAN}:
             assert live is not None
             assert live.status is AttemptStatus.ACTIVE

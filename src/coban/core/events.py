@@ -4,6 +4,10 @@ Events are immutable facts in the past tense. Each event type has a stable
 ``type`` string, which is the discriminator used when events are stored as JSON.
 Adding a field needs a default; changing the meaning of a field needs a new
 event type.
+
+A task can only be closed (completed, failed, cancelled) when it has no live
+attempt. Use :mod:`coban.core.commands` to close a task: it emits the
+``attempt.ended`` event first, in the same batch.
 """
 
 from __future__ import annotations
@@ -41,6 +45,11 @@ class TaskCreated(_Event):
 
 class TaskCompleted(_Event):
     type: Literal["task.completed"] = "task.completed"
+
+
+class TaskFailed(_Event):
+    type: Literal["task.failed"] = "task.failed"
+    reason: str | None = None
 
 
 class TaskCancelled(_Event):
@@ -86,6 +95,7 @@ class AttemptEnded(_AttemptEvent):
 type Event = Annotated[
     TaskCreated
     | TaskCompleted
+    | TaskFailed
     | TaskCancelled
     | AttemptStarted
     | AgentStateObserved
