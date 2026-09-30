@@ -96,6 +96,7 @@ skip_covered = true
 
 [tool.importlinter]
 root_package = "coban"
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 id = "core-is-pure"
@@ -126,3 +127,14 @@ id = "adapters-independent"
 name = "agent adapters do not import each other"
 type = "independence"
 modules = ["coban.adapters.*"]
+
+[[tool.importlinter.contracts]]
+id = "only-ledger-touches-the-database"
+name = "only coban.ledger imports database libraries"
+type = "forbidden"
+source_modules = [
+  "coban.core", "coban.herdr", "coban.adapters",
+  "coban.recovery", "coban.budget", "coban.scheduler",
+  "coban.api", "coban.telegram", "coban.cli",
+]
+forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]

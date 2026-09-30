@@ -56,6 +56,9 @@ Ownership rules:
 - **adapters-independent**: modules under `coban.adapters` may not import each other. Shared
   adapter code belongs in `core` (as a protocol or pure helper).
 
+- **only-ledger-touches-the-database**: no package except `coban.ledger` may import
+  `sqlalchemy`, `aiosqlite`, `alembic` or `sqlite3`.
+
 If a contract breaks, fix the dependency direction. Do not loosen a contract without an ADR.
 
 ## Commands
