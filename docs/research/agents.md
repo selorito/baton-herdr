@@ -237,3 +237,50 @@ rows are **verified locally**; the capture directory holding the evidence is nam
 | `opencode --continue` resumed the crashed session with no picker; the `/sessions` dialog is the picker. | `idle/` (after resume), `resume_prompt/` |
 | The footer shows context use, e.g. `14.2K (7%)`: an on-screen context signal. | any `screen.txt` |
 
+### Gemini CLI 0.61.0 (first-run only)
+
+The Gemini round stopped at sign-in, which needs the account owner. Captured so far:
+
+| Observation | Evidence |
+|-------------|----------|
+| First-run "Do you trust the files in this folder?" dialog, then "How would you like to authenticate for this project?" (Sign in with Google / Use Gemini API Key / Vertex AI). | `blocked_permission/`, `blocked_question/` |
+| During both dialogs herdr had **not detected an agent at all**: `pane get` shows `agent: null`, `agent_status: unknown`, `agent explain` fails with `agent_not_found`, and the event subscription delivered no events. Whether herdr detects Gemini after sign-in is UNVERIFIED. | `pane.json`, `explain.json` in both captures |
+| On start the CLI printed "Update successful! The new version will be used on your next run." without asking. | `screen.txt` |
+
+Not captured: idle, working, blocked on tool approval, question, done, crash, resume, the
+chat log file name and a usage sample.
+
+## Design notes for M2 / M5 (not implemented)
+
+**1. Never trust a rule-less `idle`.** herdr's status must be read together with
+`agent explain`'s `matched_rule`:
+
+| herdr `state` | `matched_rule` | coban should treat it as |
+|---------------|----------------|--------------------------|
+| `working`, `blocked` | any rule, or none when an integration reports lifecycle (OpenCode plugin) | as reported |
+| `idle` | a rule (`live_prompt_box`, `osc_title_idle`, …) | idle: ready for a prompt |
+| `idle` | `null` with `fallback_reason: default_known_agent_idle_fallback` | **unknown**: classify the screen in coban-detect, or escalate; never send a prompt |
+| `done` | any | "a turn ended", then apply the `idle` rows to decide whether it is ready |
+| `unknown`, `agent: null` | — | no agent: check `pane process-info` (crash vs. never started) |
+
+Evidence: every first-run dialog and resume picker in `fixtures/` was reported as `idle`
+by fallback, for Claude (theme picker, resume picker), Codex (folder trust, hook review,
+update prompt, resume picker) and OpenCode (`/sessions`). Codex has no idle rule at all, so
+for Codex every `idle` is a fallback and coban-detect must supply the positive idle signal.
+
+**2. Plain-text questions need a contract.** Codex (and any agent without a question
+dialog) asks in plain text and ends the turn, which herdr reports as `done`
+(`fixtures/codex/blocked_question/`, second capture). Proposed, not yet implemented:
+
+- Every task instruction coban sends ends with a contract such as: "If you need an answer
+  from me before you can continue, end your message with a final line containing exactly
+  `[[COBAN:QUESTION]]`."
+- coban subscribes to herdr's `pane.output_matched` event for that marker (or checks the
+  detection snapshot when the turn ends) and turns the pane into "waiting for an answer"
+  instead of "done".
+- The marker is a convention, not a guarantee: a missing marker must fall back to
+  classifying the final message. The `pane.output_matched` subscription shape is in
+  `fixtures/herdr/api-schema-0.9.1.json`; its matching behaviour is UNVERIFIED until tried.
+- The same mechanism can carry other signals (`[[COBAN:DONE]]`, `[[COBAN:BLOCKED]]`) if
+  needed; decide in the M2 adapter design.
+
