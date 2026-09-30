@@ -1,0 +1,174 @@
+{
+  "agent": "codex",
+  "cached_remote_version": "2026.09.23.1",
+  "evaluated_rules": [
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 0,
+        "contains": [
+          "Action Required"
+        ],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 43,
+        "region_preview": "Review uncovered edge cases | coban-sandbox"
+      },
+      "id": "osc_title_blocked",
+      "matched": false,
+      "priority": 1100,
+      "region": "osc_title",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 0,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [
+          "(?:^| )[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?: |$)"
+        ],
+        "region_bytes": 43,
+        "region_preview": "Review uncovered edge cases | coban-sandbox"
+      },
+      "id": "osc_title_working",
+      "matched": false,
+      "priority": 1050,
+      "region": "osc_title",
+      "state": "working"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 2,
+        "contains": [
+          "↑/↓ to scroll",
+          "pgup/pgdn to",
+          "home/end to jump",
+          "q to quit"
+        ],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 74,
+        "region_preview": "\n  GPT-5.6-Luna low · ~/dev/coban-sandbox · Review uncovered edge cases\n"
+      },
+      "id": "transcript_viewer",
+      "matched": false,
+      "priority": 1000,
+      "region": "after_last_prompt_marker",
+      "state": "unknown"
+    },
+    {
+      "evidence": {
+        "all_count": 2,
+        "any_count": 0,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 1621,
+        "region_preview": "\n╭─────────────────────────────────────────────────╮\n│ ✨ Update available! 0.156.1 -> 0.159.2         │\n│ Run npm install -g @openai/codex to update.     │\n│                                                 │\n│ See full release notes:       ..."
+      },
+      "id": "trust_directory",
+      "matched": false,
+      "priority": 950,
+      "region": "top_non_empty_lines(20)",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 0,
+        "contains": [
+          "Update available!",
+          "Update now"
+        ],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [
+          "Skip\\s+until\\s+next\\s+version",
+          "Press enter to continue\\s*\\z"
+        ],
+        "region_bytes": 808,
+        "region_preview": "  - multiply(a, b)\n      - Multiplication by zero\n      - Multiplication by one\n      - Negative operands and mixed signs\n      - Decimal/float values and precision behavior\n      - Very large values\n      - Mixed numeric types\n      - Non-..."
+      },
+      "id": "startup_update",
+      "matched": false,
+      "priority": 950,
+      "region": "bottom_non_empty_lines(20)",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 5,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 0,
+        "regex": [],
+        "region_bytes": 74,
+        "region_preview": "\n  GPT-5.6-Luna low · ~/dev/coban-sandbox · Review uncovered edge cases\n"
+      },
+      "id": "live_strong_blocker",
+      "matched": false,
+      "priority": 900,
+      "region": "after_last_prompt_marker",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 4,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 1,
+        "regex": [],
+        "region_bytes": 0,
+        "region_preview": ""
+      },
+      "id": "weak_blocker",
+      "matched": false,
+      "priority": 600,
+      "region": "whole_recent_without_current_prompt_marker",
+      "state": "blocked"
+    },
+    {
+      "evidence": {
+        "all_count": 0,
+        "any_count": 2,
+        "contains": [],
+        "line_regex": [],
+        "not_count": 1,
+        "regex": [
+          "(?m)^(?:[•◦][ \\t]+)?[^\\s›•◦■✗✓─][^\\r\\n]* \\((?:[0-9]+[hm] )*[0-9]+s(?: • [^\\r\\n]+? to interrupt)?\\)(?: · [^\\r\\n]*)?(?:\\r?\\n(?:[^•◦›■✗✓─\\r\\n][^\\r\\n]*|•[ \\t]+(?:Queued\\s+follow-up\\s+inputs|Messages\\s+to\\s+be\\s+submitted\\s+after\\s+next\\s+tool\\s+call(?:\\s+\\(press\\s+[^\\r\\n]+?\\s+to\\s+interrupt\\s+and\\s+send\\s+immediately\\))?|Messages\\s+to\\s+be\\s+submitted\\s+at\\s+end\\s+of\\s+turn)|›[⠁⠂⠄⠈⠐⠠⡀⢀][^\\r\\n]*)?)*\\s*\\z"
+        ],
+        "region_bytes": 2842,
+        "region_preview": "\n╭─────────────────────────────────────────────────╮\n│ ✨ Update available! 0.156.1 -> 0.159.2         │\n│ Run npm install -g @openai/codex to update.     │\n│                                                 │\n│ See full release notes:       ..."
+      },
+      "id": "screen_working_fallback",
+      "matched": false,
+      "priority": 500,
+      "region": "before_current_prompt_marker",
+      "state": "working"
+    }
+  ],
+  "fallback_reason": "default_known_agent_idle_fallback",
+  "local_override_shadowing_remote": false,
+  "manifest_source": "remote:~/.local/state/herdr/agent-detection/remote/codex.toml",
+  "manifest_version": "2026.09.23.1",
+  "matched_rule": null,
+  "remote_update_error": null,
+  "remote_update_status": "current",
+  "screen_detection_skipped": false,
+  "skip_state_update": false,
+  "skipped_update_reason": null,
+  "state": "idle",
+  "visible_blocker": false,
+  "visible_idle": false,
+  "visible_working": false,
+  "warning": null
+}

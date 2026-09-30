@@ -1,0 +1,25 @@
+{
+  "agent": "codex",
+  "agent_session": {
+    "agent": "codex",
+    "kind": "id",
+    "source": "herdr:codex",
+    "value": "01a0f150-e774-7033-83aa-cc01d8ac0577"
+  },
+  "agent_status": "done",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p6",
+  "revision": 68,
+  "scroll": {
+    "max_offset_from_bottom": 31,
+    "offset_from_bottom": 0,
+    "viewport_rows": 88
+  },
+  "tab_id": "w1:t3",
+  "terminal_id": "term_65cae971e01055",
+  "terminal_title": "Review uncovered edge cases | coban-sandbox",
+  "terminal_title_stripped": "Review uncovered edge cases | coban-sandbox",
+  "workspace_id": "w1"
+}

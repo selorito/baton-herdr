@@ -1,0 +1,22 @@
+
+╭─────────────────────────────────────────────────╮
+│ ✨ Update available! 0.156.1 -> 0.159.2         │
+│ Run npm install -g @openai/codex to update.     │
+│                                                 │
+│ See full release notes:                         │
+│ https://github.com/openai/codex/releases/latest │
+╰─────────────────────────────────────────────────╯
+
+╭─────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.156.1)                  │
+│                                             │
+│ model:     gpt-5.4 xhigh   /model to change │
+│ directory: ~/dev/coban-sandbox              │
+╰─────────────────────────────────────────────╯
+
+  Tip: Try the Desktop app on Linux: install it from https://learn.chatgpt.com/docs/linux/linux-app and run 'chatgpt'.
+
+
+› Ask Codex to do anything
+
+  gpt-5.4 xhigh · ~/dev/coban-sandbox

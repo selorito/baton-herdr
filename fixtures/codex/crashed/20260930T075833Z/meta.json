@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.156.1",
+    "error": null
+  },
+  "scenario": "crashed",
+  "captured_at": "2026-09-30T07:58:33.496401+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p6",
+  "herdr_agent": null,
+  "herdr_agent_status": "unknown",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "kill -9 of the codex native binary and its node launcher",
+  "explain_error": "agent explain failed: agent_not_found"
+}

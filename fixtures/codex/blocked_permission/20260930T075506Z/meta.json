@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.156.1",
+    "error": null
+  },
+  "scenario": "blocked_permission",
+  "captured_at": "2026-09-30T07:55:06.574097+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p6",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "first-run folder trust dialog; herdr trust_directory rule does not match the 0.156.1 wording",
+  "explain_error": null
+}

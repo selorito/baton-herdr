@@ -1,0 +1,32 @@
+{"received_at": "2026-09-30T07:54:53.913063+00:00", "message": {"data": {"agent": "codex", "agent_status": "idle", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:55:28.537158+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:55:29.852799+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:55:46.108645+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:55:49.741387+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:56:13.886632+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:56:31.354539+00:00", "message": {"data": {"agent": "codex", "agent_status": "idle", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:56:46.710071+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:56:47.615100+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:56:53.365153+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:06.189947+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:15.582063+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:21.646903+00:00", "message": {"data": {"agent": "codex", "agent_status": "blocked", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:30.579723+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:40.373079+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:48.452310+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:57:51.585991+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:02.075456+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:08.245923+00:00", "message": {"data": {"agent": "codex", "agent_status": "blocked", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:16.737230+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:22.321397+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:30.703205+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:58:44.649033+00:00", "message": {"data": {"agent": "codex", "agent_status": "idle", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:59:07.264740+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:59:07.868764+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:59:39.259824+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T07:59:58.249507+00:00", "message": {"data": {"agent": "codex", "agent_status": "idle", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:00:04.307273+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:00:04.910035+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:00:10.963210+00:00", "message": {"data": {"agent": "codex", "agent_status": "working", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:00:13.688357+00:00", "message": {"data": {"agent": "codex", "agent_status": "done", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}
+{"received_at": "2026-09-30T08:00:28.231274+00:00", "message": {"data": {"agent_status": "unknown", "pane_id": "w1:p6", "workspace_id": "w1"}, "event": "pane.agent_status_changed"}}

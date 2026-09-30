@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.156.1",
+    "error": null
+  },
+  "scenario": "idle",
+  "captured_at": "2026-09-30T07:55:45.443981+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p6",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "done",
+  "terminal": {
+    "rows": 88,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "fresh start with update banner; herdr status is done because the pane is in a background tab",
+  "explain_error": null
+}
