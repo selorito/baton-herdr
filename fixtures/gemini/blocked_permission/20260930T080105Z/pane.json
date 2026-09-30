@@ -1,0 +1,18 @@
+{
+  "agent_status": "unknown",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": false,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p6",
+  "revision": 88,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 88
+  },
+  "tab_id": "w1:t3",
+  "terminal_id": "term_65cae971e01055",
+  "terminal_title": "◇  Ready (coban-sandbox)                                                        ",
+  "terminal_title_stripped": "◇  Ready (coban-sandbox)",
+  "workspace_id": "w1"
+}
