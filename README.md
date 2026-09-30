@@ -6,7 +6,8 @@ herdr's socket API and plugin system, resumes work an agent left unfinished, and
 tasks based on how much token quota each agent has left. It is one Python process (cobanD)
 with a CLI and a Telegram bot. Every change of state is recorded in an append-only event log.
 
-**Status: pre-alpha.** Only the project skeleton exists; nothing is usable yet.
+**Status: pre-alpha.** The foundations exist (event log, herdr client); nothing is usable
+yet. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Development
 

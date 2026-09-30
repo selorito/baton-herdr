@@ -1,0 +1,83 @@
+# Roadmap
+
+Order of work: **a thin vertical slice first, then deepen it.** Every step after the slice
+keeps the end-to-end loop working and makes one part of it real. Scope is fixed by
+[ADR 0008](adr/0008-v1-scope.md).
+
+## Done
+
+| Step | What exists |
+|------|-------------|
+| M0 skeleton | Repository layout, tooling (`just check`, CI definition), config, logging |
+| H0 discovery | `docs/research/agents.md`, `fixtures/` for Claude Code, Codex, OpenCode (and Gemini first-run), capture tool with masking and audit |
+| Core | Event model, `EventStore` and `PaneHost` protocols with fakes, projection, commands, targeting (ADR 0002, 0004, 0006) |
+| Ledger | SQLite event store with migrations, append-only at the database level |
+| herdr client | Socket client, herdr → coban state mapping, isolated live smoke test |
+
+Not yet exercised: CI on GitHub (no remote has been added, so the workflow has never run).
+
+## Slice 0: the thinnest end-to-end loop
+
+**Goal.** A simulated Claude hits its usage limit in the middle of a task; coban notices,
+hands the task to Codex, and tells the user on Telegram. Everything is real except the
+agents, which are played by `tools/fake-agent`.
+
+```
+task added ─► scheduler starts attempt on "claude" (fake)
+                 │ fake prints a working screen, then Claude's limit message
+                 ▼
+          detector: rate_limited, reset time parsed
+                 │
+          recovery: interrupt attempt (reason, resume_not_before)
+                 │
+          scheduler: claude unavailable until reset ─► start attempt on "codex" (fake)
+                 │ fake works, then shows its finished screen
+                 ▼
+          task completed ─► Telegram: "limit hit on Claude, moved to Codex", then "done"
+```
+
+Work items, each behind a protocol with a fake and tests first:
+
+1. **`tools/fake-agent`**: a small terminal program that replays scripted screens taken from
+   `fixtures/` (working, limit message, idle, done), so it can run in a real herdr pane or be
+   stood in for by `FakePaneHost`.
+2. **Detector, minimal**: request and response models with their JSON Schema (ADR 0007), and
+   two rules: Claude's limit line with its reset time, and a finished or idle screen.
+3. **Adapters, minimal**: for Claude and Codex, only what the slice needs: launch command,
+   the two detector rules, prompt submission through targeting (ADR 0006).
+4. **Budget, minimal**: an agent is unavailable from a `rate_limited` observation until its
+   reset time. No token accounting yet.
+5. **Scheduler and recovery, minimal**: one task at a time; on `rate_limited`, interrupt the
+   attempt, then start a new attempt on an available agent, passing the task instructions.
+6. **Notifier**: a `Notifier` protocol with a fake; a Telegram implementation that only sends
+   messages (aiogram, inside cobanD).
+7. **cobanD and CLI**: `coban task add`, `coban run`, `coban status`.
+
+**Done when**
+
+- an integration test drives the whole loop with `FakePaneHost`, the in-memory store and the
+  fake notifier, and asserts the event log: attempt on Claude interrupted as `rate_limited`,
+  attempt on Codex succeeded, task completed, two notifications;
+- `just demo` runs the same loop against a real herdr in a throwaway session with
+  `fake-agent` in the panes (a `live` test, not in CI);
+- no real agent is started and no quota is spent.
+
+## Deepening the slice
+
+Each step replaces a simulated or minimal part with the real one. The slice's integration
+test keeps passing throughout.
+
+| Step | Makes real | Notes |
+|------|------------|-------|
+| 1. Real agents | Adapters for Claude Code, Codex, OpenCode | Start-up blockers (trust, hooks, update prompts), resume commands, refining `blocked` into permission / question, positive idle for Codex, crash detection with `processes`. Tested against `fixtures/`; opt-in live runs in the sandbox repository. |
+| 2. Quota accounting | Budget | Codex rollout `rate_limits`, Claude status line `rate_limits`, OpenCode session totals; Claude usage deduplicated by `message.id`. Tested against `fixtures/*/usage-sample.jsonl`. |
+| 3. Policy engine | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
+| 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
+| 5. Benchmark | `bench/` | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
+| 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
+
+## After v1
+
+- v1.1: Gemini CLI, once an authenticated round of captures exists and a session id can be
+  obtained without herdr's help.
+- Web panel and REST API, each with its own ADR (ADR 0008).
