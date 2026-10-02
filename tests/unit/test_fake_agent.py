@@ -67,7 +67,8 @@ def test_the_script_stops_when_stdin_closes() -> None:
         ),
         (
             "codex-finish.toml",
-            [AgentState.UNKNOWN, AgentState.WORKING, AgentState.UNKNOWN],
+            # Even without herdr's working signal, coban sees the work on the screen.
+            [AgentState.UNKNOWN, AgentState.UNKNOWN, AgentState.UNKNOWN],
             [AgentState.IDLE, AgentState.WORKING, AgentState.IDLE],
         ),
     ],
@@ -136,3 +137,18 @@ def test_launcher_runs_the_fake_under_the_agent_name(tmp_path: Path) -> None:
     assert first_line.startswith("#!/")  # absolute interpreter, not /usr/bin/env
     assert "env" not in first_line.split("/")[-1]
     assert any("fake_agent.py" in line for line in rest)
+
+
+def test_codex_script_sets_a_spinner_title_while_working() -> None:
+    reporter = RecordingReporter()
+    out = io.StringIO()
+    fake_agent.play(
+        fake_agent.load_script(SCRIPTS / "codex-finish.toml"),
+        session_id="s",
+        reporter=reporter,
+        terminal=fake_agent.Terminal(
+            stdin=io.StringIO("task\n"), stdout=out, now=lambda: NOW, sleep=lambda _s: None
+        ),
+    )
+    titles = re.findall(r"\x1b\]0;([^\x07]*)\x07", out.getvalue())
+    assert titles == ["coban-sandbox", "⠏ | coban-sandbox", "coban-sandbox"]

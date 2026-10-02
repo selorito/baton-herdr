@@ -1,8 +1,10 @@
 # Codex CLI that takes a prompt, works briefly and finishes.
-# Screens follow fixtures/codex/ (composer, footer with spinner while working).
+# Screens and titles follow fixtures/codex/: while working, Codex puts a braille spinner
+# in the window title (herdr's osc_title_working rule) and at the end of the footer.
 agent = "codex"
 
 [[step]]
+title = "coban-sandbox"
 wait = "prompt"
 screen = """
 ╭──────────────────────────────────────────╮
@@ -15,6 +17,7 @@ screen = """
 """
 
 [[step]]
+title = "⠏ | coban-sandbox"
 wait = 2
 screen = """
 › {prompt}
@@ -26,6 +29,7 @@ screen = """
 """
 
 [[step]]
+title = "coban-sandbox"
 wait = "forever"
 screen = """
 › {prompt}

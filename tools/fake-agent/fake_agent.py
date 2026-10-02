@@ -21,6 +21,7 @@ A script is a TOML file::
     agent = "claude"
     [[step]]
     screen = "text"         # printed after clearing the terminal
+    title = "text"          # optional terminal title (Codex shows a spinner there while working)
     wait = "prompt"         # "prompt" (one line on stdin), a number of seconds, or "forever"
 
 Screens may use ``{reset_clock}`` (local time 30 minutes from now, e.g. ``3:45pm``)
@@ -57,6 +58,7 @@ class ScriptError(Exception):
 class Step:
     screen: str
     wait: str | float
+    title: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +79,14 @@ def load_script(path: Path) -> Script:
         if not (wait in {"prompt", "forever"} or isinstance(wait, int | float)):
             msg = f"{path}: step {index}: wait must be 'prompt', 'forever' or seconds"
             raise ScriptError(msg)
-        steps.append(Step(screen=str(raw.get("screen", "")), wait=wait))
+        title = raw.get("title")
+        steps.append(
+            Step(
+                screen=str(raw.get("screen", "")),
+                wait=wait,
+                title=str(title) if title is not None else None,
+            )
+        )
     if not steps:
         msg = f"{path}: no [[step]] entries"
         raise ScriptError(msg)
@@ -152,7 +161,9 @@ def play(script: Script, *, session_id: str, reporter: Reporter, terminal: Termi
     reporter.session(session_id)
     prompt = ""
     for step in script.steps:
-        terminal.stdout.write(CLEAR + render(step.screen, now=terminal.now(), prompt=prompt))
+        title = "" if step.title is None else f"\x1b]0;{step.title}\x07"  # OSC 0: window title
+        screen = render(step.screen, now=terminal.now(), prompt=prompt)
+        terminal.stdout.write(CLEAR + title + screen)
         terminal.stdout.flush()
         if step.wait == "forever":
             for line in terminal.stdin:
