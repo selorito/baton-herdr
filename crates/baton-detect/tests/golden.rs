@@ -118,7 +118,7 @@ fn opencode_db(sample: &str) -> Connection {
 fn opencode_sample() {
     let mut db = OpenCodeDb::from_connection(opencode_db(&sample("opencode")));
     let (records, errors) = db.poll().unwrap();
-    assert!(errors.is_empty());
+    assert_eq!(errors.len(), 0, "{errors:?}");
     let events: Vec<Event> = records.into_iter().map(Event::Usage).collect();
     check("opencode", &events);
     // The sample keeps a few of the session's messages, so its totals do not add up.

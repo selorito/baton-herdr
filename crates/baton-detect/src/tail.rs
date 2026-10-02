@@ -96,7 +96,7 @@ mod tests {
         let mut tail = Tail::new(path.clone());
         append(&path, "one\ntw");
         assert_eq!(tail.read_lines().unwrap().lines, ["one"]);
-        assert!(tail.read_lines().unwrap().lines.is_empty());
+        assert_eq!(tail.read_lines().unwrap().lines, Vec::<String>::new());
         append(&path, "o\n\nthree\n");
         assert_eq!(tail.read_lines().unwrap().lines, ["two", "three"]);
     }

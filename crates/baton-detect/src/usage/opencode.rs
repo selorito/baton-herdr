@@ -252,7 +252,7 @@ mod tests {
         message(&db, "u1", 90, r#"{"role":"user","time":{"created":1}}"#);
 
         let (records, errors) = db.poll().unwrap();
-        assert!(errors.is_empty());
+        assert_eq!(errors.len(), 0, "{errors:?}");
         assert_eq!(records.len(), 1);
         let first = &records[0];
         assert_eq!(first.record_id, "opencode:m1");
@@ -280,7 +280,7 @@ mod tests {
         let (records, _) = db.poll().unwrap();
         let ids: Vec<&str> = records.iter().map(|r| r.record_id.as_str()).collect();
         assert_eq!(ids, ["opencode:m2"]);
-        assert!(db.poll().unwrap().0.is_empty());
+        assert_eq!(db.poll().unwrap().0, []);
     }
 
     #[test]
