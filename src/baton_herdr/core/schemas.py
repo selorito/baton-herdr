@@ -9,7 +9,10 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from pydantic import TypeAdapter
+
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
+from baton_herdr.core.usage import USAGE_EVENT
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,11 +20,16 @@ if TYPE_CHECKING:
 CONTRACTS: dict[str, Any] = {
     "detector-request.v1.json": DetectionRequest,
     "detector-result.v1.json": DetectionResult,
+    "usage-event.v1.json": USAGE_EVENT,
 }
 
 
 def render(model: Any) -> str:
-    return json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
+    if isinstance(model, TypeAdapter):
+        schema = {"title": "UsageEvent", **model.json_schema()}
+    else:
+        schema = model.model_json_schema()
+    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 
 
 def write_all(directory: Path) -> None:

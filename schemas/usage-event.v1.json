@@ -1,0 +1,209 @@
+{
+  "$defs": {
+    "RateLimitObservation": {
+      "additionalProperties": false,
+      "description": "An agent's own report of its usage windows, sent when it changes.",
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/UsageAgent"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "rate_limits",
+          "default": "rate_limits",
+          "title": "Kind",
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "windows": {
+          "items": {
+            "$ref": "#/$defs/RateLimitWindow"
+          },
+          "minItems": 1,
+          "title": "Windows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "agent",
+        "session_id",
+        "at",
+        "windows"
+      ],
+      "title": "RateLimitObservation",
+      "type": "object"
+    },
+    "RateLimitWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "resets_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resets At"
+        },
+        "used_percent": {
+          "minimum": 0,
+          "title": "Used Percent",
+          "type": "number"
+        },
+        "window_minutes": {
+          "exclusiveMinimum": 0,
+          "title": "Window Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "window_minutes",
+        "used_percent"
+      ],
+      "title": "RateLimitWindow",
+      "type": "object"
+    },
+    "UsageAgent": {
+      "enum": [
+        "claude",
+        "codex",
+        "opencode"
+      ],
+      "type": "string"
+    },
+    "UsageRecord": {
+      "additionalProperties": false,
+      "description": "Tokens one agent response used.",
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/UsageAgent"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "usage",
+          "default": "usage",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "record_id": {
+          "minLength": 1,
+          "title": "Record Id",
+          "type": "string"
+        },
+        "session_id": {
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "tokens": {
+          "$ref": "#/$defs/UsageTokens"
+        }
+      },
+      "required": [
+        "agent",
+        "session_id",
+        "record_id",
+        "at",
+        "tokens"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    },
+    "UsageTokens": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_read": {
+          "minimum": 0,
+          "title": "Cache Read",
+          "type": "integer"
+        },
+        "cache_write": {
+          "minimum": 0,
+          "title": "Cache Write",
+          "type": "integer"
+        },
+        "input": {
+          "minimum": 0,
+          "title": "Input",
+          "type": "integer"
+        },
+        "output": {
+          "minimum": 0,
+          "title": "Output",
+          "type": "integer"
+        },
+        "reasoning": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning"
+        }
+      },
+      "required": [
+        "input",
+        "output",
+        "cache_read",
+        "cache_write"
+      ],
+      "title": "UsageTokens",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "rate_limits": "#/$defs/RateLimitObservation",
+      "usage": "#/$defs/UsageRecord"
+    },
+    "propertyName": "kind"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/UsageRecord"
+    },
+    {
+      "$ref": "#/$defs/RateLimitObservation"
+    }
+  ],
+  "title": "UsageEvent"
+}
