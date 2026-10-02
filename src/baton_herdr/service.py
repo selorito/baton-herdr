@@ -7,7 +7,10 @@ Two units:
   inside an agent inherits that agent's variables, and the agents it then starts
   misbehave (Claude Code wrote no transcript, so its sessions could not be
   resumed; docs/research/agents.md).
-- ``baton_herdr.service`` runs ``baton daemon`` against that session.
+- ``baton.service`` runs ``baton daemon`` against that session.
+
+The session is ``[herdr] session`` from the settings, the same value the CLI and
+``baton doctor`` use, so they all reach the same herdr server.
 
 PATH is built from the directories of the binaries found now (herdr, baton and
 the configured agents), so the panes find the same agents as your shell does.
@@ -17,6 +20,7 @@ The units are only written; enabling them is left to the user.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -25,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
+from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME
 from baton_herdr.core.model import AgentKind
 
 if TYPE_CHECKING:
@@ -33,8 +38,8 @@ if TYPE_CHECKING:
     from baton_herdr.core.config import BatonSettings
 
 HERDR_UNIT = "baton-herdr.service"
-BATON_UNIT = "baton_herdr.service"
-DEFAULT_SESSION = "baton"
+BATON_UNIT = "baton.service"
+_SESSION_ARGUMENT = re.compile(r"--session\s+'?([^\s']+)'?\s+server")
 _SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin")
 
 
@@ -112,7 +117,43 @@ class ServiceError(Exception):
     """The units cannot be written; the message says why."""
 
 
-def plan_units(settings: BatonSettings, *, session: str, config: Path) -> UnitPlan:
+def service_session(settings: BatonSettings) -> str:
+    """The herdr session the service runs: the configured one, which must be named."""
+    if settings.herdr.socket_path is not None:
+        msg = (
+            "[herdr] socket_path is set, so baton would not use the service's herdr server. "
+            'Remove socket_path and set [herdr] session (default "baton").'
+        )
+        raise ServiceError(msg)
+    session = settings.herdr.session
+    if not session or session == HERDR_DEFAULT_SESSION_NAME:
+        msg = (
+            "The service runs herdr in a session of its own; set [herdr] session to a name "
+            '(default "baton") instead of herdr\'s default session.'
+        )
+        raise ServiceError(msg)
+    return session
+
+
+def installed_session(directory: Path | None = None) -> str | None:
+    """The herdr session an installed baton-herdr.service runs, if one is installed."""
+    path = (directory or unit_dir()) / HERDR_UNIT
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return session_in_unit(text)
+
+
+def session_in_unit(text: str) -> str | None:
+    for line in text.splitlines():
+        if line.startswith("ExecStart=") and (match := _SESSION_ARGUMENT.search(line)):
+            return match.group(1)
+    return None
+
+
+def plan_units(settings: BatonSettings, *, config: Path) -> UnitPlan:
+    session = service_session(settings)
     herdr = shutil.which("herdr")
     if herdr is None:
         msg = "herdr is not on PATH; install it first."
@@ -157,8 +198,8 @@ def install_units(plan: UnitPlan, *, force: bool) -> list[Path]:
 NEXT_STEPS = """\
 Next:
   systemctl --user daemon-reload
-  systemctl --user enable --now {baton_unit}
-  loginctl enable-linger "$USER"     # keep running after you log out
-  journalctl --user -u {baton_unit} -f   # follow batond's log
-  herdr --session {session}          # watch the agents work
+  systemctl --user enable --now {baton_unit}   # starts baton-herdr.service too
+  loginctl enable-linger "$USER"               # keep running after you log out
+  journalctl --user -u {baton_unit} -f         # follow batond's log
+  herdr --session {session}                    # watch the agents work
 """

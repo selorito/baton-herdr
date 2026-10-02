@@ -5,14 +5,17 @@ from pathlib import Path
 
 import pytest
 
+from baton_herdr.core.config import BatonSettings, HerdrSettings
 from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
     ServiceError,
     UnitPlan,
     install_units,
+    installed_session,
     render_units,
     search_path,
+    service_session,
 )
 
 PLAN = UnitPlan(
@@ -55,3 +58,26 @@ def test_install_writes_both_units_and_never_overwrites_silently(
     with pytest.raises(ServiceError, match="--force"):
         install_units(PLAN, force=False)
     assert install_units(PLAN, force=True) == written
+
+
+def test_unit_names_follow_adr_0010() -> None:
+    assert sorted(render_units(PLAN)) == ["baton-herdr.service", "baton.service"]
+
+
+def test_the_service_runs_the_configured_session_and_nothing_else() -> None:
+    assert service_session(BatonSettings()) == "baton"
+    assert service_session(BatonSettings(herdr=HerdrSettings(session="work"))) == "work"
+    with pytest.raises(ServiceError, match="socket_path"):
+        service_session(BatonSettings(herdr=HerdrSettings(socket_path=Path("/run/h.sock"))))
+    for unnamed in (None, "default"):
+        with pytest.raises(ServiceError, match="session of its own"):
+            service_session(BatonSettings(herdr=HerdrSettings(session=unnamed)))
+
+
+def test_the_installed_units_session_is_read_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert installed_session() is None
+    install_units(replace(PLAN, session="work"), force=False)
+    assert installed_session() == "work"

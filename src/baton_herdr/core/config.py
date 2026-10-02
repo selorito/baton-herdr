@@ -73,10 +73,16 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+# The herdr session baton's panes live in; `baton service install` runs a herdr
+# server for it. One default, so the service, batond, the CLI and doctor agree.
+BATON_HERDR_SESSION = "baton"
+
+
 class HerdrSettings(_Section):
-    # Leave both unset to find the socket the way herdr does; see resolve_herdr_socket_path().
+    # An explicit socket overrides the session; see resolve_herdr_socket_path().
     socket_path: Path | None = None
-    session: str | None = None
+    # "default" means herdr's own default socket (no named session).
+    session: str | None = BATON_HERDR_SESSION
 
     @field_validator("session")
     @classmethod

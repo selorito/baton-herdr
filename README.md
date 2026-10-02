@@ -56,14 +56,15 @@ timezone and Telegram, and says how to fix what is missing.
 As a systemd user service (recommended):
 
 ```bash
-baton service install          # writes baton-herdr.service and baton_herdr.service; enables nothing
+baton service install          # writes baton-herdr.service and baton.service; enables nothing
 systemctl --user daemon-reload
-systemctl --user enable --now baton_herdr.service
+systemctl --user enable --now baton.service
 loginctl enable-linger "$USER" # keep running after you log out
 ```
 
-`baton-herdr.service` runs a herdr server in a session of its own (`baton`), started with a
-clean environment; `baton_herdr.service` runs `baton daemon` against it. Watch the agents with
+`baton-herdr.service` runs a herdr server in the session named by `[herdr] session` (default
+`baton`, the same session the CLI uses), started with a
+clean environment; `baton.service` runs `baton daemon` against it. Watch the agents with
 `herdr --session baton`, and batond's log with `journalctl --user -u baton -f`.
 
 In the foreground instead, start a herdr server from a plain terminal (not from inside an
@@ -71,7 +72,7 @@ agent, whose environment the agents would inherit), then the daemon:
 
 ```bash
 herdr --session baton server &
-BATON_HERDR__SESSION=baton baton daemon      # Ctrl+C stops it
+baton daemon                                 # Ctrl+C stops it
 ```
 
 ## Use

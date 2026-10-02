@@ -21,13 +21,20 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import ValidationError
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.core.config import BatonSettings, config_file, resolve_herdr_socket_path
+from baton_herdr.core.config import (
+    HERDR_SOCKET_PATH_ENV_VAR,
+    BatonSettings,
+    HerdrSettings,
+    config_file,
+    resolve_herdr_socket_path,
+)
 from baton_herdr.core.model import AgentKind
+from baton_herdr.service import installed_session
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import Awaitable, Callable, Mapping, Sequence
 
-    from baton_herdr.core.config import HerdrSettings, TelegramSettings
+    from baton_herdr.core.config import TelegramSettings
 
 
 class Level(StrEnum):
@@ -99,6 +106,8 @@ class Probes:
     telegram_bot_name: Callable[[TelegramSettings], Awaitable[str]] = _telegram_bot_name
     count_events: Callable[[Path], Awaitable[int]] = _count_events
     local_timezone: Callable[[], str | None] = _local_timezone
+    installed_session: Callable[[], str | None] = installed_session
+    environ: Callable[[], Mapping[str, str]] = os.environ.copy
 
 
 async def diagnose(probes: Probes | None = None) -> list[Check]:
@@ -171,6 +180,8 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
     except (OSError, subprocess.SubprocessError) as err:
         version = f"version unknown ({err})"
     checks = [Check("herdr", Level.OK, f"{version} at {binary}")]
+    if (service := _service_session(settings, probes)) is not None:
+        checks.append(service)
 
     session = settings.herdr.session
     try:
@@ -207,6 +218,37 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
             )
         )
     return checks
+
+
+def _service_session(settings: BatonSettings, probes: Probes) -> Check | None:
+    """Does the CLI reach the herdr server the installed service runs?"""
+    service = probes.installed_session()
+    if service is None:
+        return None
+    env, home = probes.environ(), Path.home()
+    ours = resolve_herdr_socket_path(settings.herdr, env=env, home=home)
+    xdg = {"XDG_CONFIG_HOME": env["XDG_CONFIG_HOME"]} if env.get("XDG_CONFIG_HOME") else {}
+    theirs = resolve_herdr_socket_path(HerdrSettings(session=service), env=xdg, home=home)
+    if ours == theirs:
+        return Check("service session", Level.OK, f"herdr session {service!r} ({theirs})")
+    if settings.herdr.socket_path is not None:
+        cause, hint = (
+            "[herdr] socket_path",
+            f'Remove socket_path; set [herdr] session = "{service}".',
+        )
+    elif env.get(HERDR_SOCKET_PATH_ENV_VAR):
+        cause = f"{HERDR_SOCKET_PATH_ENV_VAR}, set inside a herdr pane"
+        hint = f"Run baton outside herdr, or as: env -u {HERDR_SOCKET_PATH_ENV_VAR} baton ..."
+    else:
+        cause = f"[herdr] session = {settings.herdr.session!r}"
+        hint = f'Set [herdr] session = "{service}" in {config_file()}.'
+    return Check(
+        "service session",
+        Level.FAIL,
+        f"the service runs herdr session {service!r} ({theirs}), but your settings "
+        f"look at {ours} ({cause})",
+        hint,
+    )
 
 
 def parse_integration_status(text: str) -> dict[str, str]:

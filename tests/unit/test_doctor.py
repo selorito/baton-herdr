@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from baton_herdr.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
@@ -51,6 +52,8 @@ def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude"
         telegram_bot_name=bot_name,
         count_events=count,
         local_timezone=lambda: "Europe/Istanbul",
+        installed_session=lambda: None,  # never this machine's units
+        environ=dict,
     )
 
 
@@ -113,3 +116,32 @@ async def test_an_invalid_config_stops_the_other_checks(
 
     assert check.level is Level.FAIL
     assert "scheduler.poll_interval_seconds" in check.detail
+
+
+async def test_doctor_names_a_service_session_the_settings_do_not_reach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "baton.toml"
+    config.write_text('[herdr]\nsession = "default"\n', encoding="utf-8")
+    monkeypatch.setenv("BATON_CONFIG", str(config))
+    base = probes()
+
+    def with_service(**env: str) -> Probes:
+        return replace(base, installed_session=lambda: "baton", environ=lambda: env)
+
+    checks = by_name(await diagnose(with_service()))
+    service = checks["service session"]
+    assert service.level is Level.FAIL
+    assert "the service runs herdr session 'baton'" in service.detail
+    assert "session = 'default'" in service.detail
+    assert 'Set [herdr] session = "baton"' in service.hint
+
+    # Inside a herdr pane, HERDR_SOCKET_PATH wins over the setting.
+    config.write_text('[herdr]\nsession = "baton"\n', encoding="utf-8")
+    inside = by_name(await diagnose(with_service(HERDR_SOCKET_PATH="/run/other.sock")))
+    assert "HERDR_SOCKET_PATH" in inside["service session"].detail
+    assert "env -u HERDR_SOCKET_PATH" in inside["service session"].hint
+
+    # Matching: one line, ok; without an installed service: no line.
+    assert by_name(await diagnose(with_service()))["service session"].level is Level.OK
+    assert "service session" not in by_name(await diagnose(base))

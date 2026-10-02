@@ -5,14 +5,24 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
+from baton_herdr.core.config import BATON_HERDR_SESSION, HerdrSettings, resolve_herdr_socket_path
 
 HOME = Path("/home/tester")
 DEFAULT_SOCKET = HOME / ".config" / "herdr" / "herdr.sock"
 
 
-def resolve(env: dict[str, str], **settings: str) -> Path:
+def resolve(env: dict[str, str], **settings: str | None) -> Path:
+    # Without a configured session, as when [herdr] session is cleared: herdr's own lookup.
+    settings = {"session": None, **settings}
     return resolve_herdr_socket_path(HerdrSettings.model_validate(settings), env=env, home=HOME)
+
+
+def test_by_default_baton_uses_its_own_herdr_session() -> None:
+    assert HerdrSettings().session == BATON_HERDR_SESSION == "baton"
+    assert (
+        resolve_herdr_socket_path(HerdrSettings(), env={"HERDR_SESSION": "work"}, home=HOME)
+        == HOME / ".config" / "herdr" / "sessions" / "baton" / "herdr.sock"
+    )
 
 
 def test_explicit_socket_path_beats_every_environment_variable() -> None:

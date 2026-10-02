@@ -24,7 +24,6 @@ from baton_herdr.ledger import open_event_store
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.service import (
     BATON_UNIT,
-    DEFAULT_SESSION,
     NEXT_STEPS,
     ServiceError,
     install_units,
@@ -210,16 +209,17 @@ def doctor() -> None:
 @service_app.command("install")
 def service_install(
     *,
-    session: Annotated[
-        str, typer.Option(help="herdr session the service runs; attach to it to watch.")
-    ] = DEFAULT_SESSION,
     force: Annotated[bool, typer.Option(help="Replace existing unit files.")] = False,
     dry_run: Annotated[bool, typer.Option(help="Print the units instead of writing them.")] = False,
 ) -> None:
-    """Write systemd user units for batond and its own herdr server (not enabled)."""
+    """Write systemd user units for batond and its own herdr server (not enabled).
+
+    The herdr session is [herdr] session from the settings (default "baton"), the
+    same one the CLI and `baton doctor` connect to.
+    """
     settings = _settings()
     try:
-        plan = plan_units(settings, session=session, config=config_file())
+        plan = plan_units(settings, config=config_file())
         if dry_run:
             for name, text in render_units(plan).items():
                 typer.echo(f"# {name}\n{text}")
@@ -229,7 +229,7 @@ def service_install(
     except ServiceError as err:
         typer.echo(str(err), err=True)
         raise typer.Exit(code=1) from err
-    typer.echo(NEXT_STEPS.format(baton_unit=BATON_UNIT, session=session))
+    typer.echo(NEXT_STEPS.format(baton_unit=BATON_UNIT, session=plan.session))
 
 
 @app.command()
