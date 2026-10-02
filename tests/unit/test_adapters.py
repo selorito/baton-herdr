@@ -194,3 +194,13 @@ def test_resume_commands_quote_the_session_reference() -> None:
         AgentKind.CLAUDE: "claude",
         AgentKind.CODEX: "codex",
     }
+
+
+def test_codex_work_is_recognised_from_the_footer_spinner() -> None:
+    working = screen(
+        "• Working (2s • esc to interrupt)", "› Ask Codex to do anything", "  gpt · ~/dev · ⠏"
+    )
+    result = codex(working)
+    assert (result.state, result.evidence) == (AgentState.WORKING, "coban:codex_working_footer")
+    idle = screen("› Ask Codex to do anything", "  gpt · ~/dev/coban-sandbox")
+    assert codex(idle).state is AgentState.IDLE

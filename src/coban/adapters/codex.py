@@ -31,6 +31,8 @@ _LIMIT = re.compile(
 _MARK = "\u203a"
 _SPINNER = "\u2800-\u28ff"
 _IDLE_PROMPT = re.compile(rf"^{_MARK} (?!\d+\.\s)[^\n]*\n {{2}}\S[^\n]* · [^\n]*[^\n{_SPINNER}]\Z")
+# The footer while a turn runs: same shape as above, ending in a spinner frame.
+_WORKING_FOOTER = re.compile(rf"^ {{2}}\S[^\n]* · [^\n]*[{_SPINNER}]\Z")
 _TRUST = re.compile(rf"Trust this folder\?[\s\S]*?^{_MARK} 1\. Trust and continue", re.MULTILINE)
 _HOOKS = re.compile(rf"Hooks need review[\s\S]*?^{_MARK} 1\. Review hooks", re.MULTILINE)
 _UPDATE = re.compile(r"Update available[\s\S]*?Skip until next version")
@@ -59,6 +61,15 @@ RULES = (
     ScreenRule("codex_hooks_review", AgentState.BLOCKED_OTHER, _HOOKS),
     ScreenRule("codex_update_prompt", AgentState.BLOCKED_OTHER, _UPDATE),
     ScreenRule("codex_resume_picker", AgentState.BLOCKED_OTHER, _RESUME_PICKER),
+    # herdr recognises work from the spinner in the window title; this also catches it
+    # from the footer when the title is not available.
+    ScreenRule(
+        "codex_working_footer",
+        AgentState.WORKING,
+        _WORKING_FOOTER,
+        bottom_lines=1,
+        applies_when=_ONLY_WITHOUT_HOST_SIGNAL,
+    ),
     # herdr has no idle rule for Codex, so its idle is always a fallback (unknown).
     ScreenRule(
         "codex_idle_prompt",
