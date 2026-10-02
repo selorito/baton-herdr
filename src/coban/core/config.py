@@ -136,6 +136,8 @@ class LoggingSettings(_Section):
 
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
+    # The only chat coban writes to. Without it no message is sent.
+    chat_id: int | None = None
 
 
 class CobanSettings(BaseSettings):

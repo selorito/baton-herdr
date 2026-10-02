@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
 
     from coban.core.model import TaskId
+    from coban.core.notify import Notice, NoticeKind
 
 
 class InMemoryEventStore:
@@ -148,3 +149,15 @@ class FakePaneHost:
             return self.observations[pane_id]
         except KeyError:
             raise PaneNotFoundError(f"pane {pane_id} not found", code="pane_not_found") from None
+
+
+class RecordingNotifier:
+    def __init__(self) -> None:
+        self.notices: list[Notice] = []
+
+    async def notify(self, notice: Notice) -> None:
+        self.notices.append(notice)
+
+    @property
+    def kinds(self) -> list[NoticeKind]:
+        return [notice.kind for notice in self.notices]

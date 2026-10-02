@@ -18,3 +18,9 @@ path = "~/.local/share/coban/coban.db"
 [logging]
 # debug | info | warning | error | critical
 level = "info"
+
+[telegram]
+# Numeric id of the one private chat coban sends to. The bot token goes in .env:
+# COBAN_TELEGRAM__BOT_TOKEN=...
+# chat_id = 123456789
+
