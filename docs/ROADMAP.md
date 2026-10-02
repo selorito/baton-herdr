@@ -87,7 +87,7 @@ The first version a person can rely on unattended. It cuts across the steps belo
 |------|--------|
 | `coban daemon`: keeps running tasks, resumes waiting ones when a limit resets | ✅ (2026-10-03) |
 | Resume interrupted attempts in their own session; restart when a session is gone | ✅ verified live with Claude Code |
-| Re-attach to an active attempt after cobanD restarts | next |
+| Re-attach to an active attempt after cobanD restarts; re-check attempts waiting for a person each cycle, without repeating the notice | ✅ verified live with Claude Code |
 | "Done" for multi-step tasks: the `[[COBAN:END ...]]` contract (agents.md design note) | next |
 | Telegram actions: approve / deny, answer, status; owner and chat lock, bound callbacks | next |
 | Install and operate: README walkthrough, systemd user unit, `coban doctor` | next |

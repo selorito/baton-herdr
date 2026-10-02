@@ -342,3 +342,16 @@ transcript, and `claude --resume` answered "No conversation found with session I
 exited. coban now recognises that refusal (`resume_failed`) and restarts a fresh session
 instead of counting it as a crash; the live tests start herdr without those variables.
 
+
+### Re-attach after a cobanD restart, live (2026-10-03)
+
+Two runs with Claude Code, each killing `coban daemon` with `kill -9` right after the
+prompt was recorded (`attempt.prompted`) and starting it again:
+
+- **Restarted while Claude worked** (down about 10 s): the new daemon re-attached to the
+  same pane, sent nothing, saw the turn go idle and completed the task. One launch, one
+  prompt.
+- **Claude finished while cobanD was down** (down about 45 s): the log had the prompt but no
+  `working` observation. Re-attach treats a turn whose prompt was sent as under way, so the
+  idle agent counted as finished and the task completed. This rests on the prompt having
+  reached the agent; the `[[COBAN:END]]` contract is what will make "done" explicit.

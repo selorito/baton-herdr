@@ -38,22 +38,28 @@ def test_open_tasks_run_unless_nothing_changed_since_their_last_run() -> None:
     tasks = [
         task("new"),
         task("waiting", live=AttemptStatus.INTERRUPTED),
-        task("busy", live=AttemptStatus.ACTIVE),  # being driven, or waiting for a person
+        # Active between cycles: cobanD restarted, or a person was asked; always looked at.
+        task("busy", live=AttemptStatus.ACTIVE),
         task("done", closed=TaskStatus.COMPLETED),
     ]
     positions = {TaskId("new"): 1, TaskId("waiting"): 7, TaskId("busy"): 9, TaskId("done"): 4}
 
     first = select_tasks(tasks, positions=positions, available=BOTH, seen={})
-    assert first == (TaskId("new"), TaskId("waiting"))
+    assert first == (TaskId("new"), TaskId("waiting"), TaskId("busy"))
 
-    seen = {TaskId("new"): (1, BOTH), TaskId("waiting"): (7, frozenset({CODEX}))}
+    seen = {
+        TaskId("new"): (1, BOTH),
+        TaskId("waiting"): (7, frozenset({CODEX})),
+        TaskId("busy"): (9, BOTH),
+    }
     # "new" is unchanged; "waiting" was last run while only Codex was available.
     assert select_tasks(tasks, positions=positions, available=BOTH, seen=seen) == (
         TaskId("waiting"),
+        TaskId("busy"),
     )
     assert select_tasks(
         tasks, positions={**positions, TaskId("new"): 12}, available=frozenset({CODEX}), seen=seen
-    ) == (TaskId("new"),)
+    ) == (TaskId("new"), TaskId("busy"))
 
 
 def test_next_wake_is_the_earliest_future_reset_of_a_configured_agent() -> None:

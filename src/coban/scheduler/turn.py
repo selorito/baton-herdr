@@ -11,13 +11,15 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from coban.core.events import AgentStateObserved, AttemptPrompted, AttemptResumed, AttemptStarted
 from coban.core.model import AgentState
 from coban.recovery.policy import Verdict, assess, interrupt_reason
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
-    from coban.core.model import InterruptReason
+    from coban.core.events import StoredEvent
+    from coban.core.model import AttemptId, InterruptReason
 
 # More answers than this to start-up dialogs in one attempt means something is looping.
 MAX_STARTUP_ANSWERS = 3
@@ -87,3 +89,24 @@ _VERDICT_ACTIONS = {
     Verdict.TURN_FINISHED: Action.FINISH,
     Verdict.NEEDS_HUMAN: Action.ASK_HUMAN,
 }
+
+
+def turn_from_log(events: Iterable[StoredEvent], attempt_id: AttemptId) -> TurnState:
+    """Where the attempt's current turn stands, from the event log.
+
+    The turn starts at the attempt's start or its latest resume. The prompt was
+    sent if an ``attempt.prompted`` follows; the agent worked if a ``working``
+    observation follows that.
+    """
+    prompt_sent = worked = False
+    for stored in events:
+        event = stored.event
+        if getattr(event, "attempt_id", None) != attempt_id:
+            continue
+        if isinstance(event, AttemptStarted | AttemptResumed):
+            prompt_sent = worked = False
+        elif isinstance(event, AttemptPrompted):
+            prompt_sent, worked = True, False
+        elif isinstance(event, AgentStateObserved) and prompt_sent:
+            worked = worked or event.state is AgentState.WORKING
+    return TurnState(prompt_sent=prompt_sent, worked=worked)

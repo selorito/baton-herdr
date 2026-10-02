@@ -7,6 +7,8 @@ See tests/support/simulated_agents.py for how the agents are simulated.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -17,6 +19,7 @@ from coban.core.events import (
     AttemptEnded,
     AttemptInterrupted,
     AttemptLocated,
+    AttemptPrompted,
     AttemptStarted,
     TaskCompleted,
     TaskCreated,
@@ -94,11 +97,13 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
         "AttemptStarted",  # claude
         "AttemptLocated",  # pane
         "AttemptLocated",  # claude's session id, learned from the pane
+        "AttemptPrompted",
         "AttemptInterrupted",
         "AttemptEnded",
         "AttemptStarted",  # codex
         "AttemptLocated",
         "AttemptLocated",
+        "AttemptPrompted",
         "AttemptEnded",
         "TaskCompleted",
     ]
@@ -259,3 +264,77 @@ async def test_a_session_that_cannot_be_reopened_is_restarted_fresh_on_the_same_
     # The fresh session is told that earlier work may already be in the directory.
     assert host.prompts[-1] == (AgentKind.CLAUDE, f"{HANDOFF_NOTE}\n\n{INSTRUCTIONS}")
     assert NoticeKind.TASK_RESTARTED in notifier.kinds
+
+
+def claude_runner(
+    store: InMemoryEventStore, host: SimulatedAgents, notifier: RecordingNotifier
+) -> TaskRunner:
+    return TaskRunner(
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=FixedClock(NOW),
+        settings=only(AgentKind.CLAUDE),
+    )
+
+
+async def stop_after_prompt(store: InMemoryEventStore, runner: TaskRunner) -> None:
+    """Run until the prompt is recorded, then stop the runner as a dying cobanD would."""
+    run = asyncio.create_task(runner.run(TASK))
+    while not any(isinstance(s.event, AttemptPrompted) for s in await store.read()):
+        await asyncio.sleep(0.01)
+    run.cancel()
+    with suppress(asyncio.CancelledError):
+        await run
+
+
+async def test_after_a_daemon_restart_the_active_attempt_is_re_attached_not_restarted() -> None:
+    store, _, notifier, _ = await setup()
+    host = SimulatedAgents(FixedClock(NOW), scripts={AgentKind.CLAUDE: "claude-finish.toml"})
+    await stop_after_prompt(store, claude_runner(store, host, notifier))
+    await asyncio.sleep(0.1)  # the agent finishes its turn while nothing watches
+
+    assert await claude_runner(store, host, notifier).run(TASK) is TaskStatus.COMPLETED
+
+    # One launch, one prompt: the restart picked the attempt up where it was.
+    assert host.launched == ["claude"]
+    assert host.prompts == [(AgentKind.CLAUDE, INSTRUCTIONS)]
+    task = project(await store.read()).tasks[TASK]
+    assert [a.outcome for a in task.attempts] == [AttemptOutcome.SUCCEEDED]
+
+
+async def test_a_re_attached_attempt_whose_pane_is_gone_is_resumed() -> None:
+    store, _, notifier, _ = await setup()
+    host = SimulatedAgents(FixedClock(NOW), scripts={AgentKind.CLAUDE: "claude-finish.toml"})
+    await stop_after_prompt(store, claude_runner(store, host, notifier))
+    pane = project(await store.read()).tasks[TASK].attempts[0].pane_id
+    assert pane is not None
+    await host.close_pane(pane)
+
+    assert await claude_runner(store, host, notifier).run(TASK) is TaskStatus.COMPLETED
+
+    reasons = [
+        s.event.reason for s in await store.read() if isinstance(s.event, AttemptInterrupted)
+    ]
+    assert reasons == [InterruptReason.CRASHED]
+    assert host.launched == ["claude", "claude --resume claude-session"]
+    assert host.prompts[-1] == (AgentKind.CLAUDE, CONTINUE_NOTE)
+
+
+async def test_a_blocked_attempt_is_reported_once_and_continues_once_a_person_answers() -> None:
+    store, _, notifier, _ = await setup()
+    host = SimulatedAgents(
+        FixedClock(NOW),
+        scripts={AgentKind.CLAUDE: "claude-finish.toml"},
+        permission_after_prompt=True,
+    )
+    runner = claude_runner(store, host, notifier)
+
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN  # still blocked: no second notice
+    assert notifier.kinds.count(NoticeKind.NEEDS_HUMAN) == 1
+
+    host.approve()
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert host.prompts == [(AgentKind.CLAUDE, INSTRUCTIONS)]

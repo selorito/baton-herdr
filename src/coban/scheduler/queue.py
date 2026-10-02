@@ -4,7 +4,8 @@ A task is run again only when something that could change the outcome has
 changed since the daemon last ran it: an event of its own (a new task, an
 attempt the operator touched), or the set of agents that are available (a
 limit has reset). Without such a change running it again would only repeat the
-same notice, so it is skipped.
+same notice, so it is skipped. Tasks with an active attempt are the exception:
+they are re-attached every cycle.
 """
 
 from __future__ import annotations
@@ -51,10 +52,15 @@ def select_tasks(
         task.task_id
         for task in tasks
         if not task.status.is_terminal
-        # An active attempt is either being driven or waiting for a person.
-        and not (task.live_attempt and task.live_attempt.status is AttemptStatus.ACTIVE)
-        and seen.get(task.task_id) != (positions.get(task.task_id, 0), available)
+        and (_active(task) or seen.get(task.task_id) != (positions.get(task.task_id, 0), available))
     )
+
+
+def _active(task: TaskView) -> bool:
+    # Tasks run one at a time, so between cycles nothing drives an active attempt:
+    # cobanD restarted under it, or it waits for a person, who may answer at the
+    # terminal. Re-attaching is cheap and is the only way to notice either.
+    return task.live_attempt is not None and task.live_attempt.status is AttemptStatus.ACTIVE
 
 
 def next_wake(

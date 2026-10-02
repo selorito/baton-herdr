@@ -19,6 +19,7 @@ from coban.core.events import (
     AttemptEnded,
     AttemptInterrupted,
     AttemptLocated,
+    AttemptPrompted,
     AttemptResumed,
     AttemptStarted,
     StoredEvent,
@@ -155,6 +156,7 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             return replace(task, attempts=(*task.attempts, attempt))
         case (
             AttemptLocated()
+            | AttemptPrompted()
             | AgentStateObserved()
             | AttemptInterrupted()
             | AttemptResumed()
@@ -187,6 +189,8 @@ def _apply_to_attempt(attempt: AttemptView, stored: StoredEvent) -> AttemptView:
             )
         case AgentStateObserved():
             return replace(attempt, agent_state=event.state)
+        case AttemptPrompted():
+            return attempt
         case AttemptInterrupted():
             if attempt.status is not AttemptStatus.ACTIVE:
                 raise InvalidEventError(stored, "attempt is not active")

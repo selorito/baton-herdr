@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from coban.budget.availability import fold_availability
 from coban.core.commands import complete_task, start_attempt
@@ -33,6 +33,7 @@ from coban.core.events import (
     AttemptEnded,
     AttemptInterrupted,
     AttemptLocated,
+    AttemptPrompted,
     AttemptResumed,
     Event,
     StoredEvent,
@@ -52,10 +53,10 @@ from coban.core.panes import PaneHostError, PaneNotFoundError
 from coban.core.projection import project
 from coban.core.targeting import resolve_target
 from coban.recovery.policy import Plan, plan_recovery
-from coban.scheduler.turn import Action, Step, TurnState, next_step
+from coban.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
 
     from coban.core.agents import AgentAdapter
@@ -74,6 +75,8 @@ HANDOFF_NOTE = (
     "Another coding agent session started this task and stopped before finishing it. Its "
     "changes, if any, are in the working directory. Continue the task from there."
 )
+
+type PromptKind = Literal["task", "handoff", "continue"]
 
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "coban:resume-failed"
@@ -100,7 +103,10 @@ class _Context:
     attempt_id: AttemptId
     agent: AgentKind
     prompt: str
+    prompt_kind: PromptKind
     pane_id: str | None  # verified to host the attempt, or None
+    # False when the same blocker was already reported before a re-attach.
+    announce: bool = True
 
 
 class _Outcome(StrEnum):
@@ -135,12 +141,12 @@ class TaskRunner:
 
         Each pass looks at the task as the event log has it now: without a live
         attempt a new one is started on the first available agent; an interrupted
-        attempt goes through ``plan_recovery``.
+        attempt goes through ``plan_recovery``; an active one that nothing in this
+        process drives (cobanD restarted, or it waited for a person) is re-attached.
         """
         with log_context(task_id=task_id):
             tried: set[AgentKind] = set()
             previous: AgentKind | None = None
-            first_pass = True
             while True:
                 task = (await self._board()).tasks[task_id]
                 live = task.live_attempt
@@ -168,17 +174,9 @@ class TaskRunner:
                             # A fresh session on the same agent is the point of a restart.
                             # Each restart costs a failure resume, so this cannot loop.
                             tried.discard(live.agent)
-                        first_pass = False
                         continue
                 else:
-                    if first_pass:
-                        await self._notify(
-                            NoticeKind.TASK_STOPPED,
-                            task_id,
-                            "An attempt is still active; re-attaching to it is not supported yet.",
-                        )
-                    break
-                first_pass = False
+                    outcome = await self._reattach(task, live)
                 if outcome is not _Outcome.INTERRUPTED:
                     break
             return (await self._board()).tasks[task_id].status
@@ -257,8 +255,63 @@ class TaskRunner:
                 attempt.attempt_id,
             )
             return await self._supervise(
-                task.task_id, attempt.attempt_id, attempt.agent, pane_id, CONTINUE_NOTE
+                task.task_id,
+                attempt.attempt_id,
+                attempt.agent,
+                pane_id,
+                (_prompt(task, "continue"), "continue"),
             )
+
+    async def _reattach(self, task: TaskView, attempt: AttemptView) -> _Outcome:
+        """Supervise an active attempt from where the event log says its turn stands.
+
+        Nothing is sent again that the log records as sent; the pane is verified
+        before any input, as always (ADR 0006).
+        """
+        with log_context(attempt_id=str(attempt.attempt_id)):
+            if attempt.agent not in self._adapters:
+                await self._notify(
+                    NoticeKind.NEEDS_HUMAN,
+                    task.task_id,
+                    f"No adapter for {attempt.agent.value}; this attempt cannot be supervised.",
+                    attempt.attempt_id,
+                )
+                return _Outcome.STOPPED
+            await self._locate(task.task_id, attempt.attempt_id)  # follows a moved session
+            current = (await self._board()).tasks[task.task_id].live_attempt or attempt
+            pane_id = current.pane_id
+            if pane_id is None or not await self._pane_exists(pane_id):
+                return await self._interrupt(
+                    task.task_id,
+                    attempt.attempt_id,
+                    InterruptReason.CRASHED,
+                    f"The {attempt.agent.value} pane is gone.",
+                )
+            events = await self._store.read()
+            last = _last_observation(events, attempt.attempt_id)
+            kind = _prompt_kind(events, task, attempt.attempt_id)
+            turn = turn_from_log(events, attempt.attempt_id)
+            if turn.prompt_sent:
+                # cobanD may have been down for the whole turn, so its work was never
+                # observed; an idle agent after a sent prompt has finished its turn.
+                turn = replace(turn, worked=True)
+            self._log.info("re-attaching", pane_id=pane_id, prompt_sent=turn.prompt_sent)
+            return await self._supervise(
+                task.task_id,
+                attempt.attempt_id,
+                attempt.agent,
+                pane_id,
+                (_prompt(task, kind), kind),
+                turn=turn,
+                last_seen=last,
+            )
+
+    async def _pane_exists(self, pane_id: str) -> bool:
+        try:
+            await self._host.observe(pane_id)
+        except PaneNotFoundError:
+            return False
+        return True
 
     async def _pick_agent(self, tried: set[AgentKind]) -> AgentKind | None:
         availability = fold_availability(
@@ -312,26 +365,38 @@ class TaskRunner:
                     f"Moved from {previous.value} to {agent.value}.",
                     attempt_id,
                 )
-            prompt = (
-                task.instructions if previous is None else f"{HANDOFF_NOTE}\n\n{task.instructions}"
+            kind: PromptKind = "task" if previous is None else "handoff"
+            return await self._supervise(
+                task_id, attempt_id, agent, pane_id, (_prompt(task, kind), kind)
             )
-            return await self._supervise(task_id, attempt_id, agent, pane_id, prompt)
 
-    async def _supervise(
+    async def _supervise(  # noqa: PLR0913 - the attempt, plus where a re-attach resumes
         self,
         task_id: TaskId,
         attempt_id: AttemptId,
         agent: AgentKind,
         pane_id: str,
-        prompt: str,
+        prompt: tuple[str, PromptKind],
+        *,
+        turn: TurnState | None = None,
+        last_seen: AgentStateObserved | None = None,
     ) -> _Outcome:
+        """Watch the attempt until its turn ends or something else has to decide.
+
+        ``turn`` and ``last_seen`` continue a turn already under way (a re-attach);
+        by default a new turn starts.
+        """
         adapter = self._adapters[agent]
         feed = _ObservationFeed(self._host, pane_id, self._settings.poll_interval_s)
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._settings.start_timeout_s
-        last_state: AgentState | None = None
-        saw_agent = False
-        turn = TurnState()
+        turn = turn or TurnState()
+        timeout = (
+            self._settings.turn_timeout_s if turn.prompt_sent else self._settings.start_timeout_s
+        )
+        deadline = loop.time() + timeout
+        last_state = last_seen.state if last_seen else None
+        reported = (last_seen.state, last_seen.evidence) if last_seen else None
+        saw_agent = last_seen is not None
         try:
             while True:
                 if loop.time() > deadline:
@@ -365,7 +430,14 @@ class TaskRunner:
                     deadline = loop.time() + self._settings.turn_timeout_s
                 outcome = await self._carry_out(
                     step,
-                    _Context(task_id, attempt_id, agent, prompt, pane_for_input),
+                    _Context(
+                        task_id,
+                        attempt_id,
+                        agent,
+                        *prompt,
+                        pane_for_input,
+                        announce=(state, evidence) != reported,
+                    ),
                     state=state,
                     evidence=evidence,
                     resets_at=resets_at,
@@ -386,6 +458,16 @@ class TaskRunner:
     ) -> _Outcome | None:
         """Perform ``step``; return an outcome when the attempt is over for now."""
         if step.action is Action.SEND_PROMPT and ctx.pane_id is not None:
+            # Recorded first: after a crash of cobanD a prompt is never sent twice.
+            await self._append(
+                AttemptPrompted(
+                    occurred_at=self._clock.now(),
+                    task_id=ctx.task_id,
+                    attempt_id=ctx.attempt_id,
+                    kind=ctx.prompt_kind,
+                    chars=len(ctx.prompt),
+                )
+            )
             await self._host.send_prompt(ctx.pane_id, ctx.prompt)
             return None
         if step.action is Action.ANSWER_STARTUP and ctx.pane_id is not None:
@@ -396,12 +478,15 @@ class TaskRunner:
             await self._finish(ctx.task_id)
             return _Outcome.FINISHED
         if step.action is Action.ASK_HUMAN:
-            await self._notify(
-                NoticeKind.NEEDS_HUMAN,
-                ctx.task_id,
-                f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence}).",
-                ctx.attempt_id,
-            )
+            if ctx.announce:
+                await self._notify(
+                    NoticeKind.NEEDS_HUMAN,
+                    ctx.task_id,
+                    f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence}).",
+                    ctx.attempt_id,
+                )
+            else:
+                self._log.info("still waiting for a person", evidence=evidence)
             return _Outcome.STOPPED
         if step.action is Action.INTERRUPT and step.reason is not None:
             reason = (
@@ -587,3 +672,41 @@ def _failure_resumes(events: Sequence[StoredEvent], task_id: TaskId) -> int:
         }:
             count += 1
     return count
+
+
+def _prompt(task: TaskView, kind: PromptKind) -> str:
+    if kind == "continue":
+        return CONTINUE_NOTE
+    if kind == "handoff":
+        return f"{HANDOFF_NOTE}\n\n{task.instructions}"
+    return task.instructions
+
+
+def _prompt_kind(
+    events: Iterable[StoredEvent], task: TaskView, attempt_id: AttemptId
+) -> PromptKind:
+    """What the attempt's current turn was (or will be) prompted with."""
+    resumed = False
+    for stored in events:
+        event = stored.event
+        if isinstance(event, AttemptResumed) and event.attempt_id == attempt_id:
+            resumed = True
+    if resumed:
+        return "continue"
+    return "task" if len(task.attempts) == 1 else "handoff"
+
+
+def _last_observation(
+    events: Iterable[StoredEvent], attempt_id: AttemptId
+) -> AgentStateObserved | None:
+    """The attempt's newest observation in its current turn, if any."""
+    last: AgentStateObserved | None = None
+    for stored in events:
+        event = stored.event
+        if getattr(event, "attempt_id", None) != attempt_id:
+            continue
+        if isinstance(event, AttemptResumed):
+            last = None
+        elif isinstance(event, AgentStateObserved):
+            last = event
+    return last

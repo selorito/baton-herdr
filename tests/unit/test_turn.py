@@ -1,9 +1,33 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from uuid import UUID
+
 import pytest
 
-from coban.core.model import AgentState, InterruptReason
-from coban.scheduler.turn import MAX_STARTUP_ANSWERS, Action, TurnState, next_step
+from coban.core.events import (
+    AgentStateObserved,
+    AttemptPrompted,
+    AttemptResumed,
+    AttemptStarted,
+    Event,
+    StoredEvent,
+)
+from coban.core.model import (
+    AgentKind,
+    AgentState,
+    AttemptId,
+    InterruptReason,
+    ObservationSource,
+    TaskId,
+)
+from coban.scheduler.turn import (
+    MAX_STARTUP_ANSWERS,
+    Action,
+    TurnState,
+    next_step,
+    turn_from_log,
+)
 
 FRESH = TurnState()
 SENT = TurnState(prompt_sent=True)
@@ -65,3 +89,44 @@ def test_start_up_answers_are_capped() -> None:
         )
         actions.append(step.action)
     assert actions == [Action.ANSWER_STARTUP] * MAX_STARTUP_ANSWERS + [Action.ASK_HUMAN]
+
+
+NOW = datetime(2026, 10, 3, tzinfo=UTC)
+TASK = TaskId("t")
+A1, OTHER = AttemptId(UUID(int=1)), AttemptId(UUID(int=2))
+
+
+def _seen(state: AgentState, attempt: AttemptId = A1) -> AgentStateObserved:
+    return AgentStateObserved(
+        occurred_at=NOW,
+        task_id=TASK,
+        attempt_id=attempt,
+        state=state,
+        source=ObservationSource.HERDR,
+    )
+
+
+def _log(*events: Event) -> list[StoredEvent]:
+    return [StoredEvent(seq=i, event=e) for i, e in enumerate(events, start=1)]
+
+
+def test_turn_from_log_starts_over_at_each_start_or_resume() -> None:
+    started = AttemptStarted(occurred_at=NOW, task_id=TASK, attempt_id=A1, agent=AgentKind.CLAUDE)
+    prompted = AttemptPrompted(occurred_at=NOW, task_id=TASK, attempt_id=A1, kind="task", chars=10)
+    resumed = AttemptResumed(occurred_at=NOW, task_id=TASK, attempt_id=A1)
+
+    assert turn_from_log(_log(started, _seen(AgentState.IDLE)), A1) == TurnState()
+    assert turn_from_log(_log(started, _seen(AgentState.WORKING), prompted), A1) == TurnState(
+        prompt_sent=True
+    )
+    assert turn_from_log(
+        _log(started, prompted, _seen(AgentState.WORKING), _seen(AgentState.IDLE)), A1
+    ) == TurnState(prompt_sent=True, worked=True)
+    # Another attempt's work does not count; a resume starts a new turn.
+    assert (
+        turn_from_log(_log(started, prompted, _seen(AgentState.WORKING, OTHER)), A1).worked is False
+    )
+    assert (
+        turn_from_log(_log(started, prompted, _seen(AgentState.WORKING), resumed), A1)
+        == TurnState()
+    )

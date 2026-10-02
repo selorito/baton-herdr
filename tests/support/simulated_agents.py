@@ -53,7 +53,7 @@ SCRIPT_FILES = {AgentKind.CLAUDE: "claude-limit.toml", AgentKind.CODEX: "codex-f
 class SimulatedAgents(FakePaneHost):
     """A pane host whose panes run scripted agents when their launch command is typed."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one switch per simulated behaviour
         self,
         clock: Clock,
         *,
@@ -61,6 +61,7 @@ class SimulatedAgents(FakePaneHost):
         codex_update_prompt: bool = False,
         resume_fails: bool = False,
         scripts: dict[AgentKind, str] | None = None,
+        permission_after_prompt: bool = False,
     ) -> None:
         super().__init__()
         self._clock = clock
@@ -69,6 +70,9 @@ class SimulatedAgents(FakePaneHost):
         self._codex_update_prompt = codex_update_prompt
         # `claude --resume` answers "No conversation found" and exits, as seen live.
         self._resume_fails = resume_fails
+        # Ask for a permission once the prompt arrives; ``approve`` lets the turn go on.
+        self._permission_after_prompt = permission_after_prompt
+        self._waiting_for_approval: dict[str, str] = {}
         # Script played by a freshly launched agent; resumed sessions always finish.
         self._fresh_scripts = SCRIPT_FILES | (scripts or {})
         self.dialog_answers: list[tuple[str, ...]] = []
@@ -149,8 +153,30 @@ class SimulatedAgents(FakePaneHost):
                 )
             )
             return
+        if self._permission_after_prompt:
+            self._permission_after_prompt = False
+            self._waiting_for_approval[pane_id] = prompt
+            self.screens[pane_id] = "Bash command\n  rm -rf build\nDo you want to proceed?\n"
+            self.set_observation(
+                PaneObservation(
+                    pane_id=pane_id,
+                    agent=agent,
+                    state=AgentState.BLOCKED_OTHER,
+                    evidence="herdr:rule:bash_permission_prompt",
+                    session_ref=f"{agent.value}-session",
+                )
+            )
+            return
         self._running[pane_id] = (agent, 2)
         self._show(pane_id, prompt=prompt)
+
+    def approve(self) -> None:
+        """A person answers the permission prompt at the terminal; the turn finishes."""
+        for pane_id, prompt in self._waiting_for_approval.items():
+            agent, _ = self._running[pane_id]
+            self._running[pane_id] = (agent, 2)
+            self._show(pane_id, prompt=prompt)
+        self._waiting_for_approval.clear()
 
     def _show(self, pane_id: str, *, prompt: str) -> None:
         agent, step = self._running[pane_id]

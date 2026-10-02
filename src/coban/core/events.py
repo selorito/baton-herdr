@@ -103,6 +103,18 @@ class AgentStateObserved(_AttemptEvent):
     evidence: str | None = None
 
 
+class AttemptPrompted(_AttemptEvent):
+    """coban submitted a prompt to the attempt's agent.
+
+    The text is not stored; ``kind`` says which prompt it was and ``chars`` how
+    long. Re-attaching after a restart uses this to avoid sending a prompt twice.
+    """
+
+    type: Literal["attempt.prompted"] = "attempt.prompted"
+    kind: Literal["task", "handoff", "continue"]
+    chars: int = Field(ge=0)
+
+
 class AttemptInterrupted(_AttemptEvent):
     type: Literal["attempt.interrupted"] = "attempt.interrupted"
     reason: InterruptReason
@@ -126,6 +138,7 @@ type Event = Annotated[
     | AttemptStarted
     | AttemptLocated
     | AgentStateObserved
+    | AttemptPrompted
     | AttemptInterrupted
     | AttemptResumed
     | AttemptEnded,
