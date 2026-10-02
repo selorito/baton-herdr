@@ -327,3 +327,18 @@ Codex ran as `codex -m gpt-5.6-luna -c model_reasoning_effort=low`, OpenCode on 
 One inconsistency found and fixed: once the pane status said `idle` while `agent explain`
 named the working-title rule. coban now takes the state from `explain` whenever it names a
 rule, and uses the pane status only when no rule matched (integration-reported state).
+
+### Crash and resume, live (2026-10-03)
+
+`coban daemon` ran a task on Claude Code in a herdr session started with a clean
+environment. Claude was killed with `kill -9` six seconds into its work. coban recorded the
+crash, reopened the same session in a fresh pane with `claude --resume <id>`, sent the
+continuation note, and the task completed 11 seconds later with the full change.
+
+An earlier attempt of the same test failed for an environmental reason worth knowing: the
+herdr server had been started from a shell inside Claude Code and inherited its
+`CLAUDECODE` / `CLAUDE_CODE_*` variables. Claude Code started in those panes wrote no
+transcript, and `claude --resume` answered "No conversation found with session ID" and
+exited. coban now recognises that refusal (`resume_failed`) and restarts a fresh session
+instead of counting it as a crash; the live tests start herdr without those variables.
+
