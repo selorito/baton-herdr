@@ -98,8 +98,16 @@ test keeps passing throughout.
 - ✅ OpenCode adapter; all recorded captures of the three v1 agents are classified in tests.
 - ✅ Safe start-up answers (only Codex's update prompt); trust, hooks and sign-in go to a person.
 - ✅ Per-attempt decisions are a pure state machine (`scheduler.turn`).
-- Next: live runs against the real agents in the sandbox repository (spends quota; opt-in),
-  resume of interrupted attempts with `resume_command`, crash detection with `processes`.
+- ✅ Live runs: Claude Code, Codex and OpenCode each completed a task driven by `coban run`
+  (see `docs/research/agents.md`, "First live coban runs"); one state bug found and fixed.
+- ✅ Interrupted attempts are resumed in their own session (`resume_command`, fresh pane):
+  after a usage limit once the reset passes (when no other agent can take over), after a
+  crash or stall up to `max_failure_resumes` times; a full context goes to a person.
+- Not done, on purpose: a separate process-list crash check. herdr identifies the agent from
+  its process, and every recorded crash showed `agent: null` as soon as the process died,
+  which coban already treats as a crash. `PaneHost.processes` stays available for a case
+  where that is not enough.
+- Next: a live run of the resume path with a real agent (small quota), then step 2.
 
 ## After v1
 
