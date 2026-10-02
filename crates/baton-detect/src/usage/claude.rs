@@ -4,6 +4,10 @@
 //! response is split into several records (one per content block), each repeating the
 //! same `message.id` and usage, so records are counted once per `message.id`. The first
 //! record of a response is the one reported.
+//!
+//! Message ids are the API's own and unique everywhere, and a resumed session may
+//! repeat earlier messages in a new file, so one [`ClaudeLog`] reads all transcripts and
+//! the id alone identifies a response.
 
 use std::collections::HashSet;
 
@@ -45,10 +49,10 @@ struct Usage {
     cache_read_input_tokens: u64,
 }
 
-/// Reads one transcript, line by line, remembering which responses it has reported.
+/// Reads transcripts line by line, remembering which responses it has reported.
 #[derive(Debug, Default)]
 pub struct ClaudeLog {
-    seen: HashSet<(String, String)>,
+    seen: HashSet<String>,
 }
 
 impl ClaudeLog {
@@ -74,12 +78,14 @@ impl ClaudeLog {
         let session = line.session_id.ok_or(ParseError::Missing("sessionId"))?;
         let id = message.id.ok_or(ParseError::Missing("message.id"))?;
         let at = parse_time(&line.timestamp.ok_or(ParseError::Missing("timestamp"))?)?;
-        if !self.seen.insert((session.clone(), id.clone())) {
+        if self.seen.contains(&id) {
             return Ok(None);
         }
+        let record_id = format!("claude:{id}");
+        self.seen.insert(id);
         Ok(Some(UsageRecord {
             agent: Agent::Claude,
-            record_id: format!("claude:{session}:{id}"),
+            record_id,
             session_id: session,
             at,
             model: message.model,
@@ -122,9 +128,9 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "claude:s-1:msg_aaa",
-                "claude:s-1:msg_bbb",
-                "claude:s-1:msg_ccc" // a sidechain (subagent) response counts too
+                "claude:msg_aaa",
+                "claude:msg_bbb",
+                "claude:msg_ccc" // a sidechain (subagent) response counts too
             ]
         );
         // One broken line; the synthetic and the user records are not usage.
@@ -145,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_message_id_in_another_session_is_another_response() {
+    fn a_response_repeated_in_a_resumed_sessions_file_counts_once() {
         let mut log = ClaudeLog::default();
         let line = |session: &str| {
             format!(
@@ -154,7 +160,7 @@ mod tests {
         };
         assert!(log.parse_line(&line("a")).unwrap().is_some());
         assert!(log.parse_line(&line("a")).unwrap().is_none());
-        assert!(log.parse_line(&line("b")).unwrap().is_some());
+        assert!(log.parse_line(&line("b")).unwrap().is_none());
     }
 
     #[test]
