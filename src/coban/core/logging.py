@@ -20,6 +20,20 @@ if TYPE_CHECKING:
     from coban.core.config import LogLevel
 
 
+class _CurrentStderr:
+    """Writes to whatever ``sys.stderr`` is at the moment of writing.
+
+    Binding the stream object at configuration time breaks when it is later
+    replaced and closed (test runners, daemonising); logging must never raise.
+    """
+
+    def write(self, text: str) -> int:
+        return sys.stderr.write(text)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
 def configure_logging(level: LogLevel = "info") -> None:
     """Configure structlog to write JSON lines to stderr."""
     structlog.configure(
@@ -34,7 +48,7 @@ def configure_logging(level: LogLevel = "info") -> None:
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.getLevelNamesMapping()[level.upper()]
         ),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.PrintLoggerFactory(file=_CurrentStderr()),  # type: ignore[arg-type]
         cache_logger_on_first_use=True,
     )
 
