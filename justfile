@@ -6,7 +6,8 @@ default:
     @just --list
 
 # Every check CI runs. Must be green before merging.
-check: check-py check-rs fixtures-audit
+# Rust first: its build is the baton-detect the Python contract test runs.
+check: check-rs check-py fixtures-audit
 
 # Python: lint, format, types, import boundaries, tests with coverage.
 check-py:

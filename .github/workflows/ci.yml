@@ -33,3 +33,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v4
       - run: just check-rs
+
+  # baton-detect against the usage contract, from the Python side (ADR 0011).
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: cargo build --locked -p baton-detect
+      - run: uv run --locked pytest tests/integration/test_usage_contract_binary.py
+        env:
+          BATON_REQUIRE_DETECT: "1"

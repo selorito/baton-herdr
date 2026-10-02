@@ -1,0 +1,3 @@
+{"kind":"usage","agent":"opencode","session_id":"<redacted>","record_id":"opencode:m2","at":"2026-09-30T08:02:14.879Z","model":"<redacted>","tokens":{"input":8377,"output":82,"cache_read":1941,"cache_write":0,"reasoning":0}}
+{"kind":"usage","agent":"opencode","session_id":"<redacted>","record_id":"opencode:m3","at":"2026-09-30T08:02:25.154Z","model":"<redacted>","tokens":{"input":423,"output":985,"cache_read":10398,"cache_write":0,"reasoning":296}}
+{"kind":"usage","agent":"opencode","session_id":"<redacted>","record_id":"opencode:m4","at":"2026-09-30T08:02:38.106Z","model":"<redacted>","tokens":{"input":28,"output":57,"cache_read":11804,"cache_write":0,"reasoning":0}}

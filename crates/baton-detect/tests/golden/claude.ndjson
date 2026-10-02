@@ -1,0 +1,1 @@
+{"kind":"usage","agent":"claude","session_id":"00000000-0000-4000-8000-000000000001","record_id":"claude:<redacted>","at":"2026-09-30T07:15:26.612Z","model":"claude-opus-5-5","tokens":{"input":2,"output":139,"cache_read":23176,"cache_write":11055,"reasoning":null}}
