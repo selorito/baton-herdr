@@ -59,6 +59,10 @@ LIMIT, CRASH, STALL, FULL, OPERATOR = (
         (CRASH, True, True, True, 2, Plan.ASK_HUMAN),
         (CRASH, False, True, True, 0, Plan.ASK_HUMAN),
         (CRASH, True, False, True, 0, Plan.ASK_HUMAN),
+        # The session is gone: start afresh, on any available agent, or wait.
+        (InterruptReason.RESUME_FAILED, True, True, False, 0, Plan.RESTART),
+        (InterruptReason.RESUME_FAILED, True, False, True, 0, Plan.RESTART),
+        (InterruptReason.RESUME_FAILED, True, False, False, 0, Plan.WAIT),
         # Always a person.
         (FULL, True, True, True, 0, Plan.ASK_HUMAN),
         (OPERATOR, True, True, True, 0, Plan.ASK_HUMAN),

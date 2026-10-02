@@ -17,6 +17,7 @@ class NoticeKind(StrEnum):
     AGENT_LIMITED = "agent_limited"
     TASK_HANDED_OFF = "task_handed_off"
     TASK_RESUMED = "task_resumed"
+    TASK_RESTARTED = "task_restarted"
     WAITING_FOR_AGENT = "waiting_for_agent"
     NEEDS_HUMAN = "needs_human"
     TASK_COMPLETED = "task_completed"

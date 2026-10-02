@@ -91,6 +91,12 @@ class OpenCodeAdapter:
     def classify(self, request: DetectionRequest) -> DetectionResult:
         return detect(request, RULES)
 
+    def resume_failed(self, screen: str) -> bool:
+        # The wording of a failed resume has not been observed for this agent yet;
+        # such a failure is handled as a crash until it is.
+        del screen
+        return False
+
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         del evidence
         return None

@@ -32,6 +32,10 @@ class AgentAdapter(Protocol):
         """Refine the host's view of a screen into coban's ``AgentState``."""
         ...
 
+    def resume_failed(self, screen: str) -> bool:
+        """Whether ``screen`` shows the agent refusing to reopen a session."""
+        ...
+
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         """Keys that safely dismiss a known start-up dialog, or ``None``.
 

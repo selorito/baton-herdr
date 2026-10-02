@@ -50,7 +50,10 @@ SETTINGS = RunnerSettings(
 
 
 async def setup(
-    *, crash_after_prompt: bool = False, codex_update_prompt: bool = False
+    *,
+    crash_after_prompt: bool = False,
+    codex_update_prompt: bool = False,
+    resume_fails: bool = False,
 ) -> tuple[InMemoryEventStore, SimulatedAgents, RecordingNotifier, TaskRunner]:
     clock = FixedClock(NOW)
     store = InMemoryEventStore()
@@ -66,7 +69,10 @@ async def setup(
         ]
     )
     host = SimulatedAgents(
-        clock, crash_after_prompt=crash_after_prompt, codex_update_prompt=codex_update_prompt
+        clock,
+        crash_after_prompt=crash_after_prompt,
+        codex_update_prompt=codex_update_prompt,
+        resume_fails=resume_fails,
     )
     notifier = RecordingNotifier()
     runner = TaskRunner(
@@ -220,3 +226,36 @@ async def test_codex_update_prompt_is_skipped_on_the_way_to_the_task() -> None:
 
     assert host.dialog_answers == [("Down", "Enter")]  # "2. Skip"
     assert NoticeKind.NEEDS_HUMAN not in notifier.kinds
+
+
+async def test_a_session_that_cannot_be_reopened_is_restarted_fresh_on_the_same_agent() -> None:
+    store, _, notifier, _ = await setup()
+    host = SimulatedAgents(
+        FixedClock(NOW),
+        crash_after_prompt=True,
+        resume_fails=True,
+        scripts={AgentKind.CLAUDE: "claude-finish.toml"},
+    )
+    runner = TaskRunner(
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=FixedClock(NOW),
+        settings=only(AgentKind.CLAUDE),
+    )
+
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+
+    events = [s.event for s in await store.read()]
+    reasons = [e.reason for e in events if isinstance(e, AttemptInterrupted)]
+    assert reasons == [InterruptReason.CRASHED, InterruptReason.RESUME_FAILED]
+    assert host.launched == ["claude", "claude --resume claude-session", "claude"]
+    task = project(await store.read()).tasks[TASK]
+    assert [a.outcome for a in task.attempts] == [
+        AttemptOutcome.ABANDONED,
+        AttemptOutcome.SUCCEEDED,
+    ]
+    # The fresh session is told that earlier work may already be in the directory.
+    assert host.prompts[-1] == (AgentKind.CLAUDE, f"{HANDOFF_NOTE}\n\n{INSTRUCTIONS}")
+    assert NoticeKind.TASK_RESTARTED in notifier.kinds

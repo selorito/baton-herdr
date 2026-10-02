@@ -30,6 +30,10 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 # herdr sets these inside its panes; they would point the CLI at the user's server.
 _INHERITED = ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION")
+# When the tests run inside a coding agent, its session variables would leak into the
+# throwaway server's panes and change how agents started there behave (seen live: a
+# Claude Code started with them wrote no transcript and could not be resumed).
+_AGENT_SESSION_PREFIXES = ("CLAUDE", "CODEX_")
 
 
 async def _herdr(binary: str, session: str, *args: str, env: dict[str, str]) -> int:
@@ -51,7 +55,11 @@ async def isolated_host() -> AsyncIterator[HerdrPaneHost]:
     if binary is None:
         pytest.skip("herdr is not installed")
     session = f"coban-smoke-{os.getpid()}"
-    env = {key: value for key, value in os.environ.items() if key not in _INHERITED}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _INHERITED and not key.startswith(_AGENT_SESSION_PREFIXES)
+    }
     socket_path = resolve_herdr_socket_path(
         HerdrSettings(session=session), env=env, home=Path.home()
     )

@@ -59,12 +59,18 @@ class SimulatedAgents(FakePaneHost):
         *,
         crash_after_prompt: bool = False,
         codex_update_prompt: bool = False,
+        resume_fails: bool = False,
+        scripts: dict[AgentKind, str] | None = None,
     ) -> None:
         super().__init__()
         self._clock = clock
         self._crash_after_prompt = crash_after_prompt
         # Show Codex's real update dialog (a recorded screen) before its prompt.
         self._codex_update_prompt = codex_update_prompt
+        # `claude --resume` answers "No conversation found" and exits, as seen live.
+        self._resume_fails = resume_fails
+        # Script played by a freshly launched agent; resumed sessions always finish.
+        self._fresh_scripts = SCRIPT_FILES | (scripts or {})
         self.dialog_answers: list[tuple[str, ...]] = []
         self._typed: dict[str, str] = {}
         self._running: dict[str, tuple[AgentKind, int]] = {}
@@ -81,9 +87,25 @@ class SimulatedAgents(FakePaneHost):
     async def send_keys(self, pane_id: str, keys: Sequence[str]) -> None:
         await super().send_keys(pane_id, keys)
         command = self._typed.pop(pane_id, "")
-        agent, script = _command_target(command)
+        agent, script = _command_target(command, self._fresh_scripts)
         if list(keys) == ["Enter"] and agent is not None and script is not None:
             self.launched.append(command)
+            if (
+                self._resume_fails
+                and script == RESUMED_SCRIPT_FILES.get(agent)
+                and "resume" in command
+            ):
+                refusal = f"No conversation found with session ID: {agent.value}-session"
+                self.screens[pane_id] = f"$ {command}\n{refusal}\n$ \n"
+                self.set_observation(
+                    PaneObservation(
+                        pane_id=pane_id,
+                        agent=None,
+                        state=AgentState.UNKNOWN,
+                        evidence="herdr:no-agent",
+                    )
+                )
+                return
             self._running[pane_id] = (agent, 0)
             self._scripts[pane_id] = script
             if agent is AgentKind.CODEX and self._codex_update_prompt:
@@ -149,13 +171,15 @@ class SimulatedAgents(FakePaneHost):
         )
 
 
-def _command_target(command: str) -> tuple[AgentKind | None, str | None]:
+def _command_target(
+    command: str, fresh_scripts: dict[AgentKind, str]
+) -> tuple[AgentKind | None, str | None]:
     """Which agent and script a typed command starts: a fresh launch or a resume."""
     for agent, adapter in ADAPTERS.items():
-        if agent not in SCRIPT_FILES:
+        if agent not in fresh_scripts:
             continue
         if command == adapter.launch_command():
-            return agent, SCRIPT_FILES[agent]
+            return agent, fresh_scripts[agent]
         if command == adapter.resume_command(f"{agent.value}-session"):
             return agent, RESUMED_SCRIPT_FILES[agent]
     return None, None

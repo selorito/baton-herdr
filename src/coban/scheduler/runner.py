@@ -71,10 +71,12 @@ CONTINUE_NOTE = (
 )
 
 HANDOFF_NOTE = (
-    "Another coding agent started this task and stopped because it reached its usage "
-    "limit. Its changes, if any, are in the working directory. Continue the task from "
-    "there."
+    "Another coding agent session started this task and stopped before finishing it. Its "
+    "changes, if any, are in the working directory. Continue the task from there."
 )
+
+# Evidence attached to an observation where the agent refused to reopen the session.
+RESUME_FAILED_EVIDENCE = "coban:resume-failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +106,7 @@ class _Context:
 class _Outcome(StrEnum):
     FINISHED = "finished"
     HANDED_OFF = "handed_off"
+    RESTARTED = "restarted"  # same task, fresh session; the same agent may run it
     INTERRUPTED = "interrupted"  # recorded; plan_recovery decides what follows
     STOPPED = "stopped"
 
@@ -157,9 +160,14 @@ class TaskRunner:
                     previous = agent
                 elif live.status is AttemptStatus.INTERRUPTED:
                     outcome = await self._recover(task, live, tried)
-                    if outcome is _Outcome.HANDED_OFF:
+                    if outcome in {_Outcome.HANDED_OFF, _Outcome.RESTARTED}:
                         previous = live.agent
-                        tried.add(live.agent)
+                        if outcome is _Outcome.HANDED_OFF:
+                            tried.add(live.agent)
+                        else:
+                            # A fresh session on the same agent is the point of a restart.
+                            # Each restart costs a failure resume, so this cannot loop.
+                            tried.discard(live.agent)
                         first_pass = False
                         continue
                 else:
@@ -194,7 +202,7 @@ class TaskRunner:
         self._log.info("recovery plan", plan=plan.value, reason=reason.value)
         if plan is Plan.RESUME and attempt.session_ref is not None:
             return await self._resume(task, attempt, attempt.session_ref)
-        if plan is Plan.HAND_OFF:
+        if plan in {Plan.HAND_OFF, Plan.RESTART}:
             await self._append(
                 AttemptEnded(
                     occurred_at=now,
@@ -203,7 +211,7 @@ class TaskRunner:
                     outcome=AttemptOutcome.ABANDONED,
                 )
             )
-            return _Outcome.HANDED_OFF
+            return _Outcome.HANDED_OFF if plan is Plan.HAND_OFF else _Outcome.RESTARTED
         if plan is Plan.WAIT:
             until = availability.limited_until.get(attempt.agent)
             when = f" after {until:%Y-%m-%d %H:%M} UTC" if until else " later"
@@ -289,6 +297,13 @@ class TaskRunner:
             if previous is None:
                 await self._notify(
                     NoticeKind.TASK_STARTED, task_id, f"Started on {agent.value}.", attempt_id
+                )
+            elif previous is agent:
+                await self._notify(
+                    NoticeKind.TASK_RESTARTED,
+                    task_id,
+                    f"Restarted on {agent.value} in a fresh session.",
+                    attempt_id,
                 )
             else:
                 await self._notify(
@@ -389,11 +404,14 @@ class TaskRunner:
             )
             return _Outcome.STOPPED
         if step.action is Action.INTERRUPT and step.reason is not None:
+            reason = (
+                InterruptReason.RESUME_FAILED if evidence == RESUME_FAILED_EVIDENCE else step.reason
+            )
             return await self._interrupt(
                 ctx.task_id,
                 ctx.attempt_id,
-                step.reason,
-                f"{ctx.agent.value} stopped: {step.reason.value}.",
+                reason,
+                f"{ctx.agent.value} stopped: {reason.value}.",
                 resets_at=resets_at,
             )
         return await self._interrupt(
@@ -412,6 +430,11 @@ class TaskRunner:
         saw_agent: bool,
     ) -> tuple[AgentState, str, datetime | None]:
         if observation is None or observation.agent is None:
+            # A resume the agent refused ends before the agent is ever seen running.
+            with suppress(PaneHostError):
+                screen = await self._host.read_screen(pane_id, lines=self._settings.screen_lines)
+                if adapter.resume_failed(screen):
+                    return AgentState.CRASHED, RESUME_FAILED_EVIDENCE, None
             if saw_agent:
                 return AgentState.CRASHED, "coban:agent-process-gone", None
             return AgentState.UNKNOWN, "coban:agent-not-started", None

@@ -53,7 +53,8 @@ class Plan(StrEnum):
     """What to do with an attempt that was interrupted."""
 
     RESUME = "resume"  # continue the same agent session in a fresh pane
-    HAND_OFF = "hand_off"  # end the attempt; start a new one on an available agent
+    HAND_OFF = "hand_off"  # end the attempt; start a new one on another available agent
+    RESTART = "restart"  # end the attempt; start a fresh session, the same agent included
     WAIT = "wait"  # nothing can run now; try again later
     ASK_HUMAN = "ask_human"
 
@@ -77,16 +78,18 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
       available agent, or waits.
     - A crash or a stall is resumed in the same session a limited number of times
       (ADR 0005); after that, or without a session to resume, a person decides.
+    - A session the agent can no longer reopen is restarted as a fresh session.
     - A full context, or an operator's interruption, always goes to a person.
     """
+    can_resume = has_session and agent_available
+    someone_available = agent_available or another_agent_available
     if reason is InterruptReason.RATE_LIMITED:
-        if agent_available and has_session:
+        if can_resume:
             return Plan.RESUME
-        if another_agent_available or agent_available:
-            return Plan.HAND_OFF
-        return Plan.WAIT
-    if reason in _RESUMABLE_FAILURES:
-        if has_session and agent_available and failure_resumes_used < max_failure_resumes:
-            return Plan.RESUME
-        return Plan.ASK_HUMAN
+        return Plan.HAND_OFF if someone_available else Plan.WAIT
+    if reason is InterruptReason.RESUME_FAILED:
+        # The session is gone; its work is in the working directory. Start afresh.
+        return Plan.RESTART if someone_available else Plan.WAIT
+    if reason in _RESUMABLE_FAILURES and can_resume and failure_resumes_used < max_failure_resumes:
+        return Plan.RESUME
     return Plan.ASK_HUMAN

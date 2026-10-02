@@ -73,6 +73,11 @@ class ClaudeAdapter:
     def classify(self, request: DetectionRequest) -> DetectionResult:
         return refine_blocked(detect(request, RULES), BLOCKED_KINDS)
 
+    def resume_failed(self, screen: str) -> bool:
+        # Printed by `claude --resume <id>` before it exits (seen live, 2.1.285; also in
+        # code.claude.com/docs/en/sessions).
+        return "No conversation found with session ID" in screen
+
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         del evidence
         return None
