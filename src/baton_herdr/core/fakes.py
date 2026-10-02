@@ -16,12 +16,14 @@ from baton_herdr.core.panes import (
     PaneProcess,
 )
 from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError
+from baton_herdr.core.usage import RateLimitObservation, UsageRecord
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Sequence
 
     from baton_herdr.core.model import TaskId
     from baton_herdr.core.notify import Notice, NoticeKind
+    from baton_herdr.core.usage import UsageEvent
 
 
 class InMemoryEventStore:
@@ -161,3 +163,44 @@ class RecordingNotifier:
     @property
     def kinds(self) -> list[NoticeKind]:
         return [notice.kind for notice in self.notices]
+
+
+class InMemoryUsageStore:
+    """:class:`baton_herdr.core.ports.UsageStore` in a list, with the same skipping."""
+
+    def __init__(self) -> None:
+        self.records: list[UsageRecord] = []
+        self.limits: list[RateLimitObservation] = []
+        self._keys: set[tuple[str, ...]] = set()
+
+    async def record(self, events: Sequence[UsageEvent]) -> int:
+        new = 0
+        for item in events:
+            key = (
+                ("usage", item.record_id)
+                if isinstance(item, UsageRecord)
+                else ("rate_limits", item.agent, item.session_id, item.at.isoformat())
+            )
+            if key in self._keys:
+                continue
+            self._keys.add(key)
+            new += 1
+            if isinstance(item, UsageRecord):
+                self.records.append(item)
+            else:
+                self.limits.append(item)
+        return new
+
+    async def latest_at(self) -> datetime | None:
+        times = [r.at for r in self.records] + [o.at for o in self.limits]
+        return max(times, default=None)
+
+    async def usage(self, *, since: datetime | None = None) -> Sequence[UsageRecord]:
+        return sorted(
+            (r for r in self.records if since is None or r.at >= since), key=lambda r: r.at
+        )
+
+    async def rate_limits(self, *, since: datetime | None = None) -> Sequence[RateLimitObservation]:
+        return sorted(
+            (o for o in self.limits if since is None or o.at >= since), key=lambda o: o.at
+        )

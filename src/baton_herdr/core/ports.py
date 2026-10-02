@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from baton_herdr.core.events import Event, StoredEvent
     from baton_herdr.core.model import TaskId
+    from baton_herdr.core.usage import RateLimitObservation, UsageEvent, UsageRecord
 
 
 class ConcurrencyError(Exception):
@@ -58,4 +59,28 @@ class EventStore(Protocol):
 class Clock(Protocol):
     def now(self) -> datetime:
         """Current time as a timezone-aware UTC datetime."""
+        ...
+
+
+class UsageStore(Protocol):
+    """Agent usage telemetry, kept apart from the task event log (ADR 0011).
+
+    Append-only; a record already stored (same record id, or for rate limits the
+    same agent, session and time) is skipped, not an error.
+    """
+
+    async def record(self, events: Sequence[UsageEvent]) -> int:
+        """Store ``events``; return how many were new."""
+        ...
+
+    async def latest_at(self) -> datetime | None:
+        """The time of the newest stored event: where reading may start again."""
+        ...
+
+    async def usage(self, *, since: datetime | None = None) -> Sequence[UsageRecord]:
+        """Usage records at or after ``since``, oldest first."""
+        ...
+
+    async def rate_limits(self, *, since: datetime | None = None) -> Sequence[RateLimitObservation]:
+        """Rate-limit observations at or after ``since``, oldest first."""
         ...
