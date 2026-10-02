@@ -22,7 +22,7 @@ rules it uses for the real agent.
 
 Not yet exercised: CI on GitHub (no remote has been added, so the workflow has never run).
 
-## Slice 0: the thinnest end-to-end loop
+## Slice 0: the thinnest end-to-end loop ✅
 
 **Goal.** A simulated Claude hits its usage limit in the middle of a task; coban notices,
 hands the task to Codex, and tells the user on Telegram. Everything is real except the
@@ -51,13 +51,13 @@ Work items, each behind a protocol with a fake and tests first (✅ = done):
    two rules: Claude's limit line with its reset time, and a finished or idle screen.
 3. ✅ **Adapters, minimal**: for Claude and Codex, only what the slice needs: launch command,
    the two detector rules, prompt submission through targeting (ADR 0006).
-4. **Budget, minimal**: an agent is unavailable from a `rate_limited` observation until its
+4. ✅ **Budget, minimal**: an agent is unavailable from a `rate_limited` observation until its
    reset time. No token accounting yet.
-5. **Scheduler and recovery, minimal**: one task at a time; on `rate_limited`, interrupt the
+5. ✅ **Scheduler and recovery, minimal**: one task at a time; on `rate_limited`, interrupt the
    attempt, then start a new attempt on an available agent, passing the task instructions.
-6. **Notifier**: a `Notifier` protocol with a fake; a Telegram implementation that only sends
+6. ✅ **Notifier**: a `Notifier` protocol with a fake; a Telegram implementation that only sends
    messages (aiogram, inside cobanD).
-7. **cobanD and CLI**: `coban task add`, `coban run`, `coban status`.
+7. ✅ **cobanD and CLI**: `coban task add`, `coban run`, `coban status`.
 
 **Done when**
 
@@ -67,6 +67,17 @@ Work items, each behind a protocol with a fake and tests first (✅ = done):
 - `just demo` runs the same loop against a real herdr in a throwaway session with
   `fake-agent` in the panes (a `live` test, not in CI);
 - no real agent is started and no quota is spent.
+
+**Status (2026-10-02): done.** `tests/integration/test_slice0.py` drives the loop with fakes;
+`just demo` runs it against a real herdr in a throwaway session (about 10 s). Limits the slice
+accepts on purpose, each picked up by a later step:
+
+- A task is one prompt: the first finished turn completes it (step 3 decides what "done" is).
+- A live attempt is not re-attached after cobanD restarts (step 6).
+- If a turn ends without coban ever seeing the agent work, the runner waits for its timeout.
+  Adapters reduce this by recognising work on screen (Codex footer spinner).
+- Telegram only sends messages (step 4); `[scheduler] timezone` defaults to UTC and should be
+  set to the local zone for reading printed reset times.
 
 ## Deepening the slice
 
