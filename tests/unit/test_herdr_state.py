@@ -44,6 +44,8 @@ IDLE, UNK = AgentState.IDLE, AgentState.UNKNOWN
         ("idle", FALLBACK, (UNK, "herdr:idle-fallback")),
         ("working", reported("working"), (WORK, "herdr:reported")),
         ("done", reported("idle"), (IDLE, "herdr:reported")),
+        # Seen live with Codex: the pane status lagged behind the working title.
+        ("idle", rule("working", "osc_title_working"), (WORK, "herdr:rule:osc_title_working")),
         ("unknown", None, (UNK, "herdr:no-agent")),
         ("unknown", rule("unknown", "transcript_viewer"), (UNK, "herdr:status:unknown")),
     ],

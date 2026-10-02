@@ -32,8 +32,13 @@ def derive_state(
 
     rule = (explain.get("matched_rule") or {}).get("id")
     basis = f"herdr:rule:{rule}" if rule else "herdr:reported"
-    # "done" is "a turn ended, not yet looked at"; the screen decides what it is now.
-    status = explain.get("state") if agent_status in {None, "done"} else agent_status
+    # explain classifies the screen now. When it names a rule, its state is fresher
+    # than the pane's status, which can lag (seen live: pane "idle" while the rule
+    # was Codex's working title). Without a rule the status may come from an
+    # integration's report, so the pane's status stands; "done" ("a turn ended,
+    # not yet looked at") is always resolved through the screen.
+    screen_decides = bool(rule) or agent_status in {None, "done"}
+    status = explain.get("state") if screen_decides else agent_status
 
     if status == "working":
         return AgentState.WORKING, basis
