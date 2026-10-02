@@ -374,3 +374,23 @@ docstrings, but first ask whether they should be English or Turkish.
 
 A missing mark still counts as "no signal": the first try shows what that costs when the
 agent asks in plain text anyway.
+
+### Operator actions, live (2026-10-03)
+
+Claude Code 2.1.287 launched with `--permission-mode default`, actions taken with
+`coban approve|deny|answer` (the same `act()` the Telegram bot calls).
+
+- **Approve.** "Run python3 -m unittest" stopped at the Bash permission prompt
+  (`herdr:rule:bash_permission_prompt`). `answer` was refused (does not fit a permission
+  prompt), `approve` sent Enter on "1. Yes", a second `approve` was refused as already
+  answered, and the task completed.
+- **Read-only commands need no permission.** `ls -la` ran without a prompt, so `deny` was
+  refused: nothing was waiting.
+- **Deny.** Esc on the prompt interrupts Claude's turn: "Interrupted · What should Claude do
+  instead?", with no end mark. coban first counted that idle agent as finished. Now a
+  denial holds until the operator answers: the attempt becomes `blocked_question`
+  (`coban:denied`), the notice asks what to do instead, and the answer is sent as a
+  prompt. Live: deny, notice, answer "Do not run anything", Claude replied with
+  `[[COBAN:END status=done]]`, task completed.
+- The permission notice quotes the prompt: "claude asks for permission: Bash command ·
+  Print 6 times 7 with Python · python3 -c 'print(6*7)'".

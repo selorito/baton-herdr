@@ -109,6 +109,15 @@ def bottom(screen: str, lines: int) -> str:
     return "\n".join(kept[-lines:])
 
 
+def one_line_summary(lines: Sequence[str], *, limit: int = 500) -> str | None:
+    """Join the non-empty ``lines`` with " · ", cut to ``limit`` characters."""
+    parts = [line.strip() for line in lines if line.strip()]
+    if not parts:
+        return None
+    text = " · ".join(parts)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 def refine_blocked(
     result: DetectionResult, rule_kinds: Mapping[str, AgentState]
 ) -> DetectionResult:

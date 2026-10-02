@@ -11,6 +11,7 @@ from coban.core.events import (
     AttemptResumed,
     AttemptStarted,
     Event,
+    OperatorActed,
     StoredEvent,
 )
 from coban.core.model import (
@@ -19,6 +20,7 @@ from coban.core.model import (
     AttemptId,
     InterruptReason,
     ObservationSource,
+    OperatorAction,
     TaskId,
 )
 from coban.scheduler.turn import (
@@ -130,3 +132,17 @@ def test_turn_from_log_starts_over_at_each_start_or_resume() -> None:
         turn_from_log(_log(started, prompted, _seen(AgentState.WORKING), resumed), A1)
         == TurnState()
     )
+
+
+def test_a_denial_holds_until_the_operator_answers() -> None:
+    def acted(action: OperatorAction) -> OperatorActed:
+        return OperatorActed(
+            occurred_at=NOW, task_id=TASK, attempt_id=A1, action=action, blocker_seq=3, by="cli"
+        )
+
+    started = AttemptStarted(occurred_at=NOW, task_id=TASK, attempt_id=A1, agent=AgentKind.CLAUDE)
+    prompted = AttemptPrompted(occurred_at=NOW, task_id=TASK, attempt_id=A1, kind="task", chars=10)
+    denied = _log(started, prompted, acted(OperatorAction.DENY))
+    assert turn_from_log(denied, A1).denied is True
+    answered = _log(started, prompted, acted(OperatorAction.DENY), acted(OperatorAction.ANSWER))
+    assert turn_from_log(answered, A1).denied is False

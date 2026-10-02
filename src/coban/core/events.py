@@ -32,6 +32,7 @@ from coban.core.model import (
     AttemptOutcome,
     InterruptReason,
     ObservationSource,
+    OperatorAction,
     TaskId,
 )
 
@@ -130,6 +131,20 @@ class AttemptEnded(_AttemptEvent):
     outcome: AttemptOutcome
 
 
+class OperatorActed(_AttemptEvent):
+    """The operator acted on a blocker from outside the terminal (ADR 0009).
+
+    ``blocker_seq`` is the ``attempt.state_observed`` event that was answered; each
+    blocker is answered at most once. An answer's text is not stored, only its length.
+    """
+
+    type: Literal["operator.acted"] = "operator.acted"
+    action: OperatorAction
+    blocker_seq: PositiveInt
+    by: str = Field(min_length=1)  # "telegram:<user id>" or "cli"
+    chars: int = Field(default=0, ge=0)
+
+
 type Event = Annotated[
     TaskCreated
     | TaskCompleted
@@ -139,6 +154,7 @@ type Event = Annotated[
     | AttemptLocated
     | AgentStateObserved
     | AttemptPrompted
+    | OperatorActed
     | AttemptInterrupted
     | AttemptResumed
     | AttemptEnded,

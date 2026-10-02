@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -32,10 +32,13 @@ from coban.scheduler.queue import (
     task_positions,
 )
 from coban.scheduler.runner import RunnerSettings, TaskRunner
+from coban.telegram.bot import BotSettings, OperatorBot, run_bot
 from coban.telegram.notifier import telegram_notifier
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
+
+    from aiogram import Bot
 
     from coban.core.config import CobanSettings, SchedulerSettings
     from coban.core.events import StoredEvent
@@ -63,6 +66,11 @@ class Runtime:
     runner: TaskRunner
     settings: RunnerSettings
     clock: Clock
+    host: PaneHost
+    # Set when something outside the loop (an operator action) wants a cycle now.
+    wake: asyncio.Event = field(default_factory=asyncio.Event)
+    operator: OperatorBot | None = None
+    bot: Bot | None = None
 
 
 @asynccontextmanager
@@ -78,16 +86,42 @@ async def open_runtime(
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
     clock = clock or SystemClock()
     scheduling = runner_settings(settings.scheduler)
+    host = host or connect(settings.herdr)
+    wake = asyncio.Event()
     try:
         runner = TaskRunner(
             store=store,
-            host=host or connect(settings.herdr),
+            host=host,
             adapters=ADAPTERS,
             notifier=notifier or telegram or LoggingNotifier(),
             clock=clock,
             settings=scheduling,
         )
-        yield Runtime(store=store, runner=runner, settings=scheduling, clock=clock)
+        operator = None
+        if telegram is not None and settings.telegram.owner_id is not None:
+            operator = OperatorBot(
+                store=store,
+                host=host,
+                adapters=ADAPTERS,
+                clock=clock,
+                settings=BotSettings(
+                    chat_id=settings.telegram.chat_id or 0,
+                    owner_id=settings.telegram.owner_id,
+                    agents=scheduling.agents,
+                    limit_cooldown=scheduling.limit_cooldown,
+                ),
+                on_action=wake.set,
+            )
+        yield Runtime(
+            store=store,
+            runner=runner,
+            settings=scheduling,
+            clock=clock,
+            host=host,
+            wake=wake,
+            operator=operator,
+            bot=telegram.bot if telegram is not None else None,
+        )
     finally:
         if telegram is not None:
             await telegram.aclose()
@@ -155,6 +189,36 @@ async def serve(
     tasks, or less when an agent's limit resets sooner.
     """
     seen: dict[TaskId, Signature] = {}
+    bot_task = (
+        asyncio.create_task(run_bot(runtime.bot, runtime.operator))
+        if runtime.bot is not None and runtime.operator is not None
+        else None
+    )
+    if bot_task is not None:
+        bot_task.add_done_callback(_bot_stopped)
+    try:
+        await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
+    finally:
+        if bot_task is not None:
+            bot_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await bot_task
+
+
+def _bot_stopped(task: asyncio.Task[None]) -> None:
+    # Notices still go out through the notifier; only remote actions are gone.
+    if not task.cancelled() and (err := task.exception()) is not None:
+        get_logger("coban.daemon").error("telegram bot stopped", error=repr(err))
+
+
+async def _serve_loop(
+    runtime: Runtime,
+    *,
+    stop: asyncio.Event,
+    idle_s: float,
+    max_cycles: int | None,
+    seen: dict[TaskId, Signature],
+) -> None:
     cycles = 0
     log = get_logger("coban.daemon")
     while not stop.is_set():
@@ -170,8 +234,18 @@ async def serve(
         if (wake_at := next_wake(availability, runtime.settings.agents, now)) is not None:
             delay = max(0.0, min(delay, (wake_at - now).total_seconds()))
         log.debug("sleeping", seconds=delay)
-        with suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=delay)
+        await _sleep(delay, stop, runtime.wake)
+        runtime.wake.clear()
+
+
+async def _sleep(delay: float, *events: asyncio.Event) -> None:
+    """Sleep for ``delay`` seconds or until one of ``events`` is set."""
+    waiters = [asyncio.create_task(event.wait()) for event in events]
+    try:
+        await asyncio.wait(waiters, timeout=delay, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for waiter in waiters:
+            waiter.cancel()
 
 
 def _available(runtime: Runtime, events: Sequence[StoredEvent]) -> frozenset[AgentKind]:

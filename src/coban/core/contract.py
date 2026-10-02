@@ -28,6 +28,13 @@ END_CONTRACT = (
     "blocked if you cannot continue, with the reason just above that line."
 )
 
+# Evidence for a turn that ended waiting for the operator's words: a question asked
+# with the mark, or a turn cut short by a denied permission ("what should I do
+# instead?"). Only these may be answered with free text (ADR 0009).
+QUESTION_EVIDENCE = "coban:end:question"
+DENIED_EVIDENCE = "coban:denied"
+ANSWERABLE_EVIDENCE = frozenset({QUESTION_EVIDENCE, DENIED_EVIDENCE})
+
 _LINE_BREAKS = re.compile(r"[ \t]*(?:\r?\n)+[ \t]*")
 _MARK = re.compile(r"\[\[COBAN:END status=(done|question|blocked)\]\]")
 # Lines above a mark that are quoted as the agent's question or reason.

@@ -163,3 +163,27 @@ async def test_serve_stops_when_asked(tmp_path: Path) -> None:
         await asyncio.sleep(0.05)
         stop.set()
         await asyncio.wait_for(task, timeout=2)
+
+
+async def test_an_operator_action_wakes_the_loop_before_its_idle_time(tmp_path: Path) -> None:
+    clock = FixedClock(NOW)
+    stop = asyncio.Event()
+    async with open_runtime(
+        settings_for(tmp_path / "coban.db"),
+        host=SimulatedAgents(clock),
+        notifier=RecordingNotifier(),
+        clock=clock,
+    ) as runtime:
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=60))
+        await asyncio.sleep(0.05)  # first cycle done; now asleep for a minute
+        task_id = await add_task(
+            runtime.store, title="late", instructions="do it", workdir="/w", clock=clock
+        )
+        runtime.wake.set()
+        for _ in range(100):
+            if project(await runtime.store.read()).tasks[task_id].attempts:
+                break
+            await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(serving, timeout=5)
+        assert project(await runtime.store.read()).tasks[task_id].attempts

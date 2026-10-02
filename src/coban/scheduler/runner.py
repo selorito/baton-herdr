@@ -27,7 +27,14 @@ from typing import TYPE_CHECKING, Literal
 
 from coban.budget.availability import fold_availability
 from coban.core.commands import complete_task, start_attempt
-from coban.core.contract import END_CONTRACT, EndStatus, one_line, parse_end
+from coban.core.contract import (
+    DENIED_EVIDENCE,
+    END_CONTRACT,
+    QUESTION_EVIDENCE,
+    EndStatus,
+    one_line,
+    parse_end,
+)
 from coban.core.detection import DetectionRequest
 from coban.core.events import (
     AgentStateObserved,
@@ -54,6 +61,7 @@ from coban.core.panes import PaneHostError, PaneNotFoundError
 from coban.core.projection import project
 from coban.core.targeting import resolve_target
 from coban.recovery.policy import Plan, plan_recovery
+from coban.scheduler.operator import allowed_actions, find_blocker
 from coban.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
 if TYPE_CHECKING:
@@ -78,6 +86,10 @@ HANDOFF_NOTE = (
 )
 
 type PromptKind = Literal["task", "handoff", "continue"]
+
+DENIED_NOTE = (
+    "The permission was denied and the agent stopped. Reply with what it should do instead."
+)
 
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "coban:resume-failed"
@@ -415,6 +427,8 @@ class TaskRunner:
                     adapter, observation, pane_id, saw_agent=saw_agent
                 )
                 state, evidence, detail = _read_end_mark(state, evidence, screen, turn)
+                if state is AgentState.BLOCKED_PERMISSION:
+                    detail = adapter.permission_summary(screen) or ""
                 saw_agent = saw_agent or (observation is not None and observation.agent is not None)
                 if not saw_agent and state is not AgentState.CRASHED:
                     continue  # the agent process has not started yet
@@ -484,12 +498,26 @@ class TaskRunner:
             return _Outcome.FINISHED
         if step.action is Action.ASK_HUMAN:
             if ctx.announce:
-                text = (
-                    f"{ctx.agent.value} is waiting for a decision: {ctx.detail}"
-                    if ctx.detail
-                    else f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence})."
+                if not ctx.detail:
+                    text = (
+                        f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence})."
+                    )
+                elif state is AgentState.BLOCKED_PERMISSION:
+                    text = f"{ctx.agent.value} asks for permission: {ctx.detail}"
+                else:
+                    text = f"{ctx.agent.value} is waiting for a decision: {ctx.detail}"
+                blocker = find_blocker(await self._store.read(), ctx.task_id)
+                actions = allowed_actions(blocker, self._adapters[ctx.agent]) if blocker else ()
+                await self._deliver(
+                    Notice(
+                        NoticeKind.NEEDS_HUMAN,
+                        ctx.task_id,
+                        text,
+                        ctx.attempt_id,
+                        blocker_seq=blocker.seq if blocker else None,
+                        actions=actions,
+                    )
                 )
-                await self._notify(NoticeKind.NEEDS_HUMAN, ctx.task_id, text, ctx.attempt_id)
             else:
                 self._log.info("still waiting for a person", evidence=evidence)
             return _Outcome.STOPPED
@@ -615,8 +643,11 @@ class TaskRunner:
         text: str,
         attempt_id: AttemptId | None = None,
     ) -> None:
-        self._log.info("notice", kind=kind.value, text=text)
-        await self._notifier.notify(Notice(kind, task_id, text, attempt_id))
+        await self._deliver(Notice(kind, task_id, text, attempt_id))
+
+    async def _deliver(self, notice: Notice) -> None:
+        self._log.info("notice", kind=notice.kind.value, text=notice.text)
+        await self._notifier.notify(notice)
 
     async def _append(self, *events: Event) -> None:
         await self._store.append(events)
@@ -708,9 +739,14 @@ def _read_end_mark(
     if state is not AgentState.IDLE or not (turn.prompt_sent and turn.worked):
         return state, evidence, ""
     mark = parse_end(screen)
+    if mark is None and turn.denied:
+        # A denied permission cuts the turn short without a mark; the agent waits
+        # to be told what to do instead, which is not a finished task.
+        return AgentState.BLOCKED_QUESTION, DENIED_EVIDENCE, DENIED_NOTE
     if mark is None or mark.status is EndStatus.DONE:
         return state, evidence, ""
-    return _END_STATES[mark.status], f"coban:end:{mark.status.value}", mark.text
+    evidence = QUESTION_EVIDENCE if mark.status is EndStatus.QUESTION else "coban:end:blocked"
+    return _END_STATES[mark.status], evidence, mark.text
 
 
 def _prompt_kind(

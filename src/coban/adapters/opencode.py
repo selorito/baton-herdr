@@ -100,3 +100,12 @@ class OpenCodeAdapter:
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         del evidence
         return None
+
+    def permission_summary(self, screen: str) -> str | None:
+        del screen  # not offered remotely yet (see permission_keys)
+        return None
+
+    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+        # The permission dialog's keys have not been verified yet: answer at the terminal.
+        del evidence, approve
+        return None

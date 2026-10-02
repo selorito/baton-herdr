@@ -119,6 +119,8 @@ class SimulatedAgents(FakePaneHost):
                 self._show_update_dialog(pane_id)
                 return
             self._show(pane_id, prompt="")
+        elif pane_id in self._waiting_for_approval and list(keys) in (["Enter"], ["Escape"]):
+            self.approve()  # approved or denied, the agent ends its turn
         elif pane_id in self._dialogs:
             self.dialog_answers.append(tuple(keys))
             self._dialogs.discard(pane_id)

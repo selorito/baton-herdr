@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from coban.core.clock_text import next_clock_time
-from coban.core.detection import ScreenRule, detect, refine_blocked
+from coban.core.detection import ScreenRule, detect, one_line_summary, refine_blocked
 from coban.core.model import AgentKind, AgentState
 
 if TYPE_CHECKING:
@@ -53,6 +53,14 @@ RULES = (
 )
 
 # herdr manifest rule ids (fixtures/herdr/agent-detection/claude-*.toml) → blocked kind.
+# The tool permission prompt opens on "1. Yes"; "Esc to cancel" denies
+# (fixtures/claude/blocked_permission/).
+PERMISSION_EVIDENCE = frozenset(
+    {"herdr:rule:bash_permission_prompt", "herdr:rule:generic_permission_prompt"}
+)
+APPROVE_KEYS = ("Enter",)
+DENY_KEYS = ("Escape",)
+
 BLOCKED_KINDS = {
     "bash_permission_prompt": AgentState.BLOCKED_PERMISSION,
     "generic_permission_prompt": AgentState.BLOCKED_PERMISSION,
@@ -81,3 +89,25 @@ class ClaudeAdapter:
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         del evidence
         return None
+
+    def permission_summary(self, screen: str) -> str | None:
+        # The prompt sits between a full-width rule and "Do you want to proceed?";
+        # the command itself is framed by dashed lines (fixtures/claude/blocked_permission/).
+        lines = screen.splitlines()
+        anchors = [i for i, line in enumerate(lines) if "Do you want to proceed?" in line]
+        if not anchors:
+            return None
+        kept: list[str] = []
+        for line in reversed(lines[: anchors[-1]]):
+            text = line.strip()
+            if text.startswith("─"):
+                break
+            if text.startswith(("╌", "Tip:")) or text == "This command requires approval":
+                continue
+            kept.append(text)
+        return one_line_summary(list(reversed(kept)))
+
+    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+        if evidence not in PERMISSION_EVIDENCE:
+            return None
+        return APPROVE_KEYS if approve else DENY_KEYS

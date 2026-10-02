@@ -155,6 +155,9 @@ class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat coban writes to. Without it no message is sent.
     chat_id: int | None = None
+    # The only Telegram user whose commands and buttons are handled (ADR 0009).
+    # Without it the bot only sends notices.
+    owner_id: int | None = None
 
 
 class CobanSettings(BaseSettings):

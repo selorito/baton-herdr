@@ -44,3 +44,18 @@ class AgentAdapter(Protocol):
         person.
         """
         ...
+
+    def permission_summary(self, screen: str) -> str | None:
+        """What a permission prompt on ``screen`` asks for, in one line, or ``None``.
+
+        Shown with Approve / Deny, so the operator knows what they approve.
+        """
+        ...
+
+    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+        """Keys that approve (or deny) the permission prompt behind ``evidence``, or ``None``.
+
+        Only for tool permission prompts whose keys were verified on a recorded
+        screen; anything else is answered at the terminal (ADR 0009).
+        """
+        ...

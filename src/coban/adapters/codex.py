@@ -7,7 +7,7 @@ import shlex
 from typing import TYPE_CHECKING
 
 from coban.core.clock_text import parse_duration, parse_month_date_time
-from coban.core.detection import ScreenRule, detect, refine_blocked
+from coban.core.detection import ScreenRule, detect, one_line_summary, refine_blocked
 from coban.core.model import AgentKind, AgentState
 
 if TYPE_CHECKING:
@@ -85,6 +85,9 @@ RULES = (
 # Start-up dialogs coban may answer on its own. Only the update prompt qualifies: its
 # answer ("2. Skip", one row down from the default) keeps the tested version and has no
 # security meaning. Folder trust and hook review stay with a person.
+# "1. Yes, proceed (y)" and "esc to cancel" (fixtures/codex/blocked_permission/).
+APPROVE_KEYS = ("y",)
+DENY_KEYS = ("Escape",)
 STARTUP_ANSWERS: dict[str, tuple[str, ...]] = {"coban:codex_update_prompt": ("Down", "Enter")}
 
 
@@ -108,3 +111,23 @@ class CodexAdapter:
 
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         return STARTUP_ANSWERS.get(evidence)
+
+    def permission_summary(self, screen: str) -> str | None:
+        # "Would you like to ...?" and its details, down to the first option
+        # (fixtures/codex/blocked_permission/).
+        lines = screen.splitlines()
+        anchors = [i for i, line in enumerate(lines) if "Would you like to" in line]
+        if not anchors:
+            return None
+        kept: list[str] = []
+        for line in lines[anchors[-1] :]:
+            text = line.strip()
+            if text.startswith(("\u203a", "1.")):  # the option cursor
+                break
+            kept.append(text)
+        return one_line_summary(kept)
+
+    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+        if evidence != "coban:codex_edit_or_command_approval":
+            return None  # folder trust and hook review stay at the terminal
+        return APPROVE_KEYS if approve else DENY_KEYS

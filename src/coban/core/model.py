@@ -89,3 +89,11 @@ class TaskStatus(StrEnum):
     @property
     def is_terminal(self) -> bool:
         return self in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+
+
+class OperatorAction(StrEnum):
+    """What the operator may do to a waiting attempt from outside the terminal (ADR 0009)."""
+
+    APPROVE = "approve"  # a permission prompt, with the adapter's declared keys
+    DENY = "deny"
+    ANSWER = "answer"  # a question the agent asked at its prompt

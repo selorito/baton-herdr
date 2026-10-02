@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 from coban.core.logging import get_logger
 
 if TYPE_CHECKING:
-    from coban.core.model import AttemptId, TaskId
+    from coban.core.model import AttemptId, OperatorAction, TaskId
 
 
 class NoticeKind(StrEnum):
@@ -30,6 +30,10 @@ class Notice:
     task_id: TaskId
     text: str
     attempt_id: AttemptId | None = None
+    # For a notice that asks for a decision: the blocker it is about (the seq of its
+    # attempt.state_observed event) and what may be done about it remotely (ADR 0009).
+    blocker_seq: int | None = None
+    actions: tuple[OperatorAction, ...] = ()
 
 
 class Notifier(Protocol):

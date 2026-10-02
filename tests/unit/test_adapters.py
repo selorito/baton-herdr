@@ -273,3 +273,50 @@ def test_only_the_codex_update_prompt_is_answered_automatically() -> None:
     assert {key: keys for key, keys in answers.items() if keys} == {
         (AgentKind.CODEX, "codex_update_prompt"): ("Down", "Enter")
     }
+
+
+def _screen(capture: str) -> str:
+    return (FIXTURES / capture / "screen.detection.txt").read_text()
+
+
+def test_permission_prompts_are_summarised_for_the_operator() -> None:
+    claude = ClaudeAdapter().permission_summary(
+        _screen("claude/blocked_permission/20260930T072344Z")
+    )
+    assert (
+        claude == "Bash command · python3 -m unittest -v 2>&1 · Run the unit test suite verbosely"
+    )
+    codex = CodexAdapter().permission_summary(_screen("codex/blocked_permission/20260930T075730Z"))
+    assert codex is not None
+    assert codex.startswith("Would you like to make the following edits? · Description:")
+    assert "1. Yes" not in codex
+    assert (
+        ClaudeAdapter().permission_summary(_screen("claude/idle/" + _first("claude/idle"))) is None
+    )
+
+
+def _first(kind: str) -> str:
+    return sorted(p.name for p in (FIXTURES / kind).iterdir() if p.is_dir())[0]
+
+
+@pytest.mark.parametrize(
+    ("agent", "evidence", "approve", "deny"),
+    [
+        (AgentKind.CLAUDE, "herdr:rule:bash_permission_prompt", ("Enter",), ("Escape",)),
+        (AgentKind.CODEX, "coban:codex_edit_or_command_approval", ("y",), ("Escape",)),
+        # Never remotely: folder trust, hook review, unknown prompts, unverified agents.
+        (AgentKind.CODEX, "coban:codex_trust_folder", None, None),
+        (AgentKind.CODEX, "coban:codex_hooks_review", None, None),
+        (AgentKind.CLAUDE, "herdr:rule:live_blocked_form", None, None),
+        (AgentKind.OPENCODE, "herdr:rule:permission_prompt", None, None),
+    ],
+)
+def test_permission_keys_only_for_verified_tool_prompts(
+    agent: AgentKind,
+    evidence: str,
+    approve: tuple[str, ...] | None,
+    deny: tuple[str, ...] | None,
+) -> None:
+    adapter = ADAPTERS[agent]
+    assert adapter.permission_keys(evidence, approve=True) == approve
+    assert adapter.permission_keys(evidence, approve=False) == deny

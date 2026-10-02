@@ -11,8 +11,14 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from coban.core.events import AgentStateObserved, AttemptPrompted, AttemptResumed, AttemptStarted
-from coban.core.model import AgentState
+from coban.core.events import (
+    AgentStateObserved,
+    AttemptPrompted,
+    AttemptResumed,
+    AttemptStarted,
+    OperatorActed,
+)
+from coban.core.model import AgentState, OperatorAction
 from coban.recovery.policy import Verdict, assess, interrupt_reason
 
 if TYPE_CHECKING:
@@ -40,6 +46,8 @@ class TurnState:
     prompt_sent: bool = False
     worked: bool = False
     startup_answers_left: int = MAX_STARTUP_ANSWERS
+    # The operator denied a permission in this turn and has not said what to do instead.
+    denied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,17 +104,19 @@ def turn_from_log(events: Iterable[StoredEvent], attempt_id: AttemptId) -> TurnS
 
     The turn starts at the attempt's start or its latest resume. The prompt was
     sent if an ``attempt.prompted`` follows; the agent worked if a ``working``
-    observation follows that.
+    observation follows that. A denial by the operator holds until they answer.
     """
-    prompt_sent = worked = False
+    prompt_sent = worked = denied = False
     for stored in events:
         event = stored.event
         if getattr(event, "attempt_id", None) != attempt_id:
             continue
         if isinstance(event, AttemptStarted | AttemptResumed):
-            prompt_sent = worked = False
+            prompt_sent = worked = denied = False
         elif isinstance(event, AttemptPrompted):
-            prompt_sent, worked = True, False
+            prompt_sent, worked, denied = True, False, False
+        elif isinstance(event, OperatorActed):
+            denied = event.action is OperatorAction.DENY
         elif isinstance(event, AgentStateObserved) and prompt_sent:
             worked = worked or event.state is AgentState.WORKING
-    return TurnState(prompt_sent=prompt_sent, worked=worked)
+    return TurnState(prompt_sent=prompt_sent, worked=worked, denied=denied)
