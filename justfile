@@ -42,7 +42,7 @@ demo:
 
 # Regenerate the JSON Schemas in schemas/ after deliberately changing a contract model.
 schemas:
-    uv run python -c "from pathlib import Path; from coban.core.schemas import write_all; write_all(Path('schemas'))"
+    uv run python -c "from pathlib import Path; from baton_herdr.core.schemas import write_all; write_all(Path('schemas'))"
 
 # Apply formatting and safe lint fixes.
 fmt:

@@ -12,7 +12,7 @@ keeps the end-to-end loop working and makes one part of it real. Scope is fixed 
 | H0 discovery | `docs/research/agents.md`, `fixtures/` for Claude Code, Codex, OpenCode (and Gemini first-run), capture tool with masking and audit |
 | Core | Event model, `EventStore` and `PaneHost` protocols with fakes, projection, commands, targeting (ADR 0002, 0004, 0006) |
 | Ledger | SQLite event store with migrations, append-only at the database level |
-| herdr client | Socket client, herdr → coban state mapping, isolated live smoke test |
+| herdr client | Socket client, herdr → baton state mapping, isolated live smoke test |
 
 Slice 0 findings so far: herdr exposes an agent session id only from the official integration
 source names (`herdr:claude`, …), and for Claude Code and Codex it takes the agent's identity
@@ -24,7 +24,7 @@ Not yet exercised: CI on GitHub (no remote has been added, so the workflow has n
 
 ## Slice 0: the thinnest end-to-end loop ✅
 
-**Goal.** A simulated Claude hits its usage limit in the middle of a task; coban notices,
+**Goal.** A simulated Claude hits its usage limit in the middle of a task; baton notices,
 hands the task to Codex, and tells the user on Telegram. Everything is real except the
 agents, which are played by `tools/fake-agent`.
 
@@ -56,8 +56,8 @@ Work items, each behind a protocol with a fake and tests first (✅ = done):
 5. ✅ **Scheduler and recovery, minimal**: one task at a time; on `rate_limited`, interrupt the
    attempt, then start a new attempt on an available agent, passing the task instructions.
 6. ✅ **Notifier**: a `Notifier` protocol with a fake; a Telegram implementation that only sends
-   messages (aiogram, inside cobanD).
-7. ✅ **cobanD and CLI**: `coban task add`, `coban run`, `coban status`.
+   messages (aiogram, inside batond).
+7. ✅ **batond and CLI**: `baton task add`, `baton run`, `baton status`.
 
 **Done when**
 
@@ -73,8 +73,8 @@ Work items, each behind a protocol with a fake and tests first (✅ = done):
 accepts on purpose, each picked up by a later step:
 
 - A task is one prompt: the first finished turn completes it (step 3 decides what "done" is).
-- A live attempt is not re-attached after cobanD restarts (step 6).
-- If a turn ends without coban ever seeing the agent work, the runner waits for its timeout.
+- A live attempt is not re-attached after batond restarts (step 6).
+- If a turn ends without baton ever seeing the agent work, the runner waits for its timeout.
   Adapters reduce this by recognising work on screen (Codex footer spinner).
 - Telegram only sends messages (step 4); `[scheduler] timezone` defaults to UTC and should be
   set to the local zone for reading printed reset times.
@@ -85,12 +85,12 @@ The first version a person can rely on unattended. It cuts across the steps belo
 
 | Item | Status |
 |------|--------|
-| `coban daemon`: keeps running tasks, resumes waiting ones when a limit resets | ✅ (2026-10-03) |
+| `baton daemon`: keeps running tasks, resumes waiting ones when a limit resets | ✅ (2026-10-03) |
 | Resume interrupted attempts in their own session; restart when a session is gone | ✅ verified live with Claude Code |
-| Re-attach to an active attempt after cobanD restarts; re-check attempts waiting for a person each cycle, without repeating the notice | ✅ verified live with Claude Code |
-| "Done" for multi-step tasks: the `[[COBAN:END ...]]` contract (agents.md design note) | ✅ verified live with Claude Code |
+| Re-attach to an active attempt after batond restarts; re-check attempts waiting for a person each cycle, without repeating the notice | ✅ verified live with Claude Code |
+| "Done" for multi-step tasks: the `[[BATON:END ...]]` contract (agents.md design note) | ✅ verified live with Claude Code |
 | Telegram actions: approve / deny, answer, status; owner and chat lock, bound callbacks (ADR 0009) | ✅ built; actions verified live with Claude Code through the CLI, Telegram itself not yet (needs a bot token) |
-| Install and operate: README walkthrough, systemd user unit, `coban doctor` | ✅ units verified under systemd with Claude Code |
+| Install and operate: README walkthrough, systemd user unit, `baton doctor` | ✅ units verified under systemd with Claude Code |
 
 The MVP is complete (2026-10-03). Telegram itself has not been tried live yet: it needs a bot token.
 
@@ -113,14 +113,14 @@ test keeps passing throughout.
 - ✅ OpenCode adapter; all recorded captures of the three v1 agents are classified in tests.
 - ✅ Safe start-up answers (only Codex's update prompt); trust, hooks and sign-in go to a person.
 - ✅ Per-attempt decisions are a pure state machine (`scheduler.turn`).
-- ✅ Live runs: Claude Code, Codex and OpenCode each completed a task driven by `coban run`
-  (see `docs/research/agents.md`, "First live coban runs"); one state bug found and fixed.
+- ✅ Live runs: Claude Code, Codex and OpenCode each completed a task driven by `baton run`
+  (see `docs/research/agents.md`, "First live baton runs"); one state bug found and fixed.
 - ✅ Interrupted attempts are resumed in their own session (`resume_command`, fresh pane):
   after a usage limit once the reset passes (when no other agent can take over), after a
   crash or stall up to `max_failure_resumes` times; a full context goes to a person.
 - Not done, on purpose: a separate process-list crash check. herdr identifies the agent from
   its process, and every recorded crash showed `agent: null` as soon as the process died,
-  which coban already treats as a crash. `PaneHost.processes` stays available for a case
+  which baton already treats as a crash. `PaneHost.processes` stays available for a case
   where that is not enough.
 - Next: a live run of the resume path with a real agent (small quota), then step 2.
 

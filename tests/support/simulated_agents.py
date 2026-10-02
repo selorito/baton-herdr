@@ -11,17 +11,17 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from coban.adapters import ADAPTERS
-from coban.core.fakes import FakePaneHost
-from coban.core.model import AgentKind, AgentState
-from coban.core.panes import PaneObservation
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.core.fakes import FakePaneHost
+from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.panes import PaneObservation
 
 import fake_agent
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from coban.core.ports import Clock
+    from baton_herdr.core.ports import Clock
 
 SCRIPTS = Path(__file__).parents[2] / "tools" / "fake-agent" / "scripts"
 

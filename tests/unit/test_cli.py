@@ -4,7 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
-from coban.cli import app
+from baton_herdr.cli import app
 
 runner = CliRunner()
 
@@ -24,7 +24,7 @@ def request(agent: str, screen: str, host: str = "unknown") -> str:
 def test_version_prints_the_package_version() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert result.stdout.startswith("coban ")
+    assert result.stdout.startswith("baton ")
 
 
 def test_detect_answers_each_ndjson_line_in_order() -> None:
@@ -41,10 +41,10 @@ def test_detect_answers_each_ndjson_line_in_order() -> None:
         {
             "contract": 1,
             "state": "rate_limited",
-            "evidence": "coban:claude_usage_limit",
+            "evidence": "baton:claude_usage_limit",
             "resets_at": "2026-10-01T12:45:00Z",
         },
-        {"contract": 1, "state": "working", "evidence": "coban:no-adapter", "resets_at": None},
+        {"contract": 1, "state": "working", "evidence": "baton:no-adapter", "resets_at": None},
     ]
 
 

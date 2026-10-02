@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from coban.core.model import AgentState
-from coban.herdr.state import derive_state
+from baton_herdr.core.model import AgentState
+from baton_herdr.herdr.state import derive_state
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 FALLBACK = {

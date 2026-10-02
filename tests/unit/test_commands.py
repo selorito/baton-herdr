@@ -5,14 +5,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from coban.core.commands import (
+from baton_herdr.core.commands import (
     CommandRejectedError,
     cancel_task,
     complete_task,
     fail_task,
     start_attempt,
 )
-from coban.core.events import (
+from baton_herdr.core.events import (
     AttemptEnded,
     AttemptInterrupted,
     AttemptStarted,
@@ -21,7 +21,7 @@ from coban.core.events import (
     TaskCancelled,
     TaskCreated,
 )
-from coban.core.model import (
+from baton_herdr.core.model import (
     AgentKind,
     AttemptId,
     AttemptOutcome,
@@ -30,7 +30,7 @@ from coban.core.model import (
     TaskId,
     TaskStatus,
 )
-from coban.core.projection import Board, apply, project
+from baton_herdr.core.projection import Board, apply, project
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 T1 = TaskId("t1")

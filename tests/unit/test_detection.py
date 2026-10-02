@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from coban.core.detection import (
+from baton_herdr.core.detection import (
     DetectionRequest,
     DetectionResult,
     ScreenRule,
     bottom,
     detect,
 )
-from coban.core.model import AgentKind, AgentState
-from coban.core.schemas import CONTRACTS, render
+from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.schemas import CONTRACTS, render
 
 if TYPE_CHECKING:
     from zoneinfo import ZoneInfo
@@ -53,7 +53,7 @@ RULES = [LIMIT, GUESS_IDLE]
 def test_the_first_matching_rule_wins_and_reports_its_evidence() -> None:
     result = detect(request("working...\nLIMIT\n> \n"), RULES)
     assert result == DetectionResult(
-        state=AgentState.RATE_LIMITED, evidence="coban:limit", resets_at=NOW + timedelta(hours=1)
+        state=AgentState.RATE_LIMITED, evidence="baton:limit", resets_at=NOW + timedelta(hours=1)
     )
 
 

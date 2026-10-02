@@ -1,0 +1,37 @@
+# Example baton configuration. Copy to ./baton.toml or point BATON_CONFIG at it.
+# Every key can be overridden by an environment variable:
+#   BATON_<SECTION>__<KEY>, e.g. BATON_LOGGING__LEVEL=debug
+# Secrets (e.g. BATON_TELEGRAM__BOT_TOKEN) belong in .env, never in this file.
+
+[herdr]
+# Leave both keys unset to find the socket the way herdr does:
+#   HERDR_SOCKET_PATH (set by herdr in every pane it starts), then
+#   HERDR_SESSION -> <config_dir>/sessions/<name>/herdr.sock, then
+#   <config_dir>/herdr.sock, where <config_dir> is $XDG_CONFIG_HOME/herdr or ~/.config/herdr.
+# An explicit socket_path overrides all of that; session overrides HERDR_SESSION.
+# socket_path = "~/.config/herdr/herdr.sock"
+# session = "work"
+
+[database]
+path = "~/.local/share/baton/baton.db"
+
+[logging]
+# debug | info | warning | error | critical
+level = "info"
+
+[scheduler]
+# Agents in order of preference; a task moves on when one hits its usage limit.
+agents = ["claude", "codex"]
+# Used when an agent hits a limit without printing when it resets.
+limit_cooldown_minutes = 60
+# Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
+timezone = "UTC"
+
+[telegram]
+# Numeric id of the one private chat baton sends to. The bot token goes in .env:
+# BATON_TELEGRAM__BOT_TOKEN=...
+# chat_id = 123456789
+# Your own Telegram user id. Only you can then approve, deny, answer and ask /status,
+# and only in that chat. Without it the bot only sends notices.
+# owner_id = 123456789
+

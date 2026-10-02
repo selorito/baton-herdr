@@ -8,8 +8,8 @@ from datetime import UTC, datetime, timedelta
 from hypothesis import given
 from hypothesis import strategies as st
 
-from coban.core.commands import cancel_task, complete_task, fail_task, start_attempt
-from coban.core.events import (
+from baton_herdr.core.commands import cancel_task, complete_task, fail_task, start_attempt
+from baton_herdr.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -19,8 +19,8 @@ from coban.core.events import (
     StoredEvent,
     TaskCreated,
 )
-from coban.core.fakes import InMemoryEventStore
-from coban.core.model import (
+from baton_herdr.core.fakes import InMemoryEventStore
+from baton_herdr.core.model import (
     AgentKind,
     AgentState,
     AttemptId,
@@ -31,7 +31,7 @@ from coban.core.model import (
     TaskId,
     TaskStatus,
 )
-from coban.core.projection import Board, TaskView, apply, project
+from baton_herdr.core.projection import Board, TaskView, apply, project
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 

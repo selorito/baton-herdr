@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from coban.core.clock_text import (
+from baton_herdr.core.clock_text import (
     next_clock_time,
     parse_clock,
     parse_duration,

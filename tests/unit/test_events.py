@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from coban.core.events import (
+from baton_herdr.core.events import (
     EVENT_ADAPTER,
     AgentStateObserved,
     AttemptInterrupted,
@@ -15,7 +15,7 @@ from coban.core.events import (
     StoredEvent,
     TaskCreated,
 )
-from coban.core.model import AgentState, AttemptId, InterruptReason, ObservationSource, TaskId
+from baton_herdr.core.model import AgentState, AttemptId, InterruptReason, ObservationSource, TaskId
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 TASK = TaskId("t1")

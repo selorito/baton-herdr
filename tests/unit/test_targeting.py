@@ -5,12 +5,12 @@ from uuid import UUID
 
 import pytest
 
-from coban.core.events import AttemptLocated
-from coban.core.fakes import FakePaneHost
-from coban.core.model import AgentKind, AgentState, AttemptId, TaskId
-from coban.core.panes import PaneObservation
-from coban.core.projection import AttemptView
-from coban.core.targeting import TargetCheck, check_target, resolve_target
+from baton_herdr.core.events import AttemptLocated
+from baton_herdr.core.fakes import FakePaneHost
+from baton_herdr.core.model import AgentKind, AgentState, AttemptId, TaskId
+from baton_herdr.core.panes import PaneObservation
+from baton_herdr.core.projection import AttemptView
+from baton_herdr.core.targeting import TargetCheck, check_target, resolve_target
 
 NOW = datetime(2026, 9, 30, tzinfo=UTC)
 T1 = TaskId("t1")

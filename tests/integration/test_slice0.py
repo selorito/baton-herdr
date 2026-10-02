@@ -1,6 +1,6 @@
 """Roadmap slice 0, end to end with fakes.
 
-A simulated Claude hits its usage limit in the middle of a task; coban notices,
+A simulated Claude hits its usage limit in the middle of a task; baton notices,
 hands the task to a simulated Codex, which finishes; the operator is notified.
 See tests/support/simulated_agents.py for how the agents are simulated.
 """
@@ -12,10 +12,10 @@ from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from coban.adapters import ADAPTERS
-from coban.budget.availability import fold_availability
-from coban.core.contract import END_CONTRACT
-from coban.core.events import (
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.budget.availability import fold_availability
+from baton_herdr.core.contract import END_CONTRACT
+from baton_herdr.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -25,8 +25,8 @@ from coban.core.events import (
     TaskCompleted,
     TaskCreated,
 )
-from coban.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
-from coban.core.model import (
+from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
+from baton_herdr.core.model import (
     AgentKind,
     AgentState,
     AttemptOutcome,
@@ -34,9 +34,9 @@ from coban.core.model import (
     TaskId,
     TaskStatus,
 )
-from coban.core.notify import NoticeKind
-from coban.core.projection import project
-from coban.scheduler.runner import CONTINUE_NOTE, HANDOFF_NOTE, RunnerSettings, TaskRunner
+from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.projection import project
+from baton_herdr.scheduler.runner import CONTINUE_NOTE, HANDOFF_NOTE, RunnerSettings, TaskRunner
 
 from simulated_agents import SimulatedAgents
 
@@ -46,7 +46,7 @@ INSTRUCTIONS = "Add a power(a, b) function to calc.py with a test."
 
 
 def sent(body: str) -> str:
-    """A prompt as coban sends it: the body, then the end-of-turn contract."""
+    """A prompt as baton sends it: the body, then the end-of-turn contract."""
     return f"{body} {END_CONTRACT}"
 
 
@@ -127,8 +127,8 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     assert sessions == ["claude-session", "codex-session"]
 
     observed = [(e.state, e.evidence) for e in events if isinstance(e, AgentStateObserved)]
-    assert (AgentState.RATE_LIMITED, "coban:claude_usage_limit") in observed
-    assert (AgentState.IDLE, "coban:codex_idle_prompt") in observed
+    assert (AgentState.RATE_LIMITED, "baton:claude_usage_limit") in observed
+    assert (AgentState.IDLE, "baton:codex_idle_prompt") in observed
 
     assert host.prompts == [
         (AgentKind.CLAUDE, sent(INSTRUCTIONS)),
@@ -287,7 +287,7 @@ def claude_runner(
 
 
 async def stop_after_prompt(store: InMemoryEventStore, runner: TaskRunner) -> None:
-    """Run until the prompt is recorded, then stop the runner as a dying cobanD would."""
+    """Run until the prompt is recorded, then stop the runner as a dying batond would."""
     run = asyncio.create_task(runner.run(TASK))
     while not any(isinstance(s.event, AttemptPrompted) for s in await store.read()):
         await asyncio.sleep(0.01)
@@ -352,7 +352,7 @@ async def test_a_turn_that_ends_with_a_question_waits_for_a_person() -> None:
     host = SimulatedAgents(
         FixedClock(NOW),
         scripts={AgentKind.CLAUDE: "claude-finish.toml"},
-        end_mark="⏺ Should power(0, 0) return 1 or raise?\n  [[COBAN:END status=question]]",
+        end_mark="⏺ Should power(0, 0) return 1 or raise?\n  [[BATON:END status=question]]",
     )
     runner = claude_runner(store, host, notifier)
 
@@ -365,7 +365,7 @@ async def test_a_turn_that_ends_with_a_question_waits_for_a_person() -> None:
     assert notifier.kinds.count(NoticeKind.NEEDS_HUMAN) == 1
 
     # Answered at the terminal; the agent finishes and says so.
-    host.end_mark = "⏺ It returns 1 now.\n  [[COBAN:END status=done]]"
+    host.end_mark = "⏺ It returns 1 now.\n  [[BATON:END status=done]]"
     host.reshow()
     assert await runner.run(TASK) is TaskStatus.COMPLETED
     assert len(host.prompts) == 1

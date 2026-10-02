@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-from coban.core.events import (
+from baton_herdr.core.events import (
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -19,7 +19,7 @@ from coban.core.events import (
     TaskCreated,
     TaskFailed,
 )
-from coban.core.model import (
+from baton_herdr.core.model import (
     AgentKind,
     AgentState,
     AttemptId,
@@ -30,7 +30,7 @@ from coban.core.model import (
     TaskId,
     TaskStatus,
 )
-from coban.core.projection import Board, InvalidEventError, apply, project
+from baton_herdr.core.projection import Board, InvalidEventError, apply, project
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 T1 = TaskId("t1")

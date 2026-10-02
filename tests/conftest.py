@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from coban.core.config import HerdrSettings, resolve_herdr_socket_path
-from coban.core.panes import PaneHostUnavailableError
-from coban.herdr.host import HerdrPaneHost
-from coban.herdr.transport import HerdrSocket
+from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
+from baton_herdr.core.panes import PaneHostUnavailableError
+from baton_herdr.herdr.host import HerdrPaneHost
+from baton_herdr.herdr.transport import HerdrSocket
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -21,9 +21,9 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep the developer's own COBAN_* variables and .env out of every test."""
+    """Keep the developer's own BATON_* variables and .env out of every test."""
     for key in list(os.environ):
-        if key.startswith("COBAN_"):
+        if key.startswith("BATON_"):
             monkeypatch.delenv(key)
     monkeypatch.chdir(tmp_path)
 
@@ -54,7 +54,7 @@ async def isolated_host() -> AsyncIterator[HerdrPaneHost]:
     binary = shutil.which("herdr")
     if binary is None:
         pytest.skip("herdr is not installed")
-    session = f"coban-smoke-{os.getpid()}"
+    session = f"baton-smoke-{os.getpid()}"
     env = {
         key: value
         for key, value in os.environ.items()

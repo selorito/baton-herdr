@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from coban.adapters import ADAPTERS
-from coban.adapters.claude import ClaudeAdapter
-from coban.adapters.codex import CodexAdapter
-from coban.adapters.opencode import OpenCodeAdapter
-from coban.core.detection import DetectionRequest, DetectionResult
-from coban.core.model import AgentKind, AgentState
-from coban.herdr.state import derive_state
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.adapters.claude import ClaudeAdapter
+from baton_herdr.adapters.codex import CodexAdapter
+from baton_herdr.adapters.opencode import OpenCodeAdapter
+from baton_herdr.core.detection import DetectionRequest, DetectionResult
+from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.herdr.state import derive_state
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 NOW = datetime(2026, 10, 1, 11, 0, tzinfo=UTC)  # Thursday, 14:00 in Istanbul
@@ -148,7 +148,7 @@ def test_claude_usage_limits(line: str, resets_at: datetime | None) -> None:
     result = claude(screen(line, "❯"), host=AgentState.IDLE)
     assert (result.state, result.evidence, result.resets_at) == (
         AgentState.RATE_LIMITED,
-        "coban:claude_usage_limit",
+        "baton:claude_usage_limit",
         resets_at,
     )
 
@@ -162,7 +162,7 @@ def test_claude_context_limit() -> None:
     result = claude(screen("Context limit reached · /compact or /clear to continue"))
     assert (result.state, result.evidence) == (
         AgentState.CONTEXT_FULL,
-        "coban:claude_context_limit",
+        "baton:claude_context_limit",
     )
 
 
@@ -185,7 +185,7 @@ def test_claude_context_limit() -> None:
     ],
 )
 def test_codex_usage_limits(text: str, resets_at: datetime | None) -> None:
-    result = codex(screen(text, "› Ask Codex to do anything", "  gpt · ~/dev/coban-sandbox"))
+    result = codex(screen(text, "› Ask Codex to do anything", "  gpt · ~/dev/baton-sandbox"))
     assert (result.state, result.resets_at) == (AgentState.RATE_LIMITED, resets_at)
 
 
@@ -214,8 +214,8 @@ def test_codex_work_is_recognised_from_the_footer_spinner() -> None:
         "• Working (2s • esc to interrupt)", "› Ask Codex to do anything", "  gpt · ~/dev · ⠏"
     )
     result = codex(working)
-    assert (result.state, result.evidence) == (AgentState.WORKING, "coban:codex_working_footer")
-    idle = screen("› Ask Codex to do anything", "  gpt · ~/dev/coban-sandbox")
+    assert (result.state, result.evidence) == (AgentState.WORKING, "baton:codex_working_footer")
+    idle = screen("› Ask Codex to do anything", "  gpt · ~/dev/baton-sandbox")
     assert codex(idle).state is AgentState.IDLE
 
 
@@ -260,7 +260,7 @@ def test_no_rule_applies_when_the_host_sees_no_agent() -> None:
 
 def test_only_the_codex_update_prompt_is_answered_automatically() -> None:
     answers = {
-        (kind, rule): adapter.startup_answer(f"coban:{rule}")
+        (kind, rule): adapter.startup_answer(f"baton:{rule}")
         for kind, adapter in ADAPTERS.items()
         for rule in (
             "codex_update_prompt",
@@ -303,10 +303,10 @@ def _first(kind: str) -> str:
     ("agent", "evidence", "approve", "deny"),
     [
         (AgentKind.CLAUDE, "herdr:rule:bash_permission_prompt", ("Enter",), ("Escape",)),
-        (AgentKind.CODEX, "coban:codex_edit_or_command_approval", ("y",), ("Escape",)),
+        (AgentKind.CODEX, "baton:codex_edit_or_command_approval", ("y",), ("Escape",)),
         # Never remotely: folder trust, hook review, unknown prompts, unverified agents.
-        (AgentKind.CODEX, "coban:codex_trust_folder", None, None),
-        (AgentKind.CODEX, "coban:codex_hooks_review", None, None),
+        (AgentKind.CODEX, "baton:codex_trust_folder", None, None),
+        (AgentKind.CODEX, "baton:codex_hooks_review", None, None),
         (AgentKind.CLAUDE, "herdr:rule:live_blocked_form", None, None),
         (AgentKind.OPENCODE, "herdr:rule:permission_prompt", None, None),
     ],

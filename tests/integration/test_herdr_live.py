@@ -15,13 +15,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from coban.core.model import AgentState
-from coban.core.panes import PaneNotFoundError
+from baton_herdr.core.model import AgentState
+from baton_herdr.core.panes import PaneNotFoundError
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from coban.herdr.host import HerdrPaneHost
+    from baton_herdr.herdr.host import HerdrPaneHost
 
 pytestmark = pytest.mark.live
 
@@ -30,16 +30,16 @@ async def test_drive_a_shell_pane_through_a_real_herdr(
     isolated_host: HerdrPaneHost, tmp_path: Path
 ) -> None:
     host = isolated_host
-    pane_id = await host.open_pane(cwd=str(tmp_path), label="coban live test")
+    pane_id = await host.open_pane(cwd=str(tmp_path), label="baton live test")
 
     observation = await host.observe(pane_id)
     assert (observation.agent, observation.state) == (None, AgentState.UNKNOWN)
     assert observation.cwd == str(tmp_path)
 
-    await host.send_text(pane_id, "echo coban-$((20 + 22))")
+    await host.send_text(pane_id, "echo baton-$((20 + 22))")
     await host.send_keys(pane_id, ["Enter"])
     for _ in range(50):
-        if "coban-42" in await host.read_screen(pane_id, lines=20):
+        if "baton-42" in await host.read_screen(pane_id, lines=20):
             break
         await asyncio.sleep(0.1)
     else:

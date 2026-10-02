@@ -1,4 +1,4 @@
-"""cobanD wiring and the CLI, on a real SQLite store with simulated agents."""
+"""batond wiring and the CLI, on a real SQLite store with simulated agents."""
 
 from __future__ import annotations
 
@@ -9,28 +9,28 @@ from typing import TYPE_CHECKING
 import pytest
 from typer.testing import CliRunner
 
-from coban.cli import app
-from coban.core.config import CobanSettings, DatabaseSettings, SchedulerSettings
-from coban.core.fakes import FixedClock, RecordingNotifier
-from coban.core.model import AgentKind, TaskId, TaskStatus
-from coban.core.notify import NoticeKind
-from coban.core.projection import project
-from coban.daemon import add_task, open_runtime, run_pending, runner_settings, serve
-from coban.ledger import open_event_store
+from baton_herdr.cli import app
+from baton_herdr.core.config import BatonSettings, DatabaseSettings, SchedulerSettings
+from baton_herdr.core.fakes import FixedClock, RecordingNotifier
+from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
+from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.projection import project
+from baton_herdr.daemon import add_task, open_runtime, run_pending, runner_settings, serve
+from baton_herdr.ledger import open_event_store
 
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from coban.scheduler.queue import Signature
+    from baton_herdr.scheduler.queue import Signature
 
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 cli = CliRunner()
 
 
-def settings_for(db: Path, **scheduler: object) -> CobanSettings:
-    return CobanSettings(
+def settings_for(db: Path, **scheduler: object) -> BatonSettings:
+    return BatonSettings(
         database=DatabaseSettings(path=db),
         scheduler=SchedulerSettings.model_validate(
             {"start_timeout_seconds": 2, "turn_timeout_seconds": 2, "poll_interval_seconds": 0.05}
@@ -40,7 +40,7 @@ def settings_for(db: Path, **scheduler: object) -> CobanSettings:
 
 
 async def test_pending_tasks_run_in_order_and_the_result_is_persisted(tmp_path: Path) -> None:
-    db = tmp_path / "coban.db"
+    db = tmp_path / "baton.db"
     settings = settings_for(db)
     clock = FixedClock(NOW)
     store = await open_event_store(db)
@@ -79,7 +79,7 @@ def test_runner_settings_come_from_the_scheduler_section() -> None:
 
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, str]:
-    return {"COBAN_DATABASE__PATH": str(tmp_path / "cli.db"), "COBAN_LOGGING__LEVEL": "warning"}
+    return {"BATON_DATABASE__PATH": str(tmp_path / "cli.db"), "BATON_LOGGING__LEVEL": "warning"}
 
 
 def test_cli_adds_tasks_and_shows_their_status(tmp_path: Path, env: dict[str, str]) -> None:
@@ -108,14 +108,14 @@ def test_cli_run_without_agents_leaves_tasks_pending(tmp_path: Path, env: dict[s
     cli.invoke(app, ["task", "add", "power", "-i", "x", "-C", str(tmp_path)], env=env)
 
     # No agent configured: nothing is launched and herdr is never contacted.
-    result = cli.invoke(app, ["run"], env=env | {"COBAN_SCHEDULER__AGENTS": "[]"})
+    result = cli.invoke(app, ["run"], env=env | {"BATON_SCHEDULER__AGENTS": "[]"})
 
     assert result.exit_code == 0, result.output
     assert result.stdout.split()[1] == "pending"
 
 
 async def test_the_daemon_waits_quietly_and_resumes_after_the_reset(tmp_path: Path) -> None:
-    db = tmp_path / "coban.db"
+    db = tmp_path / "baton.db"
     clock = FixedClock(NOW)
     store = await open_event_store(db)
     limited = await add_task(store, title="one", instructions="do one", workdir="/w", clock=clock)
@@ -154,7 +154,7 @@ async def test_serve_stops_when_asked(tmp_path: Path) -> None:
     clock = FixedClock(NOW)
     stop = asyncio.Event()
     async with open_runtime(
-        settings_for(tmp_path / "coban.db"),
+        settings_for(tmp_path / "baton.db"),
         host=SimulatedAgents(clock),
         notifier=RecordingNotifier(),
         clock=clock,
@@ -169,7 +169,7 @@ async def test_an_operator_action_wakes_the_loop_before_its_idle_time(tmp_path: 
     clock = FixedClock(NOW)
     stop = asyncio.Event()
     async with open_runtime(
-        settings_for(tmp_path / "coban.db"),
+        settings_for(tmp_path / "baton.db"),
         host=SimulatedAgents(clock),
         notifier=RecordingNotifier(),
         clock=clock,

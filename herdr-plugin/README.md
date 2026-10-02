@@ -1,3 +1,3 @@
 # herdr-plugin
 
-Placeholder for the herdr plugin that forwards pane and agent events to cobanD. Not started yet.
+Placeholder for the herdr plugin that forwards pane and agent events to batond. Not started yet.

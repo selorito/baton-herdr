@@ -27,8 +27,8 @@ MASKER = Masker(home="/home/alice", user="alice", host="alice-laptop")
         ('"api_key": "hunter2hunter2"', '"api_key": "<redacted>"'),
         ("GITHUB_TOKEN=abc123def456ghi", "GITHUB_TOKEN=<redacted>"),
         ("mail bob.smith@example.org now", "mail <email> now"),
-        ("cd /home/alice/dev/coban-sandbox", "cd ~/dev/coban-sandbox"),
-        ("alice@alice-laptop:~/dev/coban-sandbox$", "<user>@<host>:~/dev/coban-sandbox$"),
+        ("cd /home/alice/dev/baton-sandbox", "cd ~/dev/baton-sandbox"),
+        ("alice@alice-laptop:~/dev/baton-sandbox$", "<user>@<host>:~/dev/baton-sandbox$"),
         ("see /home/bob/secret-project", "see /home/<user>/secret-project"),
         ("dir -home-alice-Desktop-work", "dir -home-<user>-Desktop-work"),
     ],
@@ -55,9 +55,9 @@ def test_masker_leaves_ordinary_text_alone(text: str) -> None:
 
 
 def test_mask_json_keeps_json_valid() -> None:
-    value = {"cwd": "/home/alice/dev/coban-sandbox", "token": "abcdefghijk", "input_tokens": 5}
+    value = {"cwd": "/home/alice/dev/baton-sandbox", "token": "abcdefghijk", "input_tokens": 5}
     masked = json.loads(MASKER.mask_json(value))
-    assert masked == {"cwd": "~/dev/coban-sandbox", "token": "<redacted>", "input_tokens": 5}
+    assert masked == {"cwd": "~/dev/baton-sandbox", "token": "<redacted>", "input_tokens": 5}
 
 
 def test_sanitizer_keeps_structure_and_usage_but_no_content() -> None:
@@ -111,7 +111,7 @@ def test_outside_sandbox(pane: dict[str, str | None], problems: list[str]) -> No
 
 
 def test_audit_flags_leaks_and_accepts_masked_sandbox_text() -> None:
-    clean = "cwd ~/dev/coban-sandbox\nsource ~/.local/state/herdr/x.toml\n<user>@<host>"
+    clean = "cwd ~/dev/baton-sandbox\nsource ~/.local/state/herdr/x.toml\n<user>@<host>"
     assert audit_text(Path("ok.txt"), clean, MASKER) == []
 
     leaky = "\n".join(
@@ -141,7 +141,7 @@ def test_record_events_writes_masked_events_and_raises_on_events_lost(
     lines = [
         '{"id":"x","result":{"type":"subscription_started"}}',
         '{"event":"pane.agent_status_changed","data":{"pane_id":"w1:p1",'
-        '"agent_status":"working","title":"alice@alice-laptop: ~/dev/coban-sandbox"}}',
+        '"agent_status":"working","title":"alice@alice-laptop: ~/dev/baton-sandbox"}}',
         '{"id":"x","error":{"code":"events_lost","message":"lagged"}}',
     ]
     sink = io.StringIO()
@@ -150,7 +150,7 @@ def test_record_events_writes_masked_events_and_raises_on_events_lost(
 
     written = [json.loads(line) for line in sink.getvalue().splitlines()]
     assert len(written) == 1
-    assert written[0]["message"]["data"]["title"] == "<user>@<host>: ~/dev/coban-sandbox"
+    assert written[0]["message"]["data"]["title"] == "<user>@<host>: ~/dev/baton-sandbox"
     # Each recorded event is echoed so the operator can see the recording is alive.
     assert "   1 pane.agent_status_changed -> working" in capsys.readouterr().err
 
@@ -279,7 +279,22 @@ def test_snap_stops_with_a_clear_message_when_the_pane_is_missing() -> None:
 
 def test_names_right_after_a_terminal_escape_are_masked_and_audited() -> None:
     # A coloured shell prompt in screen.ansi: the escape ends in "m", a letter.
-    prompt = "\x1b[1m\x1b[38;5;2malice@alice-laptop:~/dev/coban-sandbox$ "
-    assert MASKER.mask(prompt) == "\x1b[1m\x1b[38;5;2m<user>@<host>:~/dev/coban-sandbox$ "
+    prompt = "\x1b[1m\x1b[38;5;2malice@alice-laptop:~/dev/baton-sandbox$ "
+    assert MASKER.mask(prompt) == "\x1b[1m\x1b[38;5;2m<user>@<host>:~/dev/baton-sandbox$ "
     findings = audit_text(Path("screen.ansi"), prompt, MASKER)
     assert {finding.kind for finding in findings} >= {"username", "hostname"}
+
+
+@pytest.mark.parametrize(
+    ("line", "flagged"),
+    [
+        ("cd ~/dev/baton-sandbox/src", False),
+        ("user@<host>:~/dev/old-sandbox$ ", False),  # a capture from before a rename
+        ('"cwd": "~/dev/baton-sandbox\\n"', False),
+        ("cat ~/dev/baton-sandboxes/x", True),
+        ("open ~/dev/myproject/app.py", True),
+    ],
+)
+def test_any_sandbox_named_by_the_convention_is_allowed(line: str, *, flagged: bool) -> None:
+    findings = audit_text(Path("screen.txt"), line, MASKER)
+    assert any(f.kind == "path_outside_sandbox" for f in findings) is flagged

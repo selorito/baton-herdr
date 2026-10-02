@@ -1,7 +1,7 @@
 {
   "$defs": {
     "AgentState": {
-      "description": "What an agent is doing, as coban understands it (ADR 0004).",
+      "description": "What an agent is doing, as baton understands it (ADR 0004).",
       "enum": [
         "working",
         "idle",

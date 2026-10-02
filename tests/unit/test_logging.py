@@ -5,7 +5,7 @@ import json
 import sys
 from typing import TYPE_CHECKING
 
-from coban.core.logging import configure_logging, get_logger, log_context
+from baton_herdr.core.logging import configure_logging, get_logger, log_context
 
 if TYPE_CHECKING:
     import pytest

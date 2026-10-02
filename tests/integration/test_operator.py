@@ -7,15 +7,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from coban.adapters import ADAPTERS
-from coban.core.events import OperatorActed, TaskCreated
-from coban.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
-from coban.core.model import AgentKind, OperatorAction, TaskId, TaskStatus
-from coban.core.notify import NoticeKind
-from coban.scheduler.operator import ActionRefusedError, act
-from coban.scheduler.runner import RunnerSettings, TaskRunner
-from coban.telegram.bot import HELP, BotSettings, OperatorBot
-from coban.telegram.notifier import button_data, format_notice
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.core.events import OperatorActed, TaskCreated
+from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
+from baton_herdr.core.model import AgentKind, OperatorAction, TaskId, TaskStatus
+from baton_herdr.core.notify import NoticeKind
+from baton_herdr.scheduler.operator import ActionRefusedError, act
+from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
+from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot
+from baton_herdr.telegram.notifier import button_data, format_notice
 
 from simulated_agents import SimulatedAgents
 
@@ -28,8 +28,8 @@ SETTINGS = RunnerSettings(
     turn_timeout_s=2,
     poll_interval_s=0.05,
 )
-QUESTION = "⏺ Should power(0, 0) return 1 or raise?\n  [[COBAN:END status=question]]"
-DONE = "⏺ Done.\n  [[COBAN:END status=done]]"
+QUESTION = "⏺ Should power(0, 0) return 1 or raise?\n  [[BATON:END status=question]]"
+DONE = "⏺ Done.\n  [[BATON:END status=done]]"
 
 
 async def setup(
@@ -177,7 +177,7 @@ async def test_status_lists_open_tasks_with_their_blocker_and_the_agents() -> No
     assert await bot.command("/help") == HELP
     assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
 
-    status = await bot.command("/status@coban_bot")
+    status = await bot.command("/status@baton_bot")
     first, *_ = status.splitlines()
     assert first.startswith(f"{TASK}  needs_human  claude  power function  (#")
     assert first.endswith("blocked_question)")

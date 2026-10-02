@@ -3,10 +3,10 @@
 # requires-python = ">=3.12"
 # dependencies = []
 # ///
-"""Record coding-agent screens and herdr events as coban fixtures.
+"""Record coding-agent screens and herdr events as baton fixtures.
 
 Standalone on purpose: stdlib plus the ``herdr`` CLI and socket only. It is not
-part of the ``coban`` package.
+part of the ``baton`` package.
 
 Subcommands (``snap`` is the default when no subcommand is given)::
 
@@ -44,8 +44,12 @@ if TYPE_CHECKING:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = REPO_ROOT / "fixtures"
-DEFAULT_SANDBOX = Path("~/dev/coban-sandbox")
-SANDBOX_TILDE = "~/dev/coban-sandbox"
+DEFAULT_SANDBOX = Path("~/dev/baton-sandbox")
+# Sandboxes are directories named "<name>-sandbox" directly under ~/dev. The pattern,
+# not one name, is allowed: captures recorded before the project was renamed
+# (ADR 0010) keep the sandbox name they were made in.
+_SANDBOX_DIR = r"dev/[a-z0-9]+-sandbox"
+_SANDBOX_TILDE = re.compile(rf"~/{_SANDBOX_DIR}(?![A-Za-z0-9_.-])")
 HERDR_BIN = os.environ.get("HERDR_BIN", "herdr")
 COMMAND_TIMEOUT_S = 30
 
@@ -401,7 +405,7 @@ def explain_pane(herdr: Herdr, pane_id: str) -> tuple[dict[str, Any], str | None
 
 
 def resolve_socket_path(env: dict[str, str], home: Path, session: str | None) -> Path:
-    """herdr's lookup order (see coban.core.config.resolve_herdr_socket_path)."""
+    """herdr's lookup order (see baton_herdr.core.config.resolve_herdr_socket_path)."""
     if not session and (explicit := env.get("HERDR_SOCKET_PATH")):
         return Path(explicit)
     xdg = env.get("XDG_CONFIG_HOME")
@@ -414,7 +418,7 @@ def resolve_socket_path(env: dict[str, str], home: Path, session: str | None) ->
 
 def subscribe_request(pane_id: str) -> str:
     request = {
-        "id": "coban-capture-watch",
+        "id": "baton-capture-watch",
         "method": "events.subscribe",
         "params": {"subscriptions": [{"type": "pane.agent_status_changed", "pane_id": pane_id}]},
     }
@@ -488,7 +492,7 @@ def herdr_ref(args: argparse.Namespace, herdr: Herdr, masker: Masker) -> Path:
         masker.mask_json(manifests), encoding="utf-8"
     )
 
-    # Copy the active detection rules for the agents coban supports.
+    # Copy the active detection rules for the agents baton supports.
     detection_dir = out / "agent-detection"
     detection_dir.mkdir(exist_ok=True)
     wanted = {a.value for a in Agent}
@@ -615,14 +619,13 @@ def usage_sample(args: argparse.Namespace, _herdr: Herdr, masker: Masker) -> Pat
 # --------------------------------------------------------------------------- audit
 
 _ALLOWED_TILDE_PREFIXES = (
-    SANDBOX_TILDE,
     "~/.config/herdr",
     "~/.local/state/herdr",
 )
 _TILDE_PATH = re.compile(r"(?<![\w/])~/[^\s\"'`<>|:,;)\]}]*")
 _ABSOLUTE_HOME = re.compile(r"(?:/home/|/Users/|[A-Za-z]:\\Users\\)(?!<user>)[^/\\\s\"'<>]+")
 # Claude encodes project paths as directory names, e.g. -home-<user>-dev-foo.
-_ENCODED_PROJECT = re.compile(r"-home-<user>-(?!dev-coban-sandbox)[A-Za-z0-9._-]+")
+_ENCODED_PROJECT = re.compile(r"-home-<user>-(?!dev-[a-z0-9]+-sandbox\b)[A-Za-z0-9._-]+")
 _SKIP_AUDIT = frozenset({".gitkeep"})
 
 
@@ -658,7 +661,9 @@ def audit_text(path: Path, text: str, masker: Masker) -> list[Finding]:
         )
         for match in _TILDE_PATH.finditer(line):
             candidate = match.group(0)
-            if not candidate.startswith(_ALLOWED_TILDE_PREFIXES):
+            if not candidate.startswith(_ALLOWED_TILDE_PREFIXES) and not _SANDBOX_TILDE.match(
+                candidate
+            ):
                 findings.append(Finding(path, number, "path_outside_sandbox", candidate[:80]))
     return findings
 

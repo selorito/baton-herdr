@@ -1,8 +1,8 @@
 # Security
 
-coban types into terminals that run coding agents with access to your code and shell, and it
+baton types into terminals that run coding agents with access to your code and shell, and it
 can be driven from Telegram. Please report vulnerabilities privately, through
-[GitHub's private vulnerability reporting](https://github.com/selorito/coban/security/advisories/new),
+[GitHub's private vulnerability reporting](https://github.com/selorito/baton-herdr/security/advisories/new),
 not in a public issue.
 
 Especially relevant:

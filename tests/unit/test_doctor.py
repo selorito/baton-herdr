@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from coban.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
+from baton_herdr.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from coban.core.config import HerdrSettings, TelegramSettings
+    from baton_herdr.core.config import HerdrSettings, TelegramSettings
 
 STATUS = """\
 claude: current (v10) (/home/u/.claude/hooks/herdr-agent-state.sh)
@@ -36,7 +36,7 @@ def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude"
         return "/run/herdr.sock"
 
     async def bot_name(_: TelegramSettings) -> str:
-        return "coban_bot"
+        return "baton_bot"
 
     async def count(_: Path) -> int:
         return 3
@@ -61,16 +61,16 @@ def by_name(checks: Sequence[Check]) -> dict[str, Check]:
 async def test_a_healthy_setup_with_one_outdated_integration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = tmp_path / "coban.toml"
+    config = tmp_path / "baton.toml"
     config.write_text(
         '[scheduler]\nagents = ["claude", "codex"]\ntimezone = "Europe/Istanbul"\n'
         "[telegram]\nchat_id = 5\nowner_id = 7\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("COBAN_CONFIG", str(config))
-    monkeypatch.setenv("COBAN_TELEGRAM__BOT_TOKEN", "1:x")
-    (tmp_path / "coban.db").touch()
-    monkeypatch.setenv("COBAN_DATABASE__PATH", str(tmp_path / "coban.db"))
+    monkeypatch.setenv("BATON_CONFIG", str(config))
+    monkeypatch.setenv("BATON_TELEGRAM__BOT_TOKEN", "1:x")
+    (tmp_path / "baton.db").touch()
+    monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
 
     checks = by_name(await diagnose(probes(on_path=("herdr", "claude", "codex"))))
 
@@ -78,16 +78,16 @@ async def test_a_healthy_setup_with_one_outdated_integration(
         "codex integration": Level.FAIL
     }
     assert "herdr integration install codex" in checks["codex integration"].hint
-    assert checks["telegram"].detail == "@coban_bot, actions from user 7"
+    assert checks["telegram"].detail == "@baton_bot, actions from user 7"
     assert "FAIL  codex integration" in render(list(checks.values()))
 
 
 async def test_missing_pieces_are_named_with_a_fix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("COBAN_CONFIG", str(tmp_path / "missing.toml"))
-    monkeypatch.setenv("COBAN_SCHEDULER__AGENTS", '["claude", "codex"]')
-    monkeypatch.setenv("COBAN_DATABASE__PATH", str(tmp_path / "new" / "coban.db"))
+    monkeypatch.setenv("BATON_CONFIG", str(tmp_path / "missing.toml"))
+    monkeypatch.setenv("BATON_SCHEDULER__AGENTS", '["claude", "codex"]')
+    monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "new" / "baton.db"))
 
     checks = by_name(await diagnose(probes(herdr_up=False)))
 
@@ -95,7 +95,7 @@ async def test_missing_pieces_are_named_with_a_fix(
     assert checks["database"].detail.endswith("(created on first use)")
     assert not (tmp_path / "new").exists()
     assert checks["herdr server"].level is Level.FAIL
-    assert "coban service install" in checks["herdr server"].hint
+    assert "baton service install" in checks["herdr server"].hint
     assert checks["codex"].level is Level.FAIL  # not on PATH
     assert checks["timezone"].level is Level.WARN  # UTC on a machine in Istanbul
     assert 'timezone = "Europe/Istanbul"' in checks["timezone"].hint
@@ -105,9 +105,9 @@ async def test_missing_pieces_are_named_with_a_fix(
 async def test_an_invalid_config_stops_the_other_checks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    config = tmp_path / "coban.toml"
+    config = tmp_path / "baton.toml"
     config.write_text("[scheduler]\npoll_interval_seconds = -1\n", encoding="utf-8")
-    monkeypatch.setenv("COBAN_CONFIG", str(config))
+    monkeypatch.setenv("BATON_CONFIG", str(config))
 
     (check,) = await diagnose(probes())
 

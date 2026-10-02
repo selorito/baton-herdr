@@ -4,20 +4,20 @@
 agent = "codex"
 
 [[step]]
-title = "coban-sandbox"
+title = "baton-sandbox"
 wait = "prompt"
 screen = """
 ╭──────────────────────────────────────────╮
 │ >_ OpenAI Codex (fake)                   │
-│ directory: ~/dev/coban-sandbox           │
+│ directory: ~/dev/baton-sandbox           │
 ╰──────────────────────────────────────────╯
 
 › Ask Codex to do anything
-  fake-model · ~/dev/coban-sandbox
+  fake-model · ~/dev/baton-sandbox
 """
 
 [[step]]
-title = "⠏ | coban-sandbox"
+title = "⠏ | baton-sandbox"
 wait = 2
 screen = """
 › {prompt}
@@ -25,11 +25,11 @@ screen = """
 • Working (2s • esc to interrupt)
 
 › Ask Codex to do anything
-  fake-model · ~/dev/coban-sandbox · ⠏
+  fake-model · ~/dev/baton-sandbox · ⠏
 """
 
 [[step]]
-title = "coban-sandbox"
+title = "baton-sandbox"
 wait = "forever"
 screen = """
 › {prompt}
@@ -37,5 +37,5 @@ screen = """
 • Added power(a, b) to calc.py with a test. All tests pass.
 
 › Ask Codex to do anything
-  fake-model · ~/dev/coban-sandbox
+  fake-model · ~/dev/baton-sandbox
 """

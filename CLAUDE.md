@@ -1,4 +1,4 @@
-# coban
+# baton
 
 Orchestrator that runs on top of [herdr](https://github.com/herdrdev/herdr). It keeps coding
 agents (Claude Code, Codex CLI, OpenCode; Gemini CLI in v1.1) working until their tasks are
@@ -9,13 +9,13 @@ what is next, and ADR 0008 for the scope of v1.
 
 ## Architecture
 
-- **cobanD** (`src/coban/`): one Python 3.12 process. Pydantic v2, SQLAlchemy 2 async +
-  aiosqlite, Alembic, structlog; aiogram 3 for the Telegram bot, which runs inside cobanD.
+- **batond** (`src/baton_herdr/`): one Python 3.12 process. Pydantic v2, SQLAlchemy 2 async +
+  aiosqlite, Alembic, structlog; aiogram 3 for the Telegram bot, which runs inside batond.
 - **Detector**: Python, with agent rule sets in `adapters/` (ADR 0007). Its interface is an
   NDJSON contract defined by JSON Schema, so it can be replaced without touching callers.
-  `crates/coban-detect` is a stub kept for a possible Rust implementation; no Rust feature
+  `crates/baton-detect` is a stub kept for a possible Rust implementation; no Rust feature
   work is planned unless the benchmark in `bench/` justifies it.
-- **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `web/` and `coban.api` are empty
+- **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `web/` and `baton_herdr.api` are empty
   placeholders.
 - herdr is used only through its socket API / CLI and its plugin system. herdr is never forked
   (ADR 0003).
@@ -49,16 +49,16 @@ Ownership rules:
 `uv run lint-imports` (part of `just check`) enforces these contracts, configured in
 `pyproject.toml` under `[tool.importlinter]`:
 
-- **core-is-pure**: `coban.core` may not import any other coban package.
+- **core-is-pure**: `baton_herdr.core` may not import any other baton package.
 - **layers**: interfaces → services → infra → core. A higher layer may import a lower one,
-  never the reverse. The contract is `exhaustive`, so a new top-level package under `coban/`
+  never the reverse. The contract is `exhaustive`, so a new top-level package under `baton/`
   fails the check until it is assigned a layer. Within interfaces and within services,
   packages may import each other (`:`). Infra packages are independent of each other (`|`):
   they meet only through protocols in `core`.
-- **adapters-independent**: modules under `coban.adapters` may not import each other. Shared
+- **adapters-independent**: modules under `baton_herdr.adapters` may not import each other. Shared
   adapter code belongs in `core` (as a protocol or pure helper).
 
-- **only-ledger-touches-the-database**: no package except `coban.ledger` may import
+- **only-ledger-touches-the-database**: no package except `baton_herdr.ledger` may import
   `sqlalchemy`, `aiosqlite`, `alembic` or `sqlite3`.
 
 If a contract breaks, fix the dependency direction. Do not loosen a contract without an ADR.
@@ -74,8 +74,8 @@ just check-rs  # Rust half of check
 just fmt       # apply formatting and safe lint fixes
 just test      # test suites only
 just smoke     # live test against a real herdr in a throwaway session (not in check or CI)
-uv run coban version
-cargo run -p coban-detect -- --version
+uv run baton version
+cargo run -p baton-detect -- --version
 ```
 
 ## Working rules
@@ -105,17 +105,17 @@ cargo run -p coban-detect -- --version
   `from __future__ import annotations`. Pydantic models for data crossing a boundary.
 - Tests: pytest, `asyncio_mode = "auto"`, hypothesis for property tests. Layout:
   `tests/unit/`, `tests/property/`, `tests/integration/`. Warnings are errors.
-- Logging: `coban.core.logging.get_logger(__name__)`; JSON lines. Bind `task_id` /
+- Logging: `baton_herdr.core.logging.get_logger(__name__)`; JSON lines. Bind `task_id` /
   `attempt_id` with `log_context(...)` instead of passing them into every call.
 - Secrets: `SecretStr` fields in `core/config.py`, loaded from `.env` or the environment,
-  never from committed files, never logged. `.env` and `coban.toml` are git-ignored.
+  never from committed files, never logged. `.env` and `baton.toml` are git-ignored.
 - Rust: edition 2024, `cargo fmt`, clippy pedantic with `-D warnings`, no `unsafe`, no
   `unwrap`/`expect` outside tests.
 
 ## Layout
 
 ```
-src/coban/        Python package (cobanD + CLI)
+src/baton_herdr/        Python package (batond + CLI)
 crates/           Rust workspace members
 web/              web panel (placeholder)
 herdr-plugin/     herdr plugin (placeholder)

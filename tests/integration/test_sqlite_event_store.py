@@ -11,11 +11,11 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import create_engine
 
-from coban.core.events import TaskCreated
-from coban.core.model import TaskId
-from coban.ledger import open_event_store
-from coban.ledger.migrate import upgrade
-from coban.ledger.schema import metadata
+from baton_herdr.core.events import TaskCreated
+from baton_herdr.core.model import TaskId
+from baton_herdr.ledger import open_event_store
+from baton_herdr.ledger.migrate import upgrade
+from baton_herdr.ledger.schema import metadata
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +30,7 @@ def created(task: str) -> TaskCreated:
 
 
 async def test_events_survive_closing_and_reopening_the_database(tmp_path: Path) -> None:
-    db = tmp_path / "coban.db"
+    db = tmp_path / "baton.db"
     first = await open_event_store(db)
     appended = await first.append([created("t1"), created("t2")])
     await first.close()
@@ -44,7 +44,7 @@ async def test_events_survive_closing_and_reopening_the_database(tmp_path: Path)
 
 
 async def test_the_database_refuses_to_rewrite_history(tmp_path: Path) -> None:
-    db = tmp_path / "coban.db"
+    db = tmp_path / "baton.db"
     store = await open_event_store(db)
     await store.append([created("t1")])
     await store.close()
@@ -59,7 +59,7 @@ async def test_the_database_refuses_to_rewrite_history(tmp_path: Path) -> None:
 
 
 def test_migrations_produce_exactly_the_declared_schema(tmp_path: Path) -> None:
-    db = tmp_path / "coban.db"
+    db = tmp_path / "baton.db"
     upgrade(db)
 
     engine = create_engine(f"sqlite:///{db}")

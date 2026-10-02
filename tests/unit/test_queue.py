@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from coban.budget.availability import Availability
-from coban.core.model import (
+from baton_herdr.budget.availability import Availability
+from baton_herdr.core.model import (
     AgentKind,
     AttemptId,
     AttemptStatus,
@@ -12,8 +12,8 @@ from coban.core.model import (
     TaskId,
     TaskStatus,
 )
-from coban.core.projection import AttemptView, TaskView
-from coban.scheduler.queue import next_wake, select_tasks
+from baton_herdr.core.projection import AttemptView, TaskView
+from baton_herdr.scheduler.queue import next_wake, select_tasks
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
 CLAUDE, CODEX = AgentKind.CLAUDE, AgentKind.CODEX
@@ -38,7 +38,7 @@ def test_open_tasks_run_unless_nothing_changed_since_their_last_run() -> None:
     tasks = [
         task("new"),
         task("waiting", live=AttemptStatus.INTERRUPTED),
-        # Active between cycles: cobanD restarted, or a person was asked; always looked at.
+        # Active between cycles: batond restarted, or a person was asked; always looked at.
         task("busy", live=AttemptStatus.ACTIVE),
         task("done", closed=TaskStatus.COMPLETED),
     ]

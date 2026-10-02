@@ -14,3 +14,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0007](0007-detector-in-python-first.md) | The detector is written in Python first; Rust only if a benchmark justifies it | accepted |
 | [0008](0008-v1-scope.md) | Scope of v1 | accepted |
 | [0009](0009-remote-operator-actions.md) | Remote operator actions: one owner, actions bound to a blocker, no free-form input | accepted |
+| [0010](0010-project-name.md) | Project name: baton-herdr, and its name layers | accepted |

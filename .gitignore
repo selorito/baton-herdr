@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-coban.toml
+baton.toml
 
 # Python
 __pycache__/

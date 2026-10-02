@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-from coban.core.events import (
+from baton_herdr.core.events import (
     AgentStateObserved,
     AttemptPrompted,
     AttemptResumed,
@@ -14,7 +14,7 @@ from coban.core.events import (
     OperatorActed,
     StoredEvent,
 )
-from coban.core.model import (
+from baton_herdr.core.model import (
     AgentKind,
     AgentState,
     AttemptId,
@@ -23,7 +23,7 @@ from coban.core.model import (
     OperatorAction,
     TaskId,
 )
-from coban.scheduler.turn import (
+from baton_herdr.scheduler.turn import (
     MAX_STARTUP_ANSWERS,
     Action,
     TurnState,

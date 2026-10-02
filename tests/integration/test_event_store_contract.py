@@ -9,12 +9,12 @@ from uuid import UUID
 
 import pytest
 
-from coban.core.events import AttemptLocated, AttemptStarted, Event, StoredEvent, TaskCreated
-from coban.core.fakes import FixedClock, InMemoryEventStore
-from coban.core.model import AgentKind, TaskId, new_attempt_id
-from coban.core.ports import Clock, ConcurrencyError, DuplicateEventError, EventStore
-from coban.core.projection import project
-from coban.ledger import open_event_store
+from baton_herdr.core.events import AttemptLocated, AttemptStarted, Event, StoredEvent, TaskCreated
+from baton_herdr.core.fakes import FixedClock, InMemoryEventStore
+from baton_herdr.core.model import AgentKind, TaskId, new_attempt_id
+from baton_herdr.core.ports import Clock, ConcurrencyError, DuplicateEventError, EventStore
+from baton_herdr.core.projection import project
+from baton_herdr.ledger import open_event_store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -36,7 +36,7 @@ async def store(request: pytest.FixtureRequest, tmp_path: Path) -> AsyncIterator
     if request.param == "memory":
         yield InMemoryEventStore()
         return
-    sqlite_store = await open_event_store(tmp_path / "data" / "coban.db")
+    sqlite_store = await open_event_store(tmp_path / "data" / "baton.db")
     yield sqlite_store
     await sqlite_store.close()
 

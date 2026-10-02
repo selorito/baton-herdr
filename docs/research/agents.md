@@ -1,6 +1,6 @@
 # Agent research (H0)
 
-Facts about the four coding agents coban will drive, gathered on **2026-09-24** to design
+Facts about the four coding agents baton will drive, gathered on **2026-09-24** to design
 the M2 adapters, the detector and usage accounting. Every row names its source:
 
 - **verified locally**: observed on this machine (versions below), in real logs or by running
@@ -60,7 +60,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | Context full | Auto-compact is on by default. When it cannot help: `Context limit reached · /compact or /clear to continue` (plus `· auto-compact is off · /config to turn it on` since 2.1.235), `Prompt is too long`. Status line gives `context_window.used_percentage`. | [official docs](https://code.claude.com/docs/en/errors#prompt-is-too-long) |
 | Compaction in the log | `system` record, `subtype: "compact_boundary"`, `compactMetadata{trigger, preTokens, postTokens, durationMs, cumulativeDroppedTokens, …}`; the summary message has `isCompactSummary: true`. Only `trigger: "manual"` was seen; the automatic value is UNVERIFIED. | verified locally |
 | herdr detection (manifest 2026.09.11.1) | working: `osc_title_working` (spinner in title), `live_turn_working` (`esc to interrupt` / activity line), `background_agents_working`, `background_mcp_task_working`, `btw_overlay_working`. blocked: `live_blocked_form`, `dynamic_workflow_prompt`, `mcp_elicitation_prompt`, `bash_permission_prompt`, `generic_permission_prompt`, `legacy_no_prompt_blocker`. idle: `live_prompt_box`, `osc_title_idle`, `osc_progress_idle`. skip: `transcript_viewer`, `model_picker_menu`. | `fixtures/herdr/agent-detection/claude-2026.09.11.1.toml` |
-| Gaps for coban | No rule for session/weekly limit, `Context limit reached`, crash / process exit, the resume picker, or the "resume from summary" dialog. Status is the herdr enum `idle / working / blocked / done / unknown` only. A custom status line hides the `esc to interrupt` hint that `live_turn_working` matches (the spinner-title rule still applies). | manifest; [official docs](https://code.claude.com/docs/en/statusline) |
+| Gaps for baton | No rule for session/weekly limit, `Context limit reached`, crash / process exit, the resume picker, or the "resume from summary" dialog. Status is the herdr enum `idle / working / blocked / done / unknown` only. A custom status line hides the `esc to interrupt` hint that `live_turn_working` matches (the spinner-title rule still applies). | manifest; [official docs](https://code.claude.com/docs/en/statusline) |
 | Terms (automation) | Pro/Max use falls under the Consumer Terms. OAuth sign-in is "designed to support ordinary use of Claude Code and other native Anthropic applications"; third parties may not "collect, store, or intermediate Claude.ai credentials" or route requests through a user's plan on their behalf. An end user signing in to the unmodified binary is allowed. "Advertised usage limits for Pro and Max plans assume ordinary, individual usage." Not legal advice. | [official docs: Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) |
 
 ## Codex CLI
@@ -80,7 +80,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | Limit message | `You've hit your usage limit. Upgrade to Pro (…) or try again in 3 hours 2 minutes.` (0.27.0); `You've hit your usage limit. Upgrade to Pro (…), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Feb 23rd, 2026 9:01 PM.`; business seats: `… send a request to your admin or try again at Apr 12th, 2026 3:31 PM.` The absolute time has no zone (local time assumed: UNVERIFIED). Text for 0.156.1: pending capture. | GitHub issues [#3031](https://github.com/openai/codex/issues/3031), [#12299](https://github.com/openai/codex/issues/12299), [#16917](https://github.com/openai/codex/issues/16917) |
 | Context full | Log shows `compacted` records and `event_msg/context_compacted` (22 each locally); `model_context_window` gives the size. The on-screen text and the auto-compaction threshold are UNVERIFIED. | verified locally |
 | herdr detection (manifest 2026.09.23.1) | blocked: `osc_title_blocked` (`Action Required` in title), `trust_directory`, `startup_update`, `live_strong_blocker`, `weak_blocker`. working: `osc_title_working` (braille spinner), `screen_working_fallback` (timer line). skip: `transcript_viewer`. No idle rule: idle is herdr's fallback (UNVERIFIED how). | `fixtures/herdr/agent-detection/codex-2026.09.23.1.toml` |
-| Gaps for coban | No rule for the usage-limit message, compaction, crash, or the `codex resume` picker. `startup_update` blocks on "Update available!", so an unattended start can stall until answered. | manifest |
+| Gaps for baton | No rule for the usage-limit message, compaction, crash, or the `codex resume` picker. `startup_update` blocks on "Update available!", so an unattended start can stall until answered. | manifest |
 | Terms (automation) | ChatGPT-plan sign-in falls under OpenAI's Terms of Use. A clause prohibiting "automatically or programmatically extract[ing] data or Output" and circumventing rate limits is reported: UNVERIFIED (openai.com and help.openai.com returned 403 to the fetch; seen only in a search summary). Codex CLI itself is Apache-2.0. | [Terms of Use](https://openai.com/policies/row-terms-of-use/) (not fetched); [help article](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan) (not fetched) |
 
 ## Gemini CLI
@@ -91,15 +91,15 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | Launch | `gemini` in the project directory. | [README](https://github.com/google-gemini/gemini-cli) |
 | Resume | `gemini --resume` (latest), `gemini --resume <index>` or `<uuid>`, `/resume` in-session browser, `gemini --list-sessions`, `gemini --delete-session <n>`. | [official docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/session-management.md) (main branch) |
 | herdr's resume command | None. herdr 0.9.1 has **no Gemini CLI integration**, so it neither reports a session id nor restores Gemini panes. | [herdr docs 0.9.1: integrations](https://github.com/herdrdev/herdr/blob/master/docs/versions/0.9.1/website/src/content/docs/integrations.mdx) |
-| Where the session id comes from | Session UUID in the chat file (`sessionId`), and `--list-sessions`. coban has to obtain it itself. | [source v0.61.0](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/services/chatRecordingService.ts) |
+| Where the session id comes from | Session UUID in the chat file (`sessionId`), and `--list-sessions`. baton has to obtain it itself. | [source v0.61.0](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/core/src/services/chatRecordingService.ts) |
 | Log location | `~/.gemini/tmp/<project_hash>/chats/`; JSONL since the `.json` → `.jsonl` migration (0.61.0 writes `.jsonl`). Exact file names: pending local run. | [official docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/session-management.md); source v0.61.0 |
 | Token fields | Per model message `tokens`: `input`, `output`, `cached`, `thoughts`, `tool`, `total` (mapped from the API's `promptTokenCount`, `candidatesTokenCount`, `cachedContentTokenCount`, `thoughtsTokenCount`, `toolUsePromptTokenCount`, `totalTokenCount`). | source v0.61.0 `chatRecordingService.ts` |
 | Aggregation | Sum per message. Whether `cached` is included in `input` is UNVERIFIED. Quotas are counted in **requests** (per minute, per day), not tokens, so token sums do not predict the limit. | [official docs: quotas](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/quota-and-pricing.md) |
 | Limit message | `Usage limit reached for <model>.` / `Access resets at <time>.` / `/stats model for usage details` / `/model to switch models.` The time comes from `Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit', timeZoneName: 'short'})`: a time and a short zone, **no date**. Capacity: `We are currently experiencing high demand for <model>.` After fallback: `Switched to fallback model <model>`. On-screen rendering: pending capture. | [source v0.61.0 `useQuotaAndFallback.ts`](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/packages/cli/src/ui/hooks/useQuotaAndFallback.ts) |
 | Context full | `/compress` replaces history with a summary; automatic compression at `model.compressionThreshold` (default `0.5` of the context). The on-screen signal is UNVERIFIED. | [official docs: commands](https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/commands.md), [configuration](https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md) |
 | herdr detection (manifest 2026.06.10.1) | Only two rules: blocked `apply_or_allow_change`, working `esc_cancel_working` (`esc to cancel` anywhere in the recent screen). No idle rule. | `fixtures/herdr/agent-detection/gemini-2026.06.10.1.toml` |
-| Gaps for coban | Idle, questions, the quota dialog, model fallback, compression and resume are undetected. With no integration, all session and state information must come from coban. This is the weakest-covered agent. | manifest; herdr docs |
-| Terms (automation) | Gemini CLI is Apache-2.0; Google service terms depend on the sign-in method. "Directly accessing the services powering Gemini CLI … using third-party software … (for example, using OpenClaw with Gemini CLI OAuth) is a violation" and may lead to suspension. coban must drive the `gemini` binary and never reuse its OAuth. | [official docs v0.61.0 `tos-privacy.md`](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/docs/resources/tos-privacy.md) |
+| Gaps for baton | Idle, questions, the quota dialog, model fallback, compression and resume are undetected. With no integration, all session and state information must come from baton. This is the weakest-covered agent. | manifest; herdr docs |
+| Terms (automation) | Gemini CLI is Apache-2.0; Google service terms depend on the sign-in method. "Directly accessing the services powering Gemini CLI … using third-party software … (for example, using OpenClaw with Gemini CLI OAuth) is a violation" and may lead to suspension. baton must drive the `gemini` binary and never reuse its OAuth. | [official docs v0.61.0 `tos-privacy.md`](https://github.com/google-gemini/gemini-cli/blob/v0.61.0/docs/resources/tos-privacy.md) |
 
 ## OpenCode
 
@@ -116,17 +116,17 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 | Limit message | Provider-dependent. OpenCode's own retry layer shows `Free limit reached`, `<name> usage limit reached. It will reset in <duration>. …` (OpenCode Go), `Provider is overloaded`, `Too Many Requests`, or the provider's message, and retries on `retry-after` headers. On-screen rendering: pending capture. | [source v1.18.32 `session/retry.ts`](https://github.com/anomalyco/opencode/blob/v1.18.32/packages/opencode/src/session/retry.ts) |
 | Context full | UNVERIFIED (not researched in the docs; pending capture). | — |
 | herdr detection (manifest 2026.06.10.1) | blocked `permission_required`; working `interrupt_hint_working`, `progress_bar_working`. No idle rule: with the plugin installed, the plugin is the lifecycle authority. | `fixtures/herdr/agent-detection/opencode-2026.06.10.1.toml`; herdr docs |
-| Gaps for coban | Limit / retry states, context full, crash and resume are undetected on screen. | manifest |
+| Gaps for baton | Limit / retry states, context full, crash and resume are undetected on screen. | manifest |
 | Terms (automation) | OpenCode is MIT-licensed. Model access follows each provider's terms; for example, Anthropic does not permit third-party apps to "offer Claude.ai login" or route requests through a user's Pro/Max plan. | [license](https://github.com/anomalyco/opencode); [Anthropic legal page](https://code.claude.com/docs/en/legal-and-compliance) |
 
 ## Findings that shape M2
 
-1. **herdr's status enum is too small for coban.** `idle / working / blocked / done / unknown`,
+1. **herdr's status enum is too small for baton.** `idle / working / blocked / done / unknown`,
    and no active manifest has a rule for usage limits, full context, crashes or resume
-   pickers. coban-detect has to add these states on top of herdr's status, not replace it.
+   pickers. baton-detect has to add these states on top of herdr's status, not replace it.
 2. **The active detection rules are a moving remote catalog**, not the rules bundled in the
    herdr binary (Codex's manifest changed the day before this study). Fixtures must record
-   the manifest version (`explain.json` does), and coban should not copy herdr's rules.
+   the manifest version (`explain.json` does), and baton should not copy herdr's rules.
 3. **Structured quota data exists for two agents.** Codex writes `rate_limits` (5 h and 7 d
    windows, `resets_at` in Unix seconds) to every rollout. Claude exposes the same windows only
    to a status line command, which has a side effect on herdr's detection (hides
@@ -145,7 +145,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 7. **Resume can itself block.** Claude's "resume from summary" dialog, Codex's
    `Update available!` screen and directory-trust prompts need adapter answers or human
    escalation.
-8. **Terms.** coban must only drive the unmodified official binaries that the user signed in
+8. **Terms.** baton must only drive the unmodified official binaries that the user signed in
    to, never read or store their credentials, and treat "ordinary, individual usage" (Anthropic)
    as a constraint on how aggressively it resumes work. This deserves an ADR before M2.
 9. **Pane width is not exposed by herdr 0.9.1** (`PaneInfo` has `scroll.viewport_rows` only),
@@ -153,7 +153,7 @@ Node v24 first on `PATH`, so the machine's default Node (v18) stays unchanged.
 
 ## herdr CLI notes
 
-JSON output shapes of the herdr 0.9.1 commands coban uses, verified locally on 2026-09-29
+JSON output shapes of the herdr 0.9.1 commands baton uses, verified locally on 2026-09-29
 against a running server:
 
 | Command | Success (stdout, exit 0) | Failure (stderr, exit 1) |
@@ -168,7 +168,7 @@ A client must accept both success shapes and read the error envelope from stderr
 On Claude Code 2.1.281's first-run theme picker, `agent explain` returned `state: "idle"`
 with `matched_rule: null` and `fallback_reason: "default_known_agent_idle_fallback"`: herdr
 reports idle for a known agent when no rule matches, even though the agent is waiting for a
-choice. coban must not treat herdr's `idle` as "ready for a prompt" without its own check.
+choice. baton must not treat herdr's `idle` as "ready for a prompt" without its own check.
 
 ## Capture findings (2026-09-30)
 
@@ -181,7 +181,7 @@ rows are **verified locally**; the capture directory holding the evidence is nam
 1. **herdr's `idle` is a fallback, not a positive signal.** Whenever a known agent shows a
    screen no rule matches, `agent explain` returns `state: idle`,
    `fallback_reason: default_known_agent_idle_fallback`. This covered every first-run dialog
-   and every resume picker below. coban needs its own "ready for a prompt" check.
+   and every resume picker below. baton needs its own "ready for a prompt" check.
 2. **`done` depends on what the human is looking at.** herdr reports `done` only when a turn
    ends in a tab that is not active; in the active tab of a focused window it goes straight to
    `idle` (herdr `src/app/actions.rs`, `active_tab_suppresses_notifications`). Infer completion
@@ -199,8 +199,8 @@ rows are **verified locally**; the capture directory holding the evidence is nam
    asks on every start. Fixtures must record the CLI version (they do, in `meta.json`), and
    detection rules need to be checked against new versions continuously.
 6. **Permission and question are told apart by herdr for Claude** (`bash_permission_prompt`
-   vs `live_blocked_form`), which lets coban choose between approve/deny buttons and a free-text
-   reply in Telegram. For other agents coban has to classify the blocker itself.
+   vs `live_blocked_form`), which lets baton choose between approve/deny buttons and a free-text
+   reply in Telegram. For other agents baton has to classify the blocker itself.
 7. **Timing a capture by hand does not work.** Use
    `herdr agent wait <pane> --until working|blocked|done` and capture when it returns.
 
@@ -260,37 +260,37 @@ chat log file name and a usage sample.
 **1. Never trust a rule-less `idle`.** herdr's status must be read together with
 `agent explain`'s `matched_rule`:
 
-| herdr `state` | `matched_rule` | coban should treat it as |
+| herdr `state` | `matched_rule` | baton should treat it as |
 |---------------|----------------|--------------------------|
 | `working`, `blocked` | any rule, or none when an integration reports lifecycle (OpenCode plugin) | as reported |
 | `idle` | a rule (`live_prompt_box`, `osc_title_idle`, …) | idle: ready for a prompt |
-| `idle` | `null` with `fallback_reason: default_known_agent_idle_fallback` | **unknown**: classify the screen in coban-detect, or escalate; never send a prompt |
+| `idle` | `null` with `fallback_reason: default_known_agent_idle_fallback` | **unknown**: classify the screen in baton-detect, or escalate; never send a prompt |
 | `done` | any | "a turn ended", then apply the `idle` rows to decide whether it is ready |
 | `unknown`, `agent: null` | — | no agent: check `pane process-info` (crash vs. never started) |
 
 Evidence: every first-run dialog and resume picker in `fixtures/` was reported as `idle`
 by fallback, for Claude (theme picker, resume picker), Codex (folder trust, hook review,
 update prompt, resume picker) and OpenCode (`/sessions`). Codex has no idle rule at all, so
-for Codex every `idle` is a fallback and coban-detect must supply the positive idle signal.
+for Codex every `idle` is a fallback and baton-detect must supply the positive idle signal.
 
 **2. Plain-text questions need a contract.** Codex (and any agent without a question
 dialog) asks in plain text and ends the turn, which herdr reports as `done`
 (`fixtures/codex/blocked_question/`, second capture). Proposed, not yet implemented:
 
-- Every task instruction coban sends ends with a contract such as: "If you need an answer
+- Every task instruction baton sends ends with a contract such as: "If you need an answer
   from me before you can continue, end your message with a final line containing exactly
-  `[[COBAN:QUESTION]]`."
-- coban subscribes to herdr's `pane.output_matched` event for that marker (or checks the
+  `[[BATON:QUESTION]]`."
+- baton subscribes to herdr's `pane.output_matched` event for that marker (or checks the
   detection snapshot when the turn ends) and turns the pane into "waiting for an answer"
   instead of "done".
 - The marker is a convention, not a guarantee: a missing marker must fall back to
   classifying the final message. The `pane.output_matched` subscription shape is in
   `fixtures/herdr/api-schema-0.9.1.json`; its matching behaviour is UNVERIFIED until tried.
-- Extension, implemented in `coban.core.contract` (2026-10-03): replace the single marker with one
+- Extension, implemented in `baton_herdr.core.contract` (2026-10-03): replace the single marker with one
   small end-of-turn block that every task instruction asks for:
 
   ```
-  [[COBAN:END status=question|done|blocked]]
+  [[BATON:END status=question|done|blocked]]
   ```
 
   - `question`: the agent needs an answer; the text above the block is the question.
@@ -303,7 +303,7 @@ dialog) asks in plain text and ends the turn, which herdr reports as `done`
     it never overrides a positive detection such as a permission dialog or a limit message.
   - A missing, malformed or contradictory block means "no extra signal", never an error.
   - `done` from the block is a claim by the agent, not proof: task completion still goes
-    through coban's own checks (and, where configured, a human).
+    through baton's own checks (and, where configured, a human).
   - The block is matched on the detection snapshot at the end of a turn or through
     `pane.output_matched`; only the last block of the last turn counts, so text quoted earlier
     in the conversation cannot trigger it.
@@ -311,27 +311,27 @@ dialog) asks in plain text and ends the turn, which herdr reports as `done`
     text above the block.
 
 
-## First live coban runs (2026-10-03)
+## First live baton runs (2026-10-03)
 
-`coban run` drove each real agent through one small task ("add a one-line docstring to `add`
-in `calc.py`") in `coban-sandbox`, in a dedicated herdr session. Versions as installed then;
+`baton run` drove each real agent through one small task ("add a one-line docstring to `add`
+in `calc.py`") in `baton-sandbox`, in a dedicated herdr session. Versions as installed then;
 Codex ran as `codex -m gpt-5.6-luna -c model_reasoning_effort=low`, OpenCode on the free
 `opencode/big-pickle` model. All three completed the task with exactly the requested change.
 
-| Agent | Duration | What coban saw |
+| Agent | Duration | What baton saw |
 |-------|----------|----------------|
 | Claude Code | 14 s | idle by herdr rule `live_prompt_box` → prompt → working (`osc_title_working`) → idle → done. Session id learned before the prompt. |
 | Codex CLI | 16 s | update prompt → answered automatically (Skip) → prompt → working → idle (`osc_title_idle`, a rule the remote catalog has added since H0). The session id arrived **after** the first prompt, so that prompt went out on the weaker kind-only check of ADR 0006. |
-| OpenCode | 69 s | herdr's idle was a fallback; coban's `opencode_idle_composer` recognised the composer → prompt → working (`progress_bar_working`) → idle reported by the plugin → done. Session id arrived with the first prompt. |
+| OpenCode | 69 s | herdr's idle was a fallback; baton's `opencode_idle_composer` recognised the composer → prompt → working (`progress_bar_working`) → idle reported by the plugin → done. Session id arrived with the first prompt. |
 
 One inconsistency found and fixed: once the pane status said `idle` while `agent explain`
-named the working-title rule. coban now takes the state from `explain` whenever it names a
+named the working-title rule. baton now takes the state from `explain` whenever it names a
 rule, and uses the pane status only when no rule matched (integration-reported state).
 
 ### Crash and resume, live (2026-10-03)
 
-`coban daemon` ran a task on Claude Code in a herdr session started with a clean
-environment. Claude was killed with `kill -9` six seconds into its work. coban recorded the
+`baton daemon` ran a task on Claude Code in a herdr session started with a clean
+environment. Claude was killed with `kill -9` six seconds into its work. baton recorded the
 crash, reopened the same session in a fresh pane with `claude --resume <id>`, sent the
 continuation note, and the task completed 11 seconds later with the full change.
 
@@ -339,38 +339,38 @@ An earlier attempt of the same test failed for an environmental reason worth kno
 herdr server had been started from a shell inside Claude Code and inherited its
 `CLAUDECODE` / `CLAUDE_CODE_*` variables. Claude Code started in those panes wrote no
 transcript, and `claude --resume` answered "No conversation found with session ID" and
-exited. coban now recognises that refusal (`resume_failed`) and restarts a fresh session
+exited. baton now recognises that refusal (`resume_failed`) and restarts a fresh session
 instead of counting it as a crash; the live tests start herdr without those variables.
 
 
-### Re-attach after a cobanD restart, live (2026-10-03)
+### Re-attach after a batond restart, live (2026-10-03)
 
-Two runs with Claude Code, each killing `coban daemon` with `kill -9` right after the
+Two runs with Claude Code, each killing `baton daemon` with `kill -9` right after the
 prompt was recorded (`attempt.prompted`) and starting it again:
 
 - **Restarted while Claude worked** (down about 10 s): the new daemon re-attached to the
   same pane, sent nothing, saw the turn go idle and completed the task. One launch, one
   prompt.
-- **Claude finished while cobanD was down** (down about 45 s): the log had the prompt but no
+- **Claude finished while batond was down** (down about 45 s): the log had the prompt but no
   `working` observation. Re-attach treats a turn whose prompt was sent as under way, so the
   idle agent counted as finished and the task completed. This rests on the prompt having
-  reached the agent; the `[[COBAN:END]]` contract is what will make "done" explicit.
+  reached the agent; the `[[BATON:END]]` contract is what will make "done" explicit.
 
 ### End-of-turn contract, live (2026-10-03)
 
-Every prompt now ends with the `[[COBAN:END status=…]]` request. Task for Claude Code: add
+Every prompt now ends with the `[[BATON:END status=…]]` request. Task for Claude Code: add
 docstrings, but first ask whether they should be English or Turkish.
 
 - **First try, prompt with line breaks: failed.** herdr's `agent.prompt` delivered it as a
   paste, and Claude Code declined to act: "Your message contained only pasted text with
   nothing of your own around it, so I haven't acted on it yet." It asked in plain text,
-  without a mark, and coban completed the task. Prompts are now sent as one line
+  without a mark, and baton completed the task. Prompts are now sent as one line
   (`one_line`); task instructions lose their line breaks.
 - **Second try, one line: passed.** Claude read the file, asked "Should the docstrings be in
-  English or in Turkish?" above `[[COBAN:END status=question]]`. coban recorded
-  `blocked_question` (`coban:end:question`) and sent that question as the only notice.
+  English or in Turkish?" above `[[BATON:END status=question]]`. baton recorded
+  `blocked_question` (`baton:end:question`) and sent that question as the only notice.
   After "English" was typed at the terminal, the next daemon cycle re-attached, saw the
-  agent working, then idle above `[[COBAN:END status=done]]`, and completed the task.
+  agent working, then idle above `[[BATON:END status=done]]`, and completed the task.
 
 A missing mark still counts as "no signal": the first try shows what that costs when the
 agent asks in plain text anyway.
@@ -378,7 +378,7 @@ agent asks in plain text anyway.
 ### Operator actions, live (2026-10-03)
 
 Claude Code 2.1.287 launched with `--permission-mode default`, actions taken with
-`coban approve|deny|answer` (the same `act()` the Telegram bot calls).
+`baton approve|deny|answer` (the same `act()` the Telegram bot calls).
 
 - **Approve.** "Run python3 -m unittest" stopped at the Bash permission prompt
   (`herdr:rule:bash_permission_prompt`). `answer` was refused (does not fit a permission
@@ -387,10 +387,10 @@ Claude Code 2.1.287 launched with `--permission-mode default`, actions taken wit
 - **Read-only commands need no permission.** `ls -la` ran without a prompt, so `deny` was
   refused: nothing was waiting.
 - **Deny.** Esc on the prompt interrupts Claude's turn: "Interrupted · What should Claude do
-  instead?", with no end mark. coban first counted that idle agent as finished. Now a
+  instead?", with no end mark. baton first counted that idle agent as finished. Now a
   denial holds until the operator answers: the attempt becomes `blocked_question`
-  (`coban:denied`), the notice asks what to do instead, and the answer is sent as a
+  (`baton:denied`), the notice asks what to do instead, and the answer is sent as a
   prompt. Live: deny, notice, answer "Do not run anything", Claude replied with
-  `[[COBAN:END status=done]]`, task completed.
+  `[[BATON:END status=done]]`, task completed.
 - The permission notice quotes the prompt: "claude asks for permission: Bash command ·
   Print 6 times 7 with Python · python3 -c 'print(6*7)'".

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from coban.core.model import AgentState, InterruptReason
-from coban.recovery.policy import Plan, Verdict, assess, interrupt_reason, plan_recovery
+from baton_herdr.core.model import AgentState, InterruptReason
+from baton_herdr.recovery.policy import Plan, Verdict, assess, interrupt_reason, plan_recovery
 
 
 @pytest.mark.parametrize(

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from coban.core.config import HerdrSettings, resolve_herdr_socket_path
+from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
 
 HOME = Path("/home/tester")
 DEFAULT_SOCKET = HOME / ".config" / "herdr" / "herdr.sock"

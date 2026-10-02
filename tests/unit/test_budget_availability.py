@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from coban.budget.availability import Availability, fold_availability
-from coban.core.events import AttemptInterrupted, AttemptStarted, Event, StoredEvent
-from coban.core.model import AgentKind, AttemptId, InterruptReason, TaskId
+from baton_herdr.budget.availability import Availability, fold_availability
+from baton_herdr.core.events import AttemptInterrupted, AttemptStarted, Event, StoredEvent
+from baton_herdr.core.model import AgentKind, AttemptId, InterruptReason, TaskId
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 T1 = TaskId("t1")

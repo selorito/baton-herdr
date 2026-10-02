@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from coban.core.model import AgentKind, AgentState
-from coban.core.panes import (
+from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.panes import (
     AgentBlockedError,
     AgentNotRunningError,
     PaneHostUnavailableError,
     PaneNotFoundError,
     PaneProcess,
 )
-from coban.herdr.host import HerdrPaneHost
-from coban.herdr.transport import HerdrSocket
+from baton_herdr.herdr.host import HerdrPaneHost
+from baton_herdr.herdr.transport import HerdrSocket
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -27,14 +27,14 @@ PANE = {
     "pane_id": "w1:p6",
     "agent": "claude",
     "agent_status": "idle",
-    "cwd": "/home/u/dev/coban-sandbox",
-    "foreground_cwd": "/home/u/dev/coban-sandbox",
+    "cwd": "/home/u/dev/baton-sandbox",
+    "foreground_cwd": "/home/u/dev/baton-sandbox",
     "agent_session": {"agent": "claude", "kind": "id", "source": "herdr:claude", "value": "sess-1"},
 }
 EXPLAIN = {"agent": "claude", "state": "idle", "matched_rule": {"id": "live_prompt_box"}}
 WORKSPACES = [
     {"workspace_id": "w1", "label": "my project"},
-    {"workspace_id": "w2", "label": "coban"},
+    {"workspace_id": "w2", "label": "baton"},
 ]
 
 
@@ -109,7 +109,7 @@ async def test_observe_combines_pane_info_and_explain(
         AgentState.IDLE,
         "herdr:rule:live_prompt_box",
     )
-    assert (observation.session_ref, observation.cwd) == ("sess-1", "/home/u/dev/coban-sandbox")
+    assert (observation.session_ref, observation.cwd) == ("sess-1", "/home/u/dev/baton-sandbox")
     assert [r["method"] for r in stand_in.requests] == ["pane.get", "agent.explain"]
     assert stand_in.requests[1]["params"] == {"target": "w1:p6"}
 
@@ -196,7 +196,7 @@ async def test_commands_use_herdrs_request_shapes(
     ]
 
 
-async def test_the_first_pane_creates_cobans_own_workspace(
+async def test_the_first_pane_creates_batons_own_workspace(
     herdr: tuple[StandInHerdr, HerdrPaneHost],
 ) -> None:
     stand_in, host = herdr
@@ -212,7 +212,7 @@ async def test_the_first_pane_creates_cobans_own_workspace(
     assert await host.open_pane(cwd="/work", label="task 1") == "w3:p1"
     assert [(r["method"], r["params"]) for r in stand_in.requests] == [
         ("workspace.list", {}),
-        ("workspace.create", {"cwd": "/work", "label": "coban", "focus": False}),
+        ("workspace.create", {"cwd": "/work", "label": "baton", "focus": False}),
     ]
 
 

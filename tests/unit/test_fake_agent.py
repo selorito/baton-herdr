@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from coban.adapters import ADAPTERS
-from coban.core.detection import DetectionRequest
-from coban.core.model import AgentKind, AgentState
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.core.detection import DetectionRequest
+from baton_herdr.core.model import AgentKind, AgentState
 
 import fake_agent
 
@@ -67,13 +67,13 @@ def test_the_script_stops_when_stdin_closes() -> None:
         ),
         (
             "codex-finish.toml",
-            # Even without herdr's working signal, coban sees the work on the screen.
+            # Even without herdr's working signal, baton sees the work on the screen.
             [AgentState.UNKNOWN, AgentState.UNKNOWN, AgentState.UNKNOWN],
             [AgentState.IDLE, AgentState.WORKING, AgentState.IDLE],
         ),
     ],
 )
-def test_coban_reads_the_fake_screens_as_intended(
+def test_baton_reads_the_fake_screens_as_intended(
     script_name: str, host_states: list[AgentState], expected: list[AgentState]
 ) -> None:
     script = fake_agent.load_script(SCRIPTS / script_name)
@@ -151,4 +151,4 @@ def test_codex_script_sets_a_spinner_title_while_working() -> None:
         ),
     )
     titles = re.findall(r"\x1b\]0;([^\x07]*)\x07", out.getvalue())
-    assert titles == ["coban-sandbox", "⠏ | coban-sandbox", "coban-sandbox"]
+    assert titles == ["baton-sandbox", "⠏ | baton-sandbox", "baton-sandbox"]

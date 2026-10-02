@@ -1,5 +1,5 @@
 [project]
-name = "coban"
+name = "baton-herdr"
 version = "0.1.0"
 description = "Orchestrator that keeps coding agents running on herdr until their tasks are done."
 readme = "README.md"
@@ -18,11 +18,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/selorito/coban"
-Issues = "https://github.com/selorito/coban/issues"
+Homepage = "https://github.com/selorito/baton-herdr"
+Issues = "https://github.com/selorito/baton-herdr/issues"
 
 [project.scripts]
-coban = "coban.cli:app"
+baton = "baton_herdr.cli:app"
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13"]
@@ -98,32 +98,32 @@ filterwarnings = ["error"]
 
 [tool.coverage.run]
 branch = true
-source = ["coban"]
+source = ["baton_herdr"]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
 
 [tool.importlinter]
-root_package = "coban"
+root_package = "baton_herdr"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 id = "core-is-pure"
-name = "coban.core imports no other coban package"
+name = "baton_herdr.core imports no other baton package"
 type = "forbidden"
-source_modules = ["coban.core"]
+source_modules = ["baton_herdr.core"]
 forbidden_modules = [
-  "coban.herdr", "coban.adapters", "coban.ledger",
-  "coban.recovery", "coban.budget", "coban.scheduler",
-  "coban.api", "coban.telegram", "coban.cli", "coban.daemon",
+  "baton_herdr.herdr", "baton_herdr.adapters", "baton_herdr.ledger",
+  "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
+  "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
 ]
 
 [[tool.importlinter.contracts]]
 id = "layers"
 name = "interfaces -> services -> infra -> core"
 type = "layers"
-containers = ["coban"]
+containers = ["baton_herdr"]
 exhaustive = true
 layers = [
   "api : telegram : cli : daemon : doctor : service",
@@ -136,17 +136,17 @@ layers = [
 id = "adapters-independent"
 name = "agent adapters do not import each other"
 type = "independence"
-modules = ["coban.adapters.*"]
+modules = ["baton_herdr.adapters.*"]
 
 [[tool.importlinter.contracts]]
 id = "only-ledger-touches-the-database"
-name = "only coban.ledger imports database libraries"
+name = "only baton_herdr.ledger imports database libraries"
 type = "forbidden"
 source_modules = [
-  "coban.core", "coban.herdr", "coban.adapters",
-  "coban.recovery", "coban.budget", "coban.scheduler",
-  "coban.api", "coban.telegram", "coban.cli", "coban.daemon",
+  "baton_herdr.core", "baton_herdr.herdr", "baton_herdr.adapters",
+  "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
+  "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
-# Using coban.ledger is the point; importing the libraries directly is what is forbidden.
+# Using baton_herdr.ledger is the point; importing the libraries directly is what is forbidden.
 allow_indirect_imports = true

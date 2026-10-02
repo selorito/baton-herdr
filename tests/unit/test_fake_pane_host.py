@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from coban.core.fakes import FakePaneHost
-from coban.core.model import AgentKind, AgentState
-from coban.core.panes import (
+from baton_herdr.core.fakes import FakePaneHost
+from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.panes import (
     AgentBlockedError,
     AgentNotRunningError,
     PaneHost,

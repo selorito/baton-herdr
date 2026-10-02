@@ -16,18 +16,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from coban.core.config import CobanSettings, DatabaseSettings, SchedulerSettings
-from coban.core.events import AttemptInterrupted
-from coban.core.fakes import RecordingNotifier
-from coban.core.model import AgentKind, InterruptReason, TaskStatus
-from coban.core.notify import NoticeKind
-from coban.core.projection import project
-from coban.daemon import add_task, open_runtime, run_pending
+from baton_herdr.core.config import BatonSettings, DatabaseSettings, SchedulerSettings
+from baton_herdr.core.events import AttemptInterrupted
+from baton_herdr.core.fakes import RecordingNotifier
+from baton_herdr.core.model import AgentKind, InterruptReason, TaskStatus
+from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.projection import project
+from baton_herdr.daemon import add_task, open_runtime, run_pending
 
 import fake_agent
 
 if TYPE_CHECKING:
-    from coban.herdr.host import HerdrPaneHost
+    from baton_herdr.herdr.host import HerdrPaneHost
 
 pytestmark = pytest.mark.live
 
@@ -44,8 +44,8 @@ async def test_limited_claude_hands_off_to_codex_in_a_real_herdr(
         )
         for agent, script in (("claude", "claude-limit.toml"), ("codex", "codex-finish.toml"))
     }
-    settings = CobanSettings(
-        database=DatabaseSettings(path=tmp_path / "coban.db"),
+    settings = BatonSettings(
+        database=DatabaseSettings(path=tmp_path / "baton.db"),
         scheduler=SchedulerSettings(
             agents=("claude", "codex"),
             launch_commands=commands,  # type: ignore[arg-type]

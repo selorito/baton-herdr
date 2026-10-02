@@ -7,7 +7,7 @@ agent = "claude"
 wait = "prompt"
 screen = """
  ▐▛███▜▌   Claude Code (fake)
-  ~/dev/coban-sandbox
+  ~/dev/baton-sandbox
 
 ────────────────────────────────────────
 ❯

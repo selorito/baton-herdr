@@ -6,11 +6,11 @@ from dataclasses import replace
 import pytest
 from pydantic import SecretStr
 
-from coban.core.config import TelegramSettings
-from coban.core.fakes import RecordingNotifier
-from coban.core.model import OperatorAction, TaskId
-from coban.core.notify import LoggingNotifier, Notice, NoticeKind, Notifier
-from coban.telegram.notifier import (
+from baton_herdr.core.config import TelegramSettings
+from baton_herdr.core.fakes import RecordingNotifier
+from baton_herdr.core.model import OperatorAction, TaskId
+from baton_herdr.core.notify import LoggingNotifier, Notice, NoticeKind, Notifier
+from baton_herdr.telegram.notifier import (
     ANSWER_HINT,
     MAX_MESSAGE_LENGTH,
     Buttons,

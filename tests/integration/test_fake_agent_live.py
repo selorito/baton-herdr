@@ -1,9 +1,9 @@
-"""fake-agent in a real herdr pane, read back through coban. Run with ``just smoke``.
+"""fake-agent in a real herdr pane, read back through baton. Run with ``just smoke``.
 
 Proves the pieces the end-to-end demo relies on: herdr recognises the fake as a
 Claude process and classifies its screens with its own Claude rules, the
 session id reported like Claude's herdr hook is visible, ``agent prompt``
-reaches it, and coban's observation plus the Claude adapter see the limit.
+reaches it, and baton's observation plus the Claude adapter see the limit.
 """
 
 from __future__ import annotations
@@ -16,14 +16,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from coban.adapters import ADAPTERS
-from coban.core.detection import DetectionRequest
-from coban.core.model import AgentKind, AgentState
+from baton_herdr.adapters import ADAPTERS
+from baton_herdr.core.detection import DetectionRequest
+from baton_herdr.core.model import AgentKind, AgentState
 
 import fake_agent
 
 if TYPE_CHECKING:
-    from coban.herdr.host import HerdrPaneHost
+    from baton_herdr.herdr.host import HerdrPaneHost
 
 pytestmark = pytest.mark.live
 
@@ -37,7 +37,7 @@ async def until(predicate_text: str, read: object, timeout_s: float = 10) -> Non
             await asyncio.sleep(0.1)
 
 
-async def test_fake_claude_hits_its_limit_and_coban_sees_it(
+async def test_fake_claude_hits_its_limit_and_baton_sees_it(
     isolated_host: HerdrPaneHost, tmp_path: Path
 ) -> None:
     host = isolated_host

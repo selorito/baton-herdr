@@ -1,7 +1,7 @@
 # Related projects (read-only study)
 
 Read on **2026-09-30** from the projects' public repositories. No code was copied; this is a
-record of how they work and which ideas coban may reuse. Licences are as reported by the
+record of how they work and which ideas baton may reuse. Licences are as reported by the
 GitHub API and the files in each repository on that date.
 
 ## herdr-plugin-agent-quota
@@ -10,7 +10,7 @@ Repository: <https://github.com/kwanwooi25/herdr-plugin-agent-quota> (the projec
 "herdr-agent-quota"; last push 2026-08-30).
 
 **Licence: none.** The repository has no `LICENSE` file and the GitHub API reports
-`license: null`. Without a licence the code is all rights reserved: coban must not copy or
+`license: null`. Without a licence the code is all rights reserved: baton must not copy or
 adapt its source. Observing its behaviour is fine.
 
 **Where it reads quota** (`lib/limits.js`, header comment and code):
@@ -20,14 +20,14 @@ adapt its source. Observing its behaviour is fine.
 | Claude, live (preferred) | `GET https://api.anthropic.com/api/oauth/usage` with the Claude Code OAuth access token, read from the macOS Keychain item "Claude Code-credentials" or from `~/.claude/.credentials.json` | **No.** Reads the agent's credentials (rule 2) and calls a private subscription endpoint itself (rule 1). |
 | Codex, live (preferred) | `GET https://chatgpt.com/backend-api/wham/usage` with the access token from `~/.codex/auth.json` | **No**, for the same two reasons. |
 | Claude, fallback | `rate_limits` in status line payloads cached by a HUD under `~/.claude/hud/cache/stdin.*.json` | Yes: status line data, no credentials. This is the source ADR 0005 allows and `agents.md` documents. |
-| Codex, fallback | `rate_limits` on `token_count` events in recent rollout files under `~/.codex/sessions` | Yes: the same source coban plans to use. |
-| Grok | through the agent CLI's own stored session | Out of scope for coban. |
+| Codex, fallback | `rate_limits` on `token_count` events in recent rollout files under `~/.codex/sessions` | Yes: the same source baton plans to use. |
+| Grok | through the agent CLI's own stored session | Out of scope for baton. |
 
 **Verdict.** Its preferred path is exactly what ADR 0005 forbids; its fallback path is what
-coban will do. Two useful confirmations: both vendors expose a usage endpoint behind the
+baton will do. Two useful confirmations: both vendors expose a usage endpoint behind the
 subscription login (so more precise data exists, but only by handling credentials), and the
 plugin's comment that some cached status line payloads "hold stale rate_limits despite fresh
-mtimes" is a warning for coban's Claude quota reader: trust `resets_at`, not the file's age.
+mtimes" is a warning for baton's Claude quota reader: trust `resets_at`, not the file's age.
 That staleness claim is theirs and is UNVERIFIED here.
 
 ## herdr-supervisor
@@ -39,8 +39,8 @@ Two unrelated projects share the name.
 | <https://github.com/Ejlonn/herdr-supervisor> | **Apache-2.0** (`LICENSE` file; API `Apache-2.0`) | Python. Human-in-the-loop orchestration for agents in herdr with a Telegram bridge, quota waiting, backup. The one with the Telegram security design. |
 | <https://github.com/hao1939/herdr-supervisor> | MIT | TypeScript. One Pi agent supervising herdr workers against goals. No Telegram. |
 
-Apache-2.0 is the same licence as coban, so reuse with attribution would be permitted. The
-list below is nevertheless ideas only, to be implemented in coban's own design.
+Apache-2.0 is the same licence as baton, so reuse with attribution would be permitted. The
+list below is nevertheless ideas only, to be implemented in baton's own design.
 
 ### Ideas from Ejlonn/herdr-supervisor's Telegram design
 
@@ -73,16 +73,16 @@ From `docs/SECURITY.md`, `docs/TELEGRAM.md` and `src/herdr_telegram.py`:
    started only after explicit confirmation.
 9. **Pane ownership repair.** When a saved session is duplicated, moved or has lost its pane,
    the bot says so, adopts no other conversation and resends nothing until the operator
-   confirms a repair. This is the same stance as coban's ADR 0006.
+   confirms a repair. This is the same stance as baton's ADR 0006.
 10. **Quota waiting.** It waits until the latest blocking window's `resets_at` plus a buffer
     before continuing (`src/herdr_quota.py`), and shows waiting / available cards.
 
-### What coban should take
+### What baton should take
 
-- Items 1, 2, 3, 4 and 5 as requirements for the Telegram step of the roadmap. In coban's
+- Items 1, 2, 3, 4 and 5 as requirements for the Telegram step of the roadmap. In baton's
   terms a callback record is bound to `(task_id, attempt_id, the observation it answers)` and
   is resolved through `core.targeting` before anything is sent.
-- Item 6 conflicts with coban's current config, which reads `COBAN_TELEGRAM__BOT_TOKEN` from
+- Item 6 conflicts with baton's current config, which reads `BATON_TELEGRAM__BOT_TOKEN` from
   the environment or `.env`. Decide in the Telegram ADR whether to add a token-file option
   and make it the documented default.
 - Item 7 as a `dry-run` mode for the bot.
