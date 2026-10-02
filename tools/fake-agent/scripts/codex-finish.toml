@@ -1,0 +1,37 @@
+# Codex CLI that takes a prompt, works briefly and finishes.
+# Screens follow fixtures/codex/ (composer, footer with spinner while working).
+agent = "codex"
+
+[[step]]
+wait = "prompt"
+screen = """
+╭──────────────────────────────────────────╮
+│ >_ OpenAI Codex (fake)                   │
+│ directory: ~/dev/coban-sandbox           │
+╰──────────────────────────────────────────╯
+
+› Ask Codex to do anything
+  fake-model · ~/dev/coban-sandbox
+"""
+
+[[step]]
+wait = 2
+screen = """
+› {prompt}
+
+• Working (2s • esc to interrupt)
+
+› Ask Codex to do anything
+  fake-model · ~/dev/coban-sandbox · ⠏
+"""
+
+[[step]]
+wait = "forever"
+screen = """
+› {prompt}
+
+• Added power(a, b) to calc.py with a test. All tests pass.
+
+› Ask Codex to do anything
+  fake-model · ~/dev/coban-sandbox
+"""

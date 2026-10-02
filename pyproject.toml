@@ -48,7 +48,8 @@ ignore = ["PLR2004"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests quote real terminal output, including glyphs such as U+276F and U+203A.
-"tests/**" = ["S101", "PLR2004", "PLR0911", "ARG", "RUF001"]
+# Live tests poll a real herdr; there is no event to wait on.
+"tests/**" = ["S101", "PLR2004", "PLR0911", "ARG", "RUF001", "ASYNC110"]
 # Standalone capture tool: shells out to the herdr and agent CLIs by design.
 "tools/**" = ["S603", "S607"]
 
@@ -58,7 +59,7 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseS
 
 [tool.ruff.lint.isort]
 # tools/capture/capture.py is imported by its tests as a local module.
-known-local-folder = ["capture"]
+known-local-folder = ["capture", "fake_agent"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -67,7 +68,7 @@ ban-relative-imports = "all"
 python_version = "3.12"
 strict = true
 files = ["src", "tests", "tools"]
-mypy_path = "tools/capture"
+mypy_path = "tools/capture:tools/fake-agent"
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -80,7 +81,7 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-pythonpath = ["tools/capture"]
+pythonpath = ["tools/capture", "tools/fake-agent"]
 addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra", "-m", "not live"]
 markers = [
   "live: needs a real herdr binary; excluded by default, run with `just smoke`",

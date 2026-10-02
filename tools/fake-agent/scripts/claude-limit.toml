@@ -1,0 +1,44 @@
+# Claude Code that works for a moment, then hits its session limit.
+# Screens follow fixtures/claude/ (idle prompt box, working footer) and the limit
+# wording documented at code.claude.com/docs/en/errors.
+agent = "claude"
+
+[[step]]
+wait = "prompt"
+screen = """
+ ▐▛███▜▌   Claude Code (fake)
+  ~/dev/coban-sandbox
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (3s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "forever"
+screen = """
+❯ {prompt}
+
+● Reading calc.py and test_calc.py.
+  ⎿  You've hit your session limit · resets {reset_clock}
+     /upgrade to increase your usage limit.
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
