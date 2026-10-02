@@ -50,7 +50,7 @@ ignore = ["PLR2004"]
 [tool.ruff.lint.per-file-ignores]
 # Tests quote real terminal output, including glyphs such as U+276F and U+203A.
 # Live tests poll a real herdr; there is no event to wait on.
-"tests/**" = ["S101", "PLR2004", "PLR0911", "ARG", "RUF001", "ASYNC110"]
+"tests/**" = ["S101", "PLR2004", "PLR0911", "ARG", "RUF001", "ASYNC110", "FBT001"]
 # Standalone capture tool: shells out to the herdr and agent CLIs by design.
 "tools/**" = ["S603", "S607"]
 
