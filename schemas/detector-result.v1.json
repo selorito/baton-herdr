@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "AgentState": {
+      "description": "What an agent is doing, as coban understands it (ADR 0004).",
+      "enum": [
+        "working",
+        "idle",
+        "blocked_permission",
+        "blocked_question",
+        "blocked_other",
+        "rate_limited",
+        "context_full",
+        "crashed",
+        "unknown"
+      ],
+      "title": "AgentState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": 1,
+      "default": 1,
+      "title": "Contract",
+      "type": "integer"
+    },
+    "evidence": {
+      "title": "Evidence",
+      "type": "string"
+    },
+    "resets_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resets At"
+    },
+    "state": {
+      "$ref": "#/$defs/AgentState"
+    }
+  },
+  "required": [
+    "state",
+    "evidence"
+  ],
+  "title": "DetectionResult",
+  "type": "object"
+}

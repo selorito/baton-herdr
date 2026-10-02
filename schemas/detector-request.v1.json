@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "AgentKind": {
+      "enum": [
+        "claude",
+        "codex",
+        "gemini",
+        "opencode"
+      ],
+      "title": "AgentKind",
+      "type": "string"
+    },
+    "AgentState": {
+      "description": "What an agent is doing, as coban understands it (ADR 0004).",
+      "enum": [
+        "working",
+        "idle",
+        "blocked_permission",
+        "blocked_question",
+        "blocked_other",
+        "rate_limited",
+        "context_full",
+        "crashed",
+        "unknown"
+      ],
+      "title": "AgentState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One screen to classify.",
+  "properties": {
+    "agent": {
+      "$ref": "#/$defs/AgentKind"
+    },
+    "agent_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Version"
+    },
+    "contract": {
+      "const": 1,
+      "default": 1,
+      "title": "Contract",
+      "type": "integer"
+    },
+    "host_evidence": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Host Evidence"
+    },
+    "host_state": {
+      "$ref": "#/$defs/AgentState",
+      "default": "unknown"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "screen": {
+      "title": "Screen",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "title": "Timezone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent",
+    "screen",
+    "observed_at"
+  ],
+  "title": "DetectionRequest",
+  "type": "object"
+}
