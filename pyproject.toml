@@ -60,7 +60,7 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseS
 
 [tool.ruff.lint.isort]
 # tools/capture/capture.py is imported by its tests as a local module.
-known-local-folder = ["capture", "fake_agent"]
+known-local-folder = ["capture", "fake_agent", "simulated_agents"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -69,7 +69,7 @@ ban-relative-imports = "all"
 python_version = "3.12"
 strict = true
 files = ["src", "tests", "tools"]
-mypy_path = "tools/capture:tools/fake-agent"
+mypy_path = "tools/capture:tools/fake-agent:tests/support"
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -82,7 +82,7 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-pythonpath = ["tools/capture", "tools/fake-agent"]
+pythonpath = ["tools/capture", "tools/fake-agent", "tests/support"]
 addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra", "-m", "not live"]
 markers = [
   "live: needs a real herdr binary; excluded by default, run with `just smoke`",
@@ -112,7 +112,7 @@ source_modules = ["coban.core"]
 forbidden_modules = [
   "coban.herdr", "coban.adapters", "coban.ledger",
   "coban.recovery", "coban.budget", "coban.scheduler",
-  "coban.api", "coban.telegram", "coban.cli",
+  "coban.api", "coban.telegram", "coban.cli", "coban.daemon",
 ]
 
 [[tool.importlinter.contracts]]
@@ -122,7 +122,7 @@ type = "layers"
 containers = ["coban"]
 exhaustive = true
 layers = [
-  "api : telegram : cli",
+  "api : telegram : cli : daemon",
   "recovery : budget : scheduler",
   "herdr | adapters | ledger",
   "core",
@@ -141,6 +141,8 @@ type = "forbidden"
 source_modules = [
   "coban.core", "coban.herdr", "coban.adapters",
   "coban.recovery", "coban.budget", "coban.scheduler",
-  "coban.api", "coban.telegram", "coban.cli",
+  "coban.api", "coban.telegram", "coban.cli", "coban.daemon",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
+# Using coban.ledger is the point; importing the libraries directly is what is forbidden.
+allow_indirect_imports = true

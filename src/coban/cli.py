@@ -2,16 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from importlib.metadata import version as package_version
+from pathlib import Path
+from typing import Annotated
 
 import typer
 from pydantic import ValidationError
 
 from coban.adapters import ADAPTERS
+from coban.core.config import CobanSettings
 from coban.core.detection import DetectionRequest, DetectionResult
+from coban.core.logging import configure_logging
+from coban.core.projection import TaskView, project
+from coban.daemon import add_task, open_runtime, run_pending
+from coban.ledger import open_event_store
 
 app = typer.Typer(name="coban", no_args_is_help=True, add_completion=False)
+task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
+app.add_typer(task_app)
+
+
+def _settings() -> CobanSettings:
+    settings = CobanSettings()
+    configure_logging(settings.logging.level)
+    return settings
 
 
 @app.callback()
@@ -47,3 +63,74 @@ def detect() -> None:
         )
         sys.stdout.write(result.model_dump_json() + "\n")
         sys.stdout.flush()
+
+
+@task_app.command("add")
+def task_add(
+    title: Annotated[str, typer.Argument(help="Short name shown in status and notices.")],
+    instructions: Annotated[
+        str | None, typer.Option("--instructions", "-i", help="The prompt for the agent.")
+    ] = None,
+    instructions_file: Annotated[
+        Path | None, typer.Option("--instructions-file", "-f", exists=True, dir_okay=False)
+    ] = None,
+    workdir: Annotated[
+        Path, typer.Option("--workdir", "-C", exists=True, file_okay=False)
+    ] = Path(),
+) -> None:
+    """Add a task. Prints its id."""
+    if (instructions is None) == (instructions_file is None):
+        typer.echo("give exactly one of --instructions or --instructions-file", err=True)
+        raise typer.Exit(code=2)
+    text = instructions or Path(instructions_file or "").read_text(encoding="utf-8")
+    settings = _settings()
+
+    async def add() -> str:
+        store = await open_event_store(settings.database.path)
+        try:
+            return await add_task(
+                store, title=title, instructions=text, workdir=str(workdir.resolve())
+            )
+        finally:
+            await store.close()
+
+    typer.echo(asyncio.run(add()))
+
+
+@app.command()
+def status() -> None:
+    """Show every task and its attempts."""
+    settings = _settings()
+
+    async def board() -> list[TaskView]:
+        store = await open_event_store(settings.database.path)
+        try:
+            return list(project(await store.read()).tasks.values())
+        finally:
+            await store.close()
+
+    tasks = asyncio.run(board())
+    if not tasks:
+        typer.echo("no tasks")
+    for task in tasks:
+        attempts = " ".join(
+            f"{a.agent.value}:{a.outcome.value if a.outcome else a.status.value}"
+            for a in task.attempts
+        )
+        typer.echo(f"{task.task_id}  {task.status.value:<11}  {task.title}  {attempts}".rstrip())
+
+
+@app.command()
+def run() -> None:
+    """Run every task that is open and has no live attempt, once, then exit."""
+    settings = _settings()
+
+    async def run_all() -> dict[str, str]:
+        async with open_runtime(settings) as runtime:
+            return {k: v.value for k, v in (await run_pending(runtime)).items()}
+
+    results = asyncio.run(run_all())
+    if not results:
+        typer.echo("nothing to run")
+    for task_id, task_status in results.items():
+        typer.echo(f"{task_id}  {task_status}")

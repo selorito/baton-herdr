@@ -36,6 +36,10 @@ fixtures-herdr *ARGS:
 smoke:
     uv run pytest -m live -v
 
+# Slice 0 end to end against a real herdr, in a throwaway session, with fake agents. Spends no quota.
+demo:
+    uv run pytest -m live tests/integration/test_demo_live.py -v
+
 # Regenerate the JSON Schemas in schemas/ after deliberately changing a contract model.
 schemas:
     uv run python -c "from pathlib import Path; from coban.core.schemas import write_all; write_all(Path('schemas'))"

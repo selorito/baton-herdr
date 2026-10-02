@@ -145,6 +145,8 @@ class SchedulerSettings(_Section):
     poll_interval_seconds: float = Field(default=2, gt=0)
     # IANA zone for reading clock times that agents print, e.g. "resets 3:45pm".
     timezone: str = "UTC"
+    # Replace an agent's launch command, e.g. {"claude": "claude --permission-mode default"}.
+    launch_commands: dict[Literal["claude", "codex", "opencode"], str] = Field(default_factory=dict)
 
 
 class TelegramSettings(_Section):

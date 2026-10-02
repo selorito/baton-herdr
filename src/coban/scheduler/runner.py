@@ -77,6 +77,8 @@ class RunnerSettings:
     poll_interval_s: float = 2
     timezone: str = "UTC"
     screen_lines: int = 80
+    # Overrides of the adapters' launch commands, per agent.
+    launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
 
 
 class _Outcome(StrEnum):
@@ -165,7 +167,10 @@ class TaskRunner:
                     pane_id=pane_id,
                 )
             )
-            await self._host.send_text(pane_id, self._adapters[agent].launch_command())
+            command = (
+                self._settings.launch_commands.get(agent) or self._adapters[agent].launch_command()
+            )
+            await self._host.send_text(pane_id, command)
             await self._host.send_keys(pane_id, ["Enter"])
             if previous is None:
                 await self._notify(
