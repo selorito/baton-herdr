@@ -5,6 +5,7 @@
 //! own log format into them.
 
 pub mod claude;
+pub mod codex;
 
 use serde::{Serialize, Serializer};
 use time::OffsetDateTime;
