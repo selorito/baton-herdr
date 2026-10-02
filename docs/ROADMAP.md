@@ -79,6 +79,21 @@ accepts on purpose, each picked up by a later step:
 - Telegram only sends messages (step 4); `[scheduler] timezone` defaults to UTC and should be
   set to the local zone for reading printed reset times.
 
+## MVP: usable every day on one machine
+
+The first version a person can rely on unattended. It cuts across the steps below.
+
+| Item | Status |
+|------|--------|
+| `coban daemon`: keeps running tasks, resumes waiting ones when a limit resets | ✅ (2026-10-03) |
+| Resume interrupted attempts in their own session; restart when a session is gone | ✅ verified live with Claude Code |
+| Re-attach to an active attempt after cobanD restarts | next |
+| "Done" for multi-step tasks: the `[[COBAN:END ...]]` contract (agents.md design note) | next |
+| Telegram actions: approve / deny, answer, status; owner and chat lock, bound callbacks | next |
+| Install and operate: README walkthrough, systemd user unit, `coban doctor` | next |
+
+Estimate when this was written: three to four more working sessions like the ones so far.
+
 ## Deepening the slice
 
 Each step replaces a simulated or minimal part with the real one. The slice's integration
