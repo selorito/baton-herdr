@@ -28,6 +28,15 @@ limit_cooldown_minutes = 60
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 
+[usage]
+# batond runs baton-detect to record the tokens agents use (ADR 0011).
+# enabled = true
+# binary = "baton-detect"           # a name on PATH, or a path
+# The agents' log locations, if not their defaults:
+# claude_dir = "~/.claude/projects"
+# codex_dir = "~/.codex/sessions"
+# opencode_db = "~/.local/share/opencode/opencode.db"
+
 [telegram]
 # Numeric id of the one private chat baton sends to. The bot token goes in .env:
 # BATON_TELEGRAM__BOT_TOKEN=...

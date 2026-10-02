@@ -116,7 +116,7 @@ cargo run -p baton-detect -- --version
 
 ```
 src/baton_herdr/        Python package (batond + CLI)
-crates/           Rust workspace members
+crates/           Rust: baton-detect (usage collector; screen classifier next)
 herdr-plugin/     herdr plugin (placeholder)
 tools/fake-agent/ scripted fake agent for tests (placeholder)
 fixtures/<agent>/ captured screens per agent

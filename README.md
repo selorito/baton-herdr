@@ -24,13 +24,15 @@ unattended: [Anthropic](https://code.claude.com/docs/en/legal-and-compliance),
 
 ## Install
 
-You need Linux, [uv](https://docs.astral.sh/uv/), [herdr](https://github.com/herdrdev/herdr)
-0.9.1 or later, and the agents you want to use (Claude Code, Codex CLI, OpenCode), each
-signed in once by you.
+You need Linux, [uv](https://docs.astral.sh/uv/), a Rust toolchain
+([rustup](https://rustup.rs/)), [herdr](https://github.com/herdrdev/herdr) 0.9.1 or later,
+and the agents you want to use (Claude Code, Codex CLI, OpenCode), each signed in once by
+you.
 
 ```bash
 git clone https://github.com/selorito/baton-herdr.git && cd baton-herdr
 uv tool install .                         # puts `baton` in ~/.local/bin
+cargo install --path crates/baton-detect --locked   # `baton-detect` in ~/.cargo/bin
 herdr integration install claude          # and codex / opencode: baton needs the session
 herdr integration install codex           # ids these integrations report
 mkdir -p ~/.config/baton
@@ -41,6 +43,12 @@ Edit `~/.config/baton/baton.toml`: at least `[scheduler] agents` (in order of pr
 and `timezone` (agents print limit reset times in local time). baton reads
 `./baton.toml` if there is one, otherwise `~/.config/baton/baton.toml`; `BATON_CONFIG`
 overrides both. Secrets go in `~/.config/baton/.env` (see `.env.example`).
+
+`baton-detect` is the usage collector batond runs ([ADR 0011](docs/adr/0011-baton-detect-in-rust.md)):
+it follows the agents' own logs (Claude Code and Codex transcripts, OpenCode's database)
+and reports the tokens each response used and Codex's rate-limit windows. batond keeps them
+in their own tables, apart from the task log. `baton-detect usage --once` prints what it
+finds, one JSON object per line (`schemas/usage-event.v1.json`).
 
 Then check everything:
 

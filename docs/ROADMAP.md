@@ -102,7 +102,7 @@ test keeps passing throughout.
 | Step | Makes real | Notes |
 |------|------------|-------|
 | 1. Real agents (in progress) | Adapters for Claude Code, Codex, OpenCode | Start-up blockers (trust, hooks, update prompts), resume commands, refining `blocked` into permission / question, positive idle for Codex, crash detection with `processes`. Tested against `fixtures/`; opt-in live runs in the sandbox repository. |
-| 2. Quota accounting | Budget | Codex rollout `rate_limits`, Claude status line `rate_limits`, OpenCode session totals; Claude usage deduplicated by `message.id`. Tested against `fixtures/*/usage-sample.jsonl`. |
+| 2. Quota accounting (collection done) | Budget | Collection: `baton-detect usage` (Rust, ADR 0011) records every response's tokens and Codex's `rate_limits` into their own tables; Claude deduplicated by `message.id`, Codex cumulative counts turned into deltas across resumes; golden-tested against `fixtures/*/usage-sample.jsonl`. Next: turning the records into remaining budget per agent and using it to pick agents; Claude's status-line `rate_limits`. |
 | 3. Policy engine | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
 | 5. Benchmark | A replay harness (not started) | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
