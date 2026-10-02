@@ -11,6 +11,7 @@ from coban.core.detection import ScreenRule, detect, refine_blocked
 from coban.core.model import AgentKind, AgentState
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
@@ -81,6 +82,12 @@ RULES = (
 )
 
 
+# Start-up dialogs coban may answer on its own. Only the update prompt qualifies: its
+# answer ("2. Skip", one row down from the default) keeps the tested version and has no
+# security meaning. Folder trust and hook review stay with a person.
+STARTUP_ANSWERS: dict[str, tuple[str, ...]] = {"coban:codex_update_prompt": ("Down", "Enter")}
+
+
 class CodexAdapter:
     kind = AgentKind.CODEX
 
@@ -92,3 +99,6 @@ class CodexAdapter:
 
     def classify(self, request: DetectionRequest) -> DetectionResult:
         return refine_blocked(detect(request, RULES), {})
+
+    def startup_answer(self, evidence: str) -> Sequence[str] | None:
+        return STARTUP_ANSWERS.get(evidence)

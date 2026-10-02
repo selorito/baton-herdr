@@ -37,6 +37,9 @@ class DetectionRequest(BaseModel):
     # What herdr concluded, already mapped to coban's vocabulary (coban.herdr.state).
     host_state: AgentState = AgentState.UNKNOWN
     host_evidence: str | None = None
+    # False when the host sees no agent process in the pane. A dead full-screen agent
+    # can leave its last frame under the shell prompt, so the screen alone cannot tell.
+    agent_running: bool = True
     observed_at: AwareDatetime
     # IANA zone used to read clock times printed by the agent, e.g. "resets 3:45pm".
     timezone: str = "UTC"
@@ -74,7 +77,14 @@ class ScreenRule:
 
 
 def detect(request: DetectionRequest, rules: Sequence[ScreenRule]) -> DetectionResult:
-    """First matching rule wins; otherwise the host's conclusion stands."""
+    """First matching rule wins; otherwise the host's conclusion stands.
+
+    No rule applies when the host reports that no agent is running.
+    """
+    if not request.agent_running:
+        return DetectionResult(
+            state=request.host_state, evidence=request.host_evidence or "host:no-agent"
+        )
     zone = ZoneInfo(request.timezone)
     for rule in rules:
         if rule.applies_when is not None and request.host_state not in rule.applies_when:

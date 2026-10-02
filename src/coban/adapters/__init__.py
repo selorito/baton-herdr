@@ -1,4 +1,4 @@
-"""Per-agent adapters: Claude Code, Codex CLI (OpenCode next; Gemini CLI in v1.1).
+"""Per-agent adapters: Claude Code, Codex CLI, OpenCode (Gemini CLI in v1.1).
 
 Agent-specific differences live only in this package, one module per agent.
 """
@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from coban.adapters.claude import ClaudeAdapter
 from coban.adapters.codex import CodexAdapter
+from coban.adapters.opencode import OpenCodeAdapter
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -17,5 +18,5 @@ if TYPE_CHECKING:
     from coban.core.model import AgentKind
 
 ADAPTERS: Mapping[AgentKind, AgentAdapter] = {
-    adapter.kind: adapter for adapter in (ClaudeAdapter(), CodexAdapter())
+    adapter.kind: adapter for adapter in (ClaudeAdapter(), CodexAdapter(), OpenCodeAdapter())
 }

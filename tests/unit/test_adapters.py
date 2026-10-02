@@ -17,6 +17,7 @@ import pytest
 from coban.adapters import ADAPTERS
 from coban.adapters.claude import ClaudeAdapter
 from coban.adapters.codex import CodexAdapter
+from coban.adapters.opencode import OpenCodeAdapter
 from coban.core.detection import DetectionRequest, DetectionResult
 from coban.core.model import AgentKind, AgentState
 from coban.herdr.state import derive_state
@@ -39,6 +40,7 @@ def classify_capture(capture: str) -> DetectionResult:
         screen=(directory / "screen.detection.txt").read_text(),
         host_state=host_state,
         host_evidence=host_evidence,
+        agent_running="error" not in explain,
         observed_at=NOW,
     )
     return ADAPTERS[agent].classify(request)
@@ -77,13 +79,22 @@ EXPECTED = {
     "codex/blocked_question/20260930T075801Z": IDLE,
     "codex/crashed/20260930T075833Z": UNK,
     "codex/resume_prompt/20260930T075906Z": OTHER,
+    "opencode/idle/20260930T080210Z": IDLE,  # fresh start; herdr idle is a fallback
+    "opencode/idle/20260930T080359Z": IDLE,  # after --continue
+    "opencode/done/20260930T080234Z": IDLE,  # idle reported by herdr's OpenCode plugin
+    "opencode/working/20260930T080214Z": WORK,
+    "opencode/blocked_permission/20260930T080259Z": PERM,
+    "opencode/blocked_question/20260930T080318Z": QUESTION,
+    # The dead TUI's last frame stays under the shell prompt; only herdr knows it exited.
+    "opencode/crashed/20260930T080341Z": UNK,
+    "opencode/resume_prompt/20260930T080420Z": OTHER,  # /sessions dialog
 }
 
 
-def test_every_claude_and_codex_capture_is_listed() -> None:
+def test_every_v1_agent_capture_is_listed() -> None:
     captures = {
         str(p.parent.relative_to(FIXTURES))
-        for agent in ("claude", "codex")
+        for agent in ("claude", "codex", "opencode")
         for p in (FIXTURES / agent).glob("*/*/explain.json")
     }
     assert captures == set(EXPECTED)
@@ -190,9 +201,11 @@ def test_codex_limit_text_wrapped_across_lines_is_still_read() -> None:
 def test_resume_commands_quote_the_session_reference() -> None:
     assert ClaudeAdapter().resume_command("277e10ad-5928") == "claude --resume 277e10ad-5928"
     assert CodexAdapter().resume_command("a b") == "codex resume 'a b'"
+    assert OpenCodeAdapter().resume_command("ses_f0ea") == "opencode --session ses_f0ea"
     assert {kind: a.launch_command() for kind, a in ADAPTERS.items()} == {
         AgentKind.CLAUDE: "claude",
         AgentKind.CODEX: "codex",
+        AgentKind.OPENCODE: "opencode",
     }
 
 
@@ -204,3 +217,59 @@ def test_codex_work_is_recognised_from_the_footer_spinner() -> None:
     assert (result.state, result.evidence) == (AgentState.WORKING, "coban:codex_working_footer")
     idle = screen("› Ask Codex to do anything", "  gpt · ~/dev/coban-sandbox")
     assert codex(idle).state is AgentState.IDLE
+
+
+def opencode(text: str) -> DetectionResult:
+    request = DetectionRequest(agent=AgentKind.OPENCODE, screen=text, observed_at=NOW)
+    return OpenCodeAdapter().classify(request)
+
+
+@pytest.mark.parametrize(
+    ("line", "resets_at"),
+    [
+        ("Free limit reached", None),
+        (
+            "Go usage limit reached. It will reset in 2 hours 15 minutes. To continue using "
+            "this model now, enable usage from your available balance",
+            datetime(2026, 10, 1, 13, 15, tzinfo=UTC),
+        ),
+    ],
+)
+def test_opencode_usage_limits(line: str, resets_at: datetime | None) -> None:
+    result = opencode(screen(f"  ┃  {line}", "  ┃  Build · Big Pickle OpenCode Zen"))
+    assert (result.state, result.resets_at) == (AgentState.RATE_LIMITED, resets_at)
+
+
+def test_opencode_provider_throttling_is_left_to_opencodes_own_retry() -> None:
+    result = opencode(screen("  ┃  Too Many Requests", "  ┃  Build · Big Pickle OpenCode Zen"))
+    assert result.state is AgentState.IDLE
+
+
+def test_no_rule_applies_when_the_host_sees_no_agent() -> None:
+    limit = screen("You've hit your session limit · resets 3:45pm", "❯")
+    request = DetectionRequest(
+        agent=AgentKind.CLAUDE,
+        screen=limit,
+        host_evidence="herdr:no-agent",
+        agent_running=False,
+        observed_at=NOW,
+    )
+    result = ClaudeAdapter().classify(request)
+    assert (result.state, result.evidence) == (AgentState.UNKNOWN, "herdr:no-agent")
+
+
+def test_only_the_codex_update_prompt_is_answered_automatically() -> None:
+    answers = {
+        (kind, rule): adapter.startup_answer(f"coban:{rule}")
+        for kind, adapter in ADAPTERS.items()
+        for rule in (
+            "codex_update_prompt",
+            "codex_trust_folder",
+            "codex_hooks_review",
+            "claude_resume_picker",
+            "opencode_sessions_dialog",
+        )
+    }
+    assert {key: keys for key, keys in answers.items() if keys} == {
+        (AgentKind.CODEX, "codex_update_prompt"): ("Down", "Enter")
+    }

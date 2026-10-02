@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from coban.core.detection import DetectionRequest, DetectionResult
     from coban.core.model import AgentKind
 
@@ -28,4 +30,13 @@ class AgentAdapter(Protocol):
 
     def classify(self, request: DetectionRequest) -> DetectionResult:
         """Refine the host's view of a screen into coban's ``AgentState``."""
+        ...
+
+    def startup_answer(self, evidence: str) -> Sequence[str] | None:
+        """Keys that safely dismiss a known start-up dialog, or ``None``.
+
+        Only for dialogs whose answer has no security or account meaning (an update
+        prompt, for example). Folder trust, hook review and sign-in always go to a
+        person.
+        """
         ...

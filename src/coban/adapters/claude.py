@@ -13,6 +13,7 @@ from coban.core.detection import ScreenRule, detect, refine_blocked
 from coban.core.model import AgentKind, AgentState
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import datetime
 
     from coban.core.detection import DetectionRequest, DetectionResult
@@ -71,3 +72,7 @@ class ClaudeAdapter:
 
     def classify(self, request: DetectionRequest) -> DetectionResult:
         return refine_blocked(detect(request, RULES), BLOCKED_KINDS)
+
+    def startup_answer(self, evidence: str) -> Sequence[str] | None:
+        del evidence
+        return None

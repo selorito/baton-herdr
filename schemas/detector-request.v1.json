@@ -33,6 +33,11 @@
     "agent": {
       "$ref": "#/$defs/AgentKind"
     },
+    "agent_running": {
+      "default": true,
+      "title": "Agent Running",
+      "type": "boolean"
+    },
     "agent_version": {
       "anyOf": [
         {
