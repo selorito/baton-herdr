@@ -43,6 +43,7 @@ def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
         poll_interval_s=settings.poll_interval_seconds,
         timezone=settings.timezone,
         launch_commands={AgentKind(a): cmd for a, cmd in settings.launch_commands.items()},
+        max_failure_resumes=settings.max_failure_resumes,
     )
 
 

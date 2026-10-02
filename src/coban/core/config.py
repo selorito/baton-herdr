@@ -147,6 +147,8 @@ class SchedulerSettings(_Section):
     timezone: str = "UTC"
     # Replace an agent's launch command, e.g. {"claude": "claude --permission-mode default"}.
     launch_commands: dict[Literal["claude", "codex", "opencode"], str] = Field(default_factory=dict)
+    # Automatic resumes of a task after its agent crashed or stalled (ADR 0005).
+    max_failure_resumes: int = Field(default=2, ge=0)
 
 
 class TelegramSettings(_Section):

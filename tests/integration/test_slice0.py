@@ -32,7 +32,7 @@ from coban.core.model import (
 )
 from coban.core.notify import NoticeKind
 from coban.core.projection import project
-from coban.scheduler.runner import HANDOFF_NOTE, RunnerSettings, TaskRunner
+from coban.scheduler.runner import CONTINUE_NOTE, HANDOFF_NOTE, RunnerSettings, TaskRunner
 
 from simulated_agents import SimulatedAgents
 
@@ -131,36 +131,75 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     assert any(isinstance(e, TaskCompleted) for e in events)
 
 
-async def test_with_every_agent_limited_the_task_waits() -> None:
+def only(agent: AgentKind) -> RunnerSettings:
+    return replace(SETTINGS, agents=(agent,))
+
+
+async def test_with_every_agent_limited_the_attempt_waits_and_resumes_its_own_session() -> None:
     store, host, notifier, _ = await setup()
-    only_claude = TaskRunner(
+    clock = FixedClock(NOW)
+    runner = TaskRunner(
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=clock,
+        settings=only(AgentKind.CLAUDE),
+    )
+
+    assert await runner.run(TASK) is TaskStatus.WAITING
+    attempt = project(await store.read()).tasks[TASK].live_attempt
+    assert attempt is not None
+    assert attempt.interrupt_reason is InterruptReason.RATE_LIMITED  # kept, not abandoned
+    assert notifier.kinds[-2:] == [NoticeKind.AGENT_LIMITED, NoticeKind.WAITING_FOR_AGENT]
+
+    # Still limited: nothing happens.
+    assert await runner.run(TASK) is TaskStatus.WAITING
+    assert host.launched == ["claude"]
+
+    # After the printed reset time the same session is resumed in a fresh pane.
+    clock.advance(timedelta(minutes=31))
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+
+    assert host.launched == ["claude", "claude --resume claude-session"]
+    assert host.prompts[-1] == (AgentKind.CLAUDE, CONTINUE_NOTE)
+    task = project(await store.read()).tasks[TASK]
+    assert len(task.attempts) == 1  # one attempt, one conversation, across the limit
+    assert task.attempts[0].outcome is AttemptOutcome.SUCCEEDED
+    assert NoticeKind.TASK_RESUMED in notifier.kinds
+
+
+async def test_a_crashed_agent_is_resumed_in_its_own_session() -> None:
+    store, host, notifier, runner = await setup(crash_after_prompt=True)
+
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+
+    events = [s.event for s in await store.read()]
+    interrupted = [e for e in events if isinstance(e, AttemptInterrupted)]
+    assert [e.reason for e in interrupted] == [InterruptReason.CRASHED]
+    assert host.launched == ["claude", "claude --resume claude-session"]
+    assert notifier.kinds == [
+        NoticeKind.TASK_STARTED,
+        NoticeKind.TASK_STOPPED,
+        NoticeKind.TASK_RESUMED,
+        NoticeKind.TASK_COMPLETED,
+    ]
+
+
+async def test_without_resumes_left_a_crash_goes_to_a_person() -> None:
+    store, host, notifier, _ = await setup(crash_after_prompt=True)
+    runner = TaskRunner(
         store=store,
         host=host,
         adapters=ADAPTERS,
         notifier=notifier,
         clock=FixedClock(NOW),
-        settings=replace(SETTINGS, agents=(AgentKind.CLAUDE,)),
+        settings=replace(SETTINGS, max_failure_resumes=0),
     )
 
-    status = await only_claude.run(TASK)
-
-    assert status is TaskStatus.PENDING
-    assert notifier.kinds == [
-        NoticeKind.TASK_STARTED,
-        NoticeKind.AGENT_LIMITED,
-        NoticeKind.WAITING_FOR_AGENT,
-    ]
-
-
-async def test_an_agent_that_crashes_stops_the_task_for_a_person() -> None:
-    store, _host, notifier, runner = await setup(crash_after_prompt=True)
-
-    status = await runner.run(TASK)
-
-    assert status is TaskStatus.WAITING
-    interrupted = [s.event for s in await store.read() if isinstance(s.event, AttemptInterrupted)]
-    assert [e.reason for e in interrupted] == [InterruptReason.CRASHED]
-    assert notifier.kinds == [NoticeKind.TASK_STARTED, NoticeKind.TASK_STOPPED]
+    assert await runner.run(TASK) is TaskStatus.WAITING
+    assert host.launched == ["claude"]
+    assert notifier.kinds[-1] is NoticeKind.NEEDS_HUMAN
 
 
 async def test_a_terminal_task_is_left_alone() -> None:

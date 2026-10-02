@@ -33,13 +33,16 @@ from coban.core.events import (
     AttemptEnded,
     AttemptInterrupted,
     AttemptLocated,
+    AttemptResumed,
     Event,
+    StoredEvent,
 )
 from coban.core.logging import get_logger, log_context
 from coban.core.model import (
     AgentKind,
     AgentState,
     AttemptOutcome,
+    AttemptStatus,
     InterruptReason,
     ObservationSource,
     TaskStatus,
@@ -48,11 +51,11 @@ from coban.core.notify import Notice, NoticeKind
 from coban.core.panes import PaneHostError, PaneNotFoundError
 from coban.core.projection import project
 from coban.core.targeting import resolve_target
-from coban.recovery.policy import hands_off
+from coban.recovery.policy import Plan, plan_recovery
 from coban.scheduler.turn import Action, Step, TurnState, next_step
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from datetime import datetime
 
     from coban.core.agents import AgentAdapter
@@ -60,7 +63,12 @@ if TYPE_CHECKING:
     from coban.core.notify import Notifier
     from coban.core.panes import PaneHost, PaneObservation
     from coban.core.ports import Clock, EventStore
-    from coban.core.projection import Board
+    from coban.core.projection import AttemptView, Board, TaskView
+
+CONTINUE_NOTE = (
+    "Your session was interrupted. Continue the task from where you stopped; the working "
+    "directory has your changes so far."
+)
 
 HANDOFF_NOTE = (
     "Another coding agent started this task and stopped because it reached its usage "
@@ -80,6 +88,8 @@ class RunnerSettings:
     screen_lines: int = 80
     # Overrides of the adapters' launch commands, per agent.
     launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
+    # Automatic resumes after crashes and stalls, per task (ADR 0005).
+    max_failure_resumes: int = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +104,7 @@ class _Context:
 class _Outcome(StrEnum):
     FINISHED = "finished"
     HANDED_OFF = "handed_off"
+    INTERRUPTED = "interrupted"  # recorded; plan_recovery decides what follows
     STOPPED = "stopped"
 
 
@@ -117,36 +128,129 @@ class TaskRunner:
         self._log = get_logger("coban.scheduler")
 
     async def run(self, task_id: TaskId) -> TaskStatus:
-        """Drive ``task_id`` until it is done, waits for an agent, or needs a person."""
-        with log_context(task_id=task_id):
-            task = (await self._board()).tasks[task_id]
-            if task.status.is_terminal:
-                return task.status
-            if task.live_attempt is not None:
-                await self._notify(
-                    NoticeKind.TASK_STOPPED,
-                    task_id,
-                    "The task already has a live attempt; resuming one is not supported yet.",
-                )
-                return task.status
+        """Drive ``task_id`` until it is done, has to wait, or needs a person.
 
+        Each pass looks at the task as the event log has it now: without a live
+        attempt a new one is started on the first available agent; an interrupted
+        attempt goes through ``plan_recovery``.
+        """
+        with log_context(task_id=task_id):
             tried: set[AgentKind] = set()
             previous: AgentKind | None = None
+            first_pass = True
             while True:
-                agent = await self._pick_agent(tried)
-                if agent is None:
-                    await self._notify(
-                        NoticeKind.WAITING_FOR_AGENT,
-                        task_id,
-                        "No agent is available right now; the task waits.",
-                    )
+                task = (await self._board()).tasks[task_id]
+                live = task.live_attempt
+                if task.status.is_terminal:
                     break
-                tried.add(agent)
-                outcome = await self._attempt(task_id, agent, previous)
-                if outcome is not _Outcome.HANDED_OFF:
+                if live is None:
+                    agent = await self._pick_agent(tried)
+                    if agent is None:
+                        await self._notify(
+                            NoticeKind.WAITING_FOR_AGENT,
+                            task_id,
+                            "No agent is available right now; the task waits.",
+                        )
+                        break
+                    tried.add(agent)
+                    outcome = await self._attempt(task_id, agent, previous)
+                    previous = agent
+                elif live.status is AttemptStatus.INTERRUPTED:
+                    outcome = await self._recover(task, live, tried)
+                    if outcome is _Outcome.HANDED_OFF:
+                        previous = live.agent
+                        tried.add(live.agent)
+                        first_pass = False
+                        continue
+                else:
+                    if first_pass:
+                        await self._notify(
+                            NoticeKind.TASK_STOPPED,
+                            task_id,
+                            "An attempt is still active; re-attaching to it is not supported yet.",
+                        )
                     break
-                previous = agent
+                first_pass = False
+                if outcome is not _Outcome.INTERRUPTED:
+                    break
             return (await self._board()).tasks[task_id].status
+
+    async def _recover(
+        self, task: TaskView, attempt: AttemptView, tried: set[AgentKind]
+    ) -> _Outcome:
+        """Act on ``plan_recovery`` for an interrupted attempt."""
+        events = await self._store.read()
+        availability = fold_availability(events, cooldown=self._settings.limit_cooldown)
+        now = self._clock.now()
+        reason = attempt.interrupt_reason or InterruptReason.STALLED
+        plan = plan_recovery(
+            reason,
+            has_session=attempt.session_ref is not None and attempt.agent in self._adapters,
+            agent_available=availability.is_available(attempt.agent, now),
+            another_agent_available=await self._pick_agent(tried | {attempt.agent}) is not None,
+            failure_resumes_used=_failure_resumes(events, task.task_id),
+            max_failure_resumes=self._settings.max_failure_resumes,
+        )
+        self._log.info("recovery plan", plan=plan.value, reason=reason.value)
+        if plan is Plan.RESUME and attempt.session_ref is not None:
+            return await self._resume(task, attempt, attempt.session_ref)
+        if plan is Plan.HAND_OFF:
+            await self._append(
+                AttemptEnded(
+                    occurred_at=now,
+                    task_id=task.task_id,
+                    attempt_id=attempt.attempt_id,
+                    outcome=AttemptOutcome.ABANDONED,
+                )
+            )
+            return _Outcome.HANDED_OFF
+        if plan is Plan.WAIT:
+            until = availability.limited_until.get(attempt.agent)
+            when = f" after {until:%Y-%m-%d %H:%M} UTC" if until else " later"
+            await self._notify(
+                NoticeKind.WAITING_FOR_AGENT,
+                task.task_id,
+                f"Every agent is limited; {attempt.agent.value} resumes this session{when}.",
+                attempt.attempt_id,
+            )
+            return _Outcome.STOPPED
+        await self._notify(
+            NoticeKind.NEEDS_HUMAN,
+            task.task_id,
+            f"{attempt.agent.value} stopped ({reason.value}) and will not be resumed "
+            "automatically. A person needs to look at it.",
+            attempt.attempt_id,
+        )
+        return _Outcome.STOPPED
+
+    async def _resume(self, task: TaskView, attempt: AttemptView, session_ref: str) -> _Outcome:
+        """Continue the attempt's own agent session in a fresh pane (ADR 0006)."""
+        adapter = self._adapters[attempt.agent]
+        with log_context(attempt_id=str(attempt.attempt_id)):
+            pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
+            now = self._clock.now()
+            await self._append(
+                AttemptResumed(
+                    occurred_at=now, task_id=task.task_id, attempt_id=attempt.attempt_id
+                ),
+                AttemptLocated(
+                    occurred_at=now,
+                    task_id=task.task_id,
+                    attempt_id=attempt.attempt_id,
+                    pane_id=pane_id,
+                ),
+            )
+            await self._host.send_text(pane_id, adapter.resume_command(session_ref))
+            await self._host.send_keys(pane_id, ["Enter"])
+            await self._notify(
+                NoticeKind.TASK_RESUMED,
+                task.task_id,
+                f"Resuming the {attempt.agent.value} session.",
+                attempt.attempt_id,
+            )
+            return await self._supervise(
+                task.task_id, attempt.attempt_id, attempt.agent, pane_id, CONTINUE_NOTE
+            )
 
     async def _pick_agent(self, tried: set[AgentKind]) -> AgentKind | None:
         availability = fold_availability(
@@ -366,26 +470,16 @@ class TaskRunner:
         *,
         resets_at: datetime | None = None,
     ) -> _Outcome:
-        now = self._clock.now()
-        events: list[Event] = [
+        """Record the interruption; what happens next is ``plan_recovery``'s call."""
+        await self._append(
             AttemptInterrupted(
-                occurred_at=now,
+                occurred_at=self._clock.now(),
                 task_id=task_id,
                 attempt_id=attempt_id,
                 reason=reason,
                 resume_not_before=resets_at,
             )
-        ]
-        if hands_off(reason):
-            events.append(
-                AttemptEnded(
-                    occurred_at=now,
-                    task_id=task_id,
-                    attempt_id=attempt_id,
-                    outcome=AttemptOutcome.ABANDONED,
-                )
-            )
-        await self._append(*events)
+        )
         kind = (
             NoticeKind.AGENT_LIMITED
             if reason is InterruptReason.RATE_LIMITED
@@ -393,7 +487,7 @@ class TaskRunner:
         )
         until = f" Available again at {resets_at:%Y-%m-%d %H:%M} UTC." if resets_at else ""
         await self._notify(kind, task_id, text + until, attempt_id)
-        return _Outcome.HANDED_OFF if hands_off(reason) else _Outcome.STOPPED
+        return _Outcome.INTERRUPTED
 
     async def _finish(self, task_id: TaskId) -> None:
         task = (await self._board()).tasks[task_id]
@@ -452,3 +546,21 @@ class _ObservationFeed:
         self._pump_task.cancel()
         with suppress(asyncio.CancelledError):
             await self._pump_task
+
+
+def _failure_resumes(events: Sequence[StoredEvent], task_id: TaskId) -> int:
+    """How often this task was resumed after a crash or a stall."""
+    count = 0
+    last_reason: dict[AttemptId, InterruptReason] = {}
+    for stored in events:
+        event = stored.event
+        if event.task_id != task_id:
+            continue
+        if isinstance(event, AttemptInterrupted):
+            last_reason[event.attempt_id] = event.reason
+        elif isinstance(event, AttemptResumed) and last_reason.get(event.attempt_id) in {
+            InterruptReason.CRASHED,
+            InterruptReason.STALLED,
+        }:
+            count += 1
+    return count

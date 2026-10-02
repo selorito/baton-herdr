@@ -1,0 +1,41 @@
+# Claude Code that takes a prompt (or a resumed session), works briefly and finishes.
+# Screens follow fixtures/claude/ (idle prompt box, working footer).
+agent = "claude"
+
+[[step]]
+wait = "prompt"
+screen = """
+ ▐▛███▜▌   Claude Code (fake)
+  ~/dev/coban-sandbox
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (3s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "forever"
+screen = """
+❯ {prompt}
+
+● Added a one-line docstring to add in calc.py. All tests pass.
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
