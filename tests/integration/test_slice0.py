@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 from coban.adapters import ADAPTERS
 from coban.budget.availability import fold_availability
+from coban.core.contract import END_CONTRACT
 from coban.core.events import (
     AgentStateObserved,
     AttemptEnded,
@@ -42,6 +43,12 @@ from simulated_agents import SimulatedAgents
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 TASK = TaskId("power")
 INSTRUCTIONS = "Add a power(a, b) function to calc.py with a test."
+
+
+def sent(body: str) -> str:
+    """A prompt as coban sends it: the body, then the end-of-turn contract."""
+    return f"{body} {END_CONTRACT}"
+
 
 SETTINGS = RunnerSettings(
     agents=(AgentKind.CLAUDE, AgentKind.CODEX),
@@ -124,8 +131,8 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     assert (AgentState.IDLE, "coban:codex_idle_prompt") in observed
 
     assert host.prompts == [
-        (AgentKind.CLAUDE, INSTRUCTIONS),
-        (AgentKind.CODEX, f"{HANDOFF_NOTE}\n\n{INSTRUCTIONS}"),
+        (AgentKind.CLAUDE, sent(INSTRUCTIONS)),
+        (AgentKind.CODEX, sent(f"{HANDOFF_NOTE} {INSTRUCTIONS}")),
     ]
     assert notifier.kinds == [
         NoticeKind.TASK_STARTED,
@@ -173,7 +180,7 @@ async def test_with_every_agent_limited_the_attempt_waits_and_resumes_its_own_se
     assert await runner.run(TASK) is TaskStatus.COMPLETED
 
     assert host.launched == ["claude", "claude --resume claude-session"]
-    assert host.prompts[-1] == (AgentKind.CLAUDE, CONTINUE_NOTE)
+    assert host.prompts[-1] == (AgentKind.CLAUDE, sent(CONTINUE_NOTE))
     task = project(await store.read()).tasks[TASK]
     assert len(task.attempts) == 1  # one attempt, one conversation, across the limit
     assert task.attempts[0].outcome is AttemptOutcome.SUCCEEDED
@@ -262,7 +269,7 @@ async def test_a_session_that_cannot_be_reopened_is_restarted_fresh_on_the_same_
         AttemptOutcome.SUCCEEDED,
     ]
     # The fresh session is told that earlier work may already be in the directory.
-    assert host.prompts[-1] == (AgentKind.CLAUDE, f"{HANDOFF_NOTE}\n\n{INSTRUCTIONS}")
+    assert host.prompts[-1] == (AgentKind.CLAUDE, sent(f"{HANDOFF_NOTE} {INSTRUCTIONS}"))
     assert NoticeKind.TASK_RESTARTED in notifier.kinds
 
 
@@ -299,7 +306,7 @@ async def test_after_a_daemon_restart_the_active_attempt_is_re_attached_not_rest
 
     # One launch, one prompt: the restart picked the attempt up where it was.
     assert host.launched == ["claude"]
-    assert host.prompts == [(AgentKind.CLAUDE, INSTRUCTIONS)]
+    assert host.prompts == [(AgentKind.CLAUDE, sent(INSTRUCTIONS))]
     task = project(await store.read()).tasks[TASK]
     assert [a.outcome for a in task.attempts] == [AttemptOutcome.SUCCEEDED]
 
@@ -319,7 +326,7 @@ async def test_a_re_attached_attempt_whose_pane_is_gone_is_resumed() -> None:
     ]
     assert reasons == [InterruptReason.CRASHED]
     assert host.launched == ["claude", "claude --resume claude-session"]
-    assert host.prompts[-1] == (AgentKind.CLAUDE, CONTINUE_NOTE)
+    assert host.prompts[-1] == (AgentKind.CLAUDE, sent(CONTINUE_NOTE))
 
 
 async def test_a_blocked_attempt_is_reported_once_and_continues_once_a_person_answers() -> None:
@@ -337,4 +344,28 @@ async def test_a_blocked_attempt_is_reported_once_and_continues_once_a_person_an
 
     host.approve()
     assert await runner.run(TASK) is TaskStatus.COMPLETED
-    assert host.prompts == [(AgentKind.CLAUDE, INSTRUCTIONS)]
+    assert host.prompts == [(AgentKind.CLAUDE, sent(INSTRUCTIONS))]
+
+
+async def test_a_turn_that_ends_with_a_question_waits_for_a_person() -> None:
+    store, _, notifier, _ = await setup()
+    host = SimulatedAgents(
+        FixedClock(NOW),
+        scripts={AgentKind.CLAUDE: "claude-finish.toml"},
+        end_mark="⏺ Should power(0, 0) return 1 or raise?\n  [[COBAN:END status=question]]",
+    )
+    runner = claude_runner(store, host, notifier)
+
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
+    asked = [n for n in notifier.notices if n.kind is NoticeKind.NEEDS_HUMAN]
+    assert [n.text for n in asked] == [
+        "claude is waiting for a decision: Should power(0, 0) return 1 or raise?"
+    ]
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN  # asked once, not every cycle
+    assert notifier.kinds.count(NoticeKind.NEEDS_HUMAN) == 1
+
+    # Answered at the terminal; the agent finishes and says so.
+    host.end_mark = "⏺ It returns 1 now.\n  [[COBAN:END status=done]]"
+    host.reshow()
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert len(host.prompts) == 1

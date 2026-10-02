@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Literal
 
 from coban.budget.availability import fold_availability
 from coban.core.commands import complete_task, start_attempt
+from coban.core.contract import END_CONTRACT, EndStatus, one_line, parse_end
 from coban.core.detection import DetectionRequest
 from coban.core.events import (
     AgentStateObserved,
@@ -107,6 +108,8 @@ class _Context:
     pane_id: str | None  # verified to host the attempt, or None
     # False when the same blocker was already reported before a re-attach.
     announce: bool = True
+    # The agent's own words about why it stopped (its end mark), if any.
+    detail: str = ""
 
 
 class _Outcome(StrEnum):
@@ -408,9 +411,10 @@ class TaskRunner:
                     observation = await feed.next()
                 except PaneNotFoundError:
                     observation = None
-                state, evidence, resets_at = await self._classify(
+                state, evidence, resets_at, screen = await self._classify(
                     adapter, observation, pane_id, saw_agent=saw_agent
                 )
+                state, evidence, detail = _read_end_mark(state, evidence, screen, turn)
                 saw_agent = saw_agent or (observation is not None and observation.agent is not None)
                 if not saw_agent and state is not AgentState.CRASHED:
                     continue  # the agent process has not started yet
@@ -437,6 +441,7 @@ class TaskRunner:
                         *prompt,
                         pane_for_input,
                         announce=(state, evidence) != reported,
+                        detail=detail,
                     ),
                     state=state,
                     evidence=evidence,
@@ -479,12 +484,12 @@ class TaskRunner:
             return _Outcome.FINISHED
         if step.action is Action.ASK_HUMAN:
             if ctx.announce:
-                await self._notify(
-                    NoticeKind.NEEDS_HUMAN,
-                    ctx.task_id,
-                    f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence}).",
-                    ctx.attempt_id,
+                text = (
+                    f"{ctx.agent.value} is waiting for a decision: {ctx.detail}"
+                    if ctx.detail
+                    else f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence})."
                 )
+                await self._notify(NoticeKind.NEEDS_HUMAN, ctx.task_id, text, ctx.attempt_id)
             else:
                 self._log.info("still waiting for a person", evidence=evidence)
             return _Outcome.STOPPED
@@ -513,20 +518,21 @@ class TaskRunner:
         pane_id: str,
         *,
         saw_agent: bool,
-    ) -> tuple[AgentState, str, datetime | None]:
+    ) -> tuple[AgentState, str, datetime | None, str]:
+        """The attempt's state, the evidence for it, a limit's reset time, and the screen."""
         if observation is None or observation.agent is None:
             # A resume the agent refused ends before the agent is ever seen running.
             with suppress(PaneHostError):
                 screen = await self._host.read_screen(pane_id, lines=self._settings.screen_lines)
                 if adapter.resume_failed(screen):
-                    return AgentState.CRASHED, RESUME_FAILED_EVIDENCE, None
+                    return AgentState.CRASHED, RESUME_FAILED_EVIDENCE, None, screen
             if saw_agent:
-                return AgentState.CRASHED, "coban:agent-process-gone", None
-            return AgentState.UNKNOWN, "coban:agent-not-started", None
+                return AgentState.CRASHED, "coban:agent-process-gone", None, ""
+            return AgentState.UNKNOWN, "coban:agent-not-started", None, ""
         try:
             screen = await self._host.read_screen(pane_id, lines=self._settings.screen_lines)
         except PaneNotFoundError:
-            return AgentState.CRASHED, "coban:pane-gone", None
+            return AgentState.CRASHED, "coban:pane-gone", None, ""
         result = adapter.classify(
             DetectionRequest(
                 agent=adapter.kind,
@@ -537,7 +543,7 @@ class TaskRunner:
                 timezone=self._settings.timezone,
             )
         )
-        return result.state, result.evidence, result.resets_at
+        return result.state, result.evidence, result.resets_at, screen
 
     async def _locate(self, task_id: TaskId, attempt_id: AttemptId) -> str | None:
         """Update the attempt's location and return a pane that may receive input."""
@@ -676,10 +682,35 @@ def _failure_resumes(events: Sequence[StoredEvent], task_id: TaskId) -> int:
 
 def _prompt(task: TaskView, kind: PromptKind) -> str:
     if kind == "continue":
-        return CONTINUE_NOTE
-    if kind == "handoff":
-        return f"{HANDOFF_NOTE}\n\n{task.instructions}"
-    return task.instructions
+        body = CONTINUE_NOTE
+    elif kind == "handoff":
+        body = f"{HANDOFF_NOTE} {task.instructions}"
+    else:
+        body = task.instructions
+    return one_line(f"{body} {END_CONTRACT}")
+
+
+_END_STATES = {
+    EndStatus.QUESTION: AgentState.BLOCKED_QUESTION,
+    EndStatus.BLOCKED: AgentState.BLOCKED_OTHER,
+}
+
+
+def _read_end_mark(
+    state: AgentState, evidence: str, screen: str, turn: TurnState
+) -> tuple[AgentState, str, str]:
+    """Refine a finished turn with the agent's end mark: a question is not a done task.
+
+    Only an idle agent that has worked on the prompt is read, so a mark left on
+    screen by an earlier turn (a resumed session) cannot end this one. Returns
+    the state, its evidence, and the agent's words above the mark.
+    """
+    if state is not AgentState.IDLE or not (turn.prompt_sent and turn.worked):
+        return state, evidence, ""
+    mark = parse_end(screen)
+    if mark is None or mark.status is EndStatus.DONE:
+        return state, evidence, ""
+    return _END_STATES[mark.status], f"coban:end:{mark.status.value}", mark.text
 
 
 def _prompt_kind(

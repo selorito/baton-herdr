@@ -62,6 +62,7 @@ class SimulatedAgents(FakePaneHost):
         resume_fails: bool = False,
         scripts: dict[AgentKind, str] | None = None,
         permission_after_prompt: bool = False,
+        end_mark: str | None = None,
     ) -> None:
         super().__init__()
         self._clock = clock
@@ -73,6 +74,8 @@ class SimulatedAgents(FakePaneHost):
         # Ask for a permission once the prompt arrives; ``approve`` lets the turn go on.
         self._permission_after_prompt = permission_after_prompt
         self._waiting_for_approval: dict[str, str] = {}
+        # Closing lines of a finished turn: the agent's message and its end mark.
+        self.end_mark = end_mark
         # Script played by a freshly launched agent; resumed sessions always finish.
         self._fresh_scripts = SCRIPT_FILES | (scripts or {})
         self.dialog_answers: list[tuple[str, ...]] = []
@@ -170,6 +173,11 @@ class SimulatedAgents(FakePaneHost):
         self._running[pane_id] = (agent, 2)
         self._show(pane_id, prompt=prompt)
 
+    def reshow(self) -> None:
+        """Redraw every running agent, e.g. after a test changed ``end_mark``."""
+        for pane_id in self._running:
+            self._show(pane_id, prompt="")
+
     def approve(self) -> None:
         """A person answers the permission prompt at the terminal; the turn finishes."""
         for pane_id, prompt in self._waiting_for_approval.items():
@@ -181,9 +189,10 @@ class SimulatedAgents(FakePaneHost):
     def _show(self, pane_id: str, *, prompt: str) -> None:
         agent, step = self._running[pane_id]
         script = fake_agent.load_script(SCRIPTS / self._scripts[pane_id])
-        self.screens[pane_id] = fake_agent.render(
-            script.steps[step].screen, now=self._clock.now(), prompt=prompt
-        )
+        screen = fake_agent.render(script.steps[step].screen, now=self._clock.now(), prompt=prompt)
+        if step == len(HOST_STATES[agent]) - 1 and self.end_mark:
+            screen = f"{self.end_mark}\n{screen}"
+        self.screens[pane_id] = screen
         state, evidence = HOST_STATES[agent][step]
         self.set_observation(
             PaneObservation(

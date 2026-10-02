@@ -286,7 +286,7 @@ dialog) asks in plain text and ends the turn, which herdr reports as `done`
 - The marker is a convention, not a guarantee: a missing marker must fall back to
   classifying the final message. The `pane.output_matched` subscription shape is in
   `fixtures/herdr/api-schema-0.9.1.json`; its matching behaviour is UNVERIFIED until tried.
-- Proposed extension (design note, not implemented): replace the single marker with one
+- Extension, implemented in `coban.core.contract` (2026-10-03): replace the single marker with one
   small end-of-turn block that every task instruction asks for:
 
   ```
@@ -355,3 +355,22 @@ prompt was recorded (`attempt.prompted`) and starting it again:
   `working` observation. Re-attach treats a turn whose prompt was sent as under way, so the
   idle agent counted as finished and the task completed. This rests on the prompt having
   reached the agent; the `[[COBAN:END]]` contract is what will make "done" explicit.
+
+### End-of-turn contract, live (2026-10-03)
+
+Every prompt now ends with the `[[COBAN:END status=…]]` request. Task for Claude Code: add
+docstrings, but first ask whether they should be English or Turkish.
+
+- **First try, prompt with line breaks: failed.** herdr's `agent.prompt` delivered it as a
+  paste, and Claude Code declined to act: "Your message contained only pasted text with
+  nothing of your own around it, so I haven't acted on it yet." It asked in plain text,
+  without a mark, and coban completed the task. Prompts are now sent as one line
+  (`one_line`); task instructions lose their line breaks.
+- **Second try, one line: passed.** Claude read the file, asked "Should the docstrings be in
+  English or in Turkish?" above `[[COBAN:END status=question]]`. coban recorded
+  `blocked_question` (`coban:end:question`) and sent that question as the only notice.
+  After "English" was typed at the terminal, the next daemon cycle re-attached, saw the
+  agent working, then idle above `[[COBAN:END status=done]]`, and completed the task.
+
+A missing mark still counts as "no signal": the first try shows what that costs when the
+agent asks in plain text anyway.
