@@ -19,6 +19,14 @@ path = "~/.local/share/coban/coban.db"
 # debug | info | warning | error | critical
 level = "info"
 
+[scheduler]
+# Agents in order of preference; a task moves on when one hits its usage limit.
+agents = ["claude", "codex"]
+# Used when an agent hits a limit without printing when it resets.
+limit_cooldown_minutes = 60
+# Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
+timezone = "UTC"
+
 [telegram]
 # Numeric id of the one private chat coban sends to. The bot token goes in .env:
 # COBAN_TELEGRAM__BOT_TOKEN=...

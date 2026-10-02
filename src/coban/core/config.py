@@ -134,6 +134,19 @@ class LoggingSettings(_Section):
     level: LogLevel = "info"
 
 
+class SchedulerSettings(_Section):
+    # Agents to use, in order of preference. A task moves to the next available one
+    # when the current one hits its usage limit.
+    agents: tuple[Literal["claude", "codex", "opencode"], ...] = ("claude", "codex")
+    # How long an agent stays unavailable after a limit that printed no reset time.
+    limit_cooldown_minutes: int = Field(default=60, ge=1)
+    start_timeout_seconds: float = Field(default=120, gt=0)
+    turn_timeout_seconds: float = Field(default=3600, gt=0)
+    poll_interval_seconds: float = Field(default=2, gt=0)
+    # IANA zone for reading clock times that agents print, e.g. "resets 3:45pm".
+    timezone: str = "UTC"
+
+
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat coban writes to. Without it no message is sent.
@@ -153,6 +166,7 @@ class CobanSettings(BaseSettings):
     herdr: HerdrSettings = Field(default_factory=HerdrSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     @classmethod

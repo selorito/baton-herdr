@@ -69,6 +69,8 @@ class AttemptView:
 class TaskView:
     task_id: TaskId
     title: str
+    instructions: str = ""
+    workdir: str = ""
     attempts: tuple[AttemptView, ...] = ()
     # Set once, by task.completed / task.failed / task.cancelled.
     closed_as: TaskStatus | None = None
@@ -118,7 +120,12 @@ def apply(board: Board, stored: StoredEvent) -> Board:
     if isinstance(event, TaskCreated):
         if event.task_id in board.tasks:
             raise InvalidEventError(stored, "task already exists")
-        task = TaskView(task_id=event.task_id, title=event.title)
+        task = TaskView(
+            task_id=event.task_id,
+            title=event.title,
+            instructions=event.instructions,
+            workdir=event.workdir,
+        )
     else:
         existing = board.tasks.get(event.task_id)
         if existing is None:
