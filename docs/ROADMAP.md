@@ -14,6 +14,12 @@ keeps the end-to-end loop working and makes one part of it real. Scope is fixed 
 | Ledger | SQLite event store with migrations, append-only at the database level |
 | herdr client | Socket client, herdr → coban state mapping, isolated live smoke test |
 
+Slice 0 findings so far: herdr exposes an agent session id only from the official integration
+source names (`herdr:claude`, …), and for Claude Code and Codex it takes the agent's identity
+from the process name and its state from the screen. `fake-agent` therefore runs under the
+agent's name and reports only its session, and herdr classifies its screens with the same
+rules it uses for the real agent.
+
 Not yet exercised: CI on GitHub (no remote has been added, so the workflow has never run).
 
 ## Slice 0: the thinnest end-to-end loop
@@ -36,14 +42,14 @@ task added ─► scheduler starts attempt on "claude" (fake)
           task completed ─► Telegram: "limit hit on Claude, moved to Codex", then "done"
 ```
 
-Work items, each behind a protocol with a fake and tests first:
+Work items, each behind a protocol with a fake and tests first (✅ = done):
 
-1. **`tools/fake-agent`**: a small terminal program that replays scripted screens taken from
+1. ✅ **`tools/fake-agent`**: a small terminal program that replays scripted screens taken from
    `fixtures/` (working, limit message, idle, done), so it can run in a real herdr pane or be
    stood in for by `FakePaneHost`.
-2. **Detector, minimal**: request and response models with their JSON Schema (ADR 0007), and
+2. ✅ **Detector, minimal**: request and response models with their JSON Schema (ADR 0007), and
    two rules: Claude's limit line with its reset time, and a finished or idle screen.
-3. **Adapters, minimal**: for Claude and Codex, only what the slice needs: launch command,
+3. ✅ **Adapters, minimal**: for Claude and Codex, only what the slice needs: launch command,
    the two detector rules, prompt submission through targeting (ADR 0006).
 4. **Budget, minimal**: an agent is unavailable from a `rate_limited` observation until its
    reset time. No token accounting yet.
