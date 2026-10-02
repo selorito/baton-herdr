@@ -86,12 +86,20 @@ test keeps passing throughout.
 
 | Step | Makes real | Notes |
 |------|------------|-------|
-| 1. Real agents | Adapters for Claude Code, Codex, OpenCode | Start-up blockers (trust, hooks, update prompts), resume commands, refining `blocked` into permission / question, positive idle for Codex, crash detection with `processes`. Tested against `fixtures/`; opt-in live runs in the sandbox repository. |
+| 1. Real agents (in progress) | Adapters for Claude Code, Codex, OpenCode | Start-up blockers (trust, hooks, update prompts), resume commands, refining `blocked` into permission / question, positive idle for Codex, crash detection with `processes`. Tested against `fixtures/`; opt-in live runs in the sandbox repository. |
 | 2. Quota accounting | Budget | Codex rollout `rate_limits`, Claude status line `rate_limits`, OpenCode session totals; Claude usage deduplicated by `message.id`. Tested against `fixtures/*/usage-sample.jsonl`. |
 | 3. Policy engine | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
 | 5. Benchmark | `bench/` | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
 | 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
+
+### Step 1 progress
+
+- ✅ OpenCode adapter; all recorded captures of the three v1 agents are classified in tests.
+- ✅ Safe start-up answers (only Codex's update prompt); trust, hooks and sign-in go to a person.
+- ✅ Per-attempt decisions are a pure state machine (`scheduler.turn`).
+- Next: live runs against the real agents in the sandbox repository (spends quota; opt-in),
+  resume of interrupted attempts with `resume_command`, crash detection with `processes`.
 
 ## After v1
 
