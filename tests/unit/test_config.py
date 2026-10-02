@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from baton_herdr.core import config as config_module
 from baton_herdr.core.config import BatonSettings, config_file
+
+# The real lookup; conftest points it at a temporary directory for every other test.
+REAL_USER_CONFIG_DIR = config_module.user_config_dir
 
 if TYPE_CHECKING:
     import pytest
@@ -49,6 +53,7 @@ def test_without_a_local_file_the_users_config_dir_is_used(
     monkeypatch.chdir(work)
     monkeypatch.delenv("BATON_CONFIG", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(config_module, "user_config_dir", REAL_USER_CONFIG_DIR)
 
     assert config_file() == user_dir / "baton.toml"
     settings = BatonSettings()

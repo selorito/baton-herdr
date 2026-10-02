@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from baton_herdr.core import config
 from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
 from baton_herdr.core.panes import PaneHostUnavailableError
 from baton_herdr.herdr.host import HerdrPaneHost
@@ -21,11 +22,17 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Keep the developer's own BATON_* variables and .env out of every test."""
+    """Keep the developer's own settings out of every test.
+
+    That is BATON_* variables, ./baton.toml and ./.env, and ~/.config/baton (only
+    baton's directory: herdr's, under the same XDG root, stays for the live tests).
+    """
     for key in list(os.environ):
         if key.startswith("BATON_"):
             monkeypatch.delenv(key)
     monkeypatch.chdir(tmp_path)
+    user_dir = tmp_path / "user-config" / "baton"
+    monkeypatch.setattr(config, "user_config_dir", lambda: user_dir)
 
 
 # herdr sets these inside its panes; they would point the CLI at the user's server.
