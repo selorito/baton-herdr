@@ -122,7 +122,7 @@ type = "layers"
 containers = ["coban"]
 exhaustive = true
 layers = [
-  "api : telegram : cli : daemon",
+  "api : telegram : cli : daemon : doctor : service",
   "recovery : budget : scheduler",
   "herdr | adapters | ledger",
   "core",

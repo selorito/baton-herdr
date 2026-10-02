@@ -90,9 +90,9 @@ The first version a person can rely on unattended. It cuts across the steps belo
 | Re-attach to an active attempt after cobanD restarts; re-check attempts waiting for a person each cycle, without repeating the notice | ✅ verified live with Claude Code |
 | "Done" for multi-step tasks: the `[[COBAN:END ...]]` contract (agents.md design note) | ✅ verified live with Claude Code |
 | Telegram actions: approve / deny, answer, status; owner and chat lock, bound callbacks (ADR 0009) | ✅ built; actions verified live with Claude Code through the CLI, Telegram itself not yet (needs a bot token) |
-| Install and operate: README walkthrough, systemd user unit, `coban doctor` | next |
+| Install and operate: README walkthrough, systemd user unit, `coban doctor` | ✅ units verified under systemd with Claude Code |
 
-Estimate when this was written: three to four more working sessions like the ones so far.
+The MVP is complete (2026-10-03). Telegram itself has not been tried live yet: it needs a bot token.
 
 ## Deepening the slice
 

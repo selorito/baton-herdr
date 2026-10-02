@@ -13,18 +13,30 @@ import typer
 from pydantic import ValidationError
 
 from coban.adapters import ADAPTERS
-from coban.core.config import CobanSettings
+from coban.core.config import CobanSettings, config_file
 from coban.core.detection import DetectionRequest, DetectionResult
 from coban.core.logging import configure_logging
 from coban.core.model import OperatorAction, TaskId
 from coban.core.projection import TaskView, project
 from coban.daemon import add_task, open_runtime, run_pending, serve
+from coban.doctor import Level, diagnose, render
 from coban.ledger import open_event_store
 from coban.scheduler.operator import ActionRefusedError, act
+from coban.service import (
+    COBAN_UNIT,
+    DEFAULT_SESSION,
+    NEXT_STEPS,
+    ServiceError,
+    install_units,
+    plan_units,
+    render_units,
+)
 
 app = typer.Typer(name="coban", no_args_is_help=True, add_completion=False)
 task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
 app.add_typer(task_app)
+service_app = typer.Typer(name="service", help="Run cobanD as a systemd user service.")
+app.add_typer(service_app)
 
 
 def _settings() -> CobanSettings:
@@ -184,6 +196,40 @@ def answer(
 ) -> None:
     """Answer the question the task's agent asked."""
     _act(task_id, OperatorAction.ANSWER, text)
+
+
+@app.command()
+def doctor() -> None:
+    """Check config, database, herdr, agents, timezone and Telegram; say how to fix problems."""
+    checks = asyncio.run(diagnose())
+    typer.echo(render(checks))
+    if any(check.level is Level.FAIL for check in checks):
+        raise typer.Exit(code=1)
+
+
+@service_app.command("install")
+def service_install(
+    *,
+    session: Annotated[
+        str, typer.Option(help="herdr session the service runs; attach to it to watch.")
+    ] = DEFAULT_SESSION,
+    force: Annotated[bool, typer.Option(help="Replace existing unit files.")] = False,
+    dry_run: Annotated[bool, typer.Option(help="Print the units instead of writing them.")] = False,
+) -> None:
+    """Write systemd user units for cobanD and its own herdr server (not enabled)."""
+    settings = _settings()
+    try:
+        plan = plan_units(settings, session=session, config=config_file())
+        if dry_run:
+            for name, text in render_units(plan).items():
+                typer.echo(f"# {name}\n{text}")
+            return
+        for path in install_units(plan, force=force):
+            typer.echo(f"wrote {path}")
+    except ServiceError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(code=1) from err
+    typer.echo(NEXT_STEPS.format(coban_unit=COBAN_UNIT, session=session))
 
 
 @app.command()

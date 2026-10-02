@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from coban.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
+
+    import pytest
+
+    from coban.core.config import HerdrSettings, TelegramSettings
+
+STATUS = """\
+claude: current (v10) (/home/u/.claude/hooks/herdr-agent-state.sh)
+codex: outdated (v7, current v8) (/home/u/.codex/herdr-agent-state.sh)
+opencode: not installed (/home/u/.config/opencode/plugins/herdr-agent-state.js)
+letta (experimental): not installed (/home/u/.letta/hooks/herdr-agent-session.sh)
+"""
+
+
+def test_integration_status_lines_are_parsed() -> None:
+    assert parse_integration_status(STATUS) == {
+        "claude": "current (v10)",
+        "codex": "outdated (v7, current v8)",
+        "opencode": "not installed",
+        "letta": "not installed",
+    }
+
+
+def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude")) -> Probes:
+    async def ping(_: HerdrSettings) -> str:
+        if not herdr_up:
+            raise ConnectionRefusedError
+        return "/run/herdr.sock"
+
+    async def bot_name(_: TelegramSettings) -> str:
+        return "coban_bot"
+
+    async def count(_: Path) -> int:
+        return 3
+
+    def run(command: Sequence[str]) -> str:
+        return STATUS if "integration" in command else "herdr 0.9.1\n"
+
+    return Probes(
+        which=lambda name: f"/bin/{name}" if name in on_path else None,
+        run=run,
+        ping_herdr=ping,
+        telegram_bot_name=bot_name,
+        count_events=count,
+        local_timezone=lambda: "Europe/Istanbul",
+    )
+
+
+def by_name(checks: Sequence[Check]) -> dict[str, Check]:
+    return {check.name: check for check in checks}
+
+
+async def test_a_healthy_setup_with_one_outdated_integration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "coban.toml"
+    config.write_text(
+        '[scheduler]\nagents = ["claude", "codex"]\ntimezone = "Europe/Istanbul"\n'
+        "[telegram]\nchat_id = 5\nowner_id = 7\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("COBAN_CONFIG", str(config))
+    monkeypatch.setenv("COBAN_TELEGRAM__BOT_TOKEN", "1:x")
+    (tmp_path / "coban.db").touch()
+    monkeypatch.setenv("COBAN_DATABASE__PATH", str(tmp_path / "coban.db"))
+
+    checks = by_name(await diagnose(probes(on_path=("herdr", "claude", "codex"))))
+
+    assert {name: c.level for name, c in checks.items() if c.level is not Level.OK} == {
+        "codex integration": Level.FAIL
+    }
+    assert "herdr integration install codex" in checks["codex integration"].hint
+    assert checks["telegram"].detail == "@coban_bot, actions from user 7"
+    assert "FAIL  codex integration" in render(list(checks.values()))
+
+
+async def test_missing_pieces_are_named_with_a_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COBAN_CONFIG", str(tmp_path / "missing.toml"))
+    monkeypatch.setenv("COBAN_SCHEDULER__AGENTS", '["claude", "codex"]')
+    monkeypatch.setenv("COBAN_DATABASE__PATH", str(tmp_path / "new" / "coban.db"))
+
+    checks = by_name(await diagnose(probes(herdr_up=False)))
+
+    assert checks["config"].level is Level.WARN
+    assert checks["database"].detail.endswith("(created on first use)")
+    assert not (tmp_path / "new").exists()
+    assert checks["herdr server"].level is Level.FAIL
+    assert "coban service install" in checks["herdr server"].hint
+    assert checks["codex"].level is Level.FAIL  # not on PATH
+    assert checks["timezone"].level is Level.WARN  # UTC on a machine in Istanbul
+    assert 'timezone = "Europe/Istanbul"' in checks["timezone"].hint
+    assert checks["telegram"].level is Level.WARN
+
+
+async def test_an_invalid_config_stops_the_other_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "coban.toml"
+    config.write_text("[scheduler]\npoll_interval_seconds = -1\n", encoding="utf-8")
+    monkeypatch.setenv("COBAN_CONFIG", str(config))
+
+    (check,) = await diagnose(probes())
+
+    assert check.level is Level.FAIL
+    assert "scheduler.poll_interval_seconds" in check.detail

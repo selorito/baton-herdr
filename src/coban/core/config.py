@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import (
     BaseSettings,
+    DotEnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 
 CONFIG_PATH_ENV_VAR = "COBAN_CONFIG"
 DEFAULT_CONFIG_FILE = Path("coban.toml")
+DOTENV_FILE = Path(".env")
 
 type LogLevel = Literal["debug", "info", "warning", "error", "critical"]
 
@@ -40,6 +42,31 @@ type LogLevel = Literal["debug", "info", "warning", "error", "critical"]
 def _xdg_dir(env_var: str, fallback: str) -> Path:
     base = os.environ.get(env_var)
     return Path(base) if base else Path.home() / fallback
+
+
+def user_config_dir() -> Path:
+    """``$XDG_CONFIG_HOME/coban``, or ``~/.config/coban``."""
+    return _xdg_dir("XDG_CONFIG_HOME", ".config") / "coban"
+
+
+def config_file() -> Path:
+    """The TOML file settings are read from.
+
+    ``COBAN_CONFIG`` if set; else ``./coban.toml`` if it exists; else the user's
+    ``~/.config/coban/coban.toml``, so the CLI and the service find the same file
+    from any directory. A missing file means defaults.
+    """
+    explicit = os.environ.get(CONFIG_PATH_ENV_VAR)
+    if explicit:
+        return Path(explicit).expanduser()
+    if DEFAULT_CONFIG_FILE.is_file():
+        return DEFAULT_CONFIG_FILE
+    return user_config_dir() / DEFAULT_CONFIG_FILE.name
+
+
+def dotenv_files() -> tuple[Path, ...]:
+    """Secrets files, later ones winning: the user's, then ``./.env``."""
+    return (user_config_dir() / DOTENV_FILE.name, DOTENV_FILE)
 
 
 class _Section(BaseModel):
@@ -164,7 +191,6 @@ class CobanSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="COBAN_",
         env_nested_delimiter="__",
-        env_file=".env",
         env_file_encoding="utf-8",
         extra="forbid",
         frozen=True,
@@ -185,11 +211,11 @@ class CobanSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        toml_file = Path(os.environ.get(CONFIG_PATH_ENV_VAR, DEFAULT_CONFIG_FILE))
+        del dotenv_settings  # replaced: the files are looked up when settings are read
         return (
             init_settings,
             env_settings,
-            dotenv_settings,
-            TomlConfigSettingsSource(settings_cls, toml_file=toml_file),
+            DotEnvSettingsSource(settings_cls, env_file=dotenv_files()),
+            TomlConfigSettingsSource(settings_cls, toml_file=config_file()),
             file_secret_settings,
         )
