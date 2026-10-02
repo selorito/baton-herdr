@@ -8,5 +8,4 @@ The project is now **baton-herdr**: import package `baton_herdr`, command `baton
   old name as a record.
 - The fixtures audit now allows any `~/dev/<name>-sandbox`, so captures made in the old
   sandbox stay valid without being rewritten.
-- The README has a section for moving an existing install (services, CLI, settings, event
-  log).
+- No installs existed under the old name, so there is no migration path.

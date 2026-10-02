@@ -133,44 +133,6 @@ from another chat, are ignored. Without `owner_id` the bot only sends notices.
 - Stop: `systemctl --user stop baton baton-herdr` (agents in the baton session stop with
   their herdr server).
 
-## Moving from an earlier install
-
-The project was renamed ([ADR 0010](docs/adr/0010-project-name.md) gives the old name). If
-you installed it under the old name, set `old` to that name and run these steps; nothing old
-is removed until you remove it.
-
-```bash
-old=...   # the previous name, from ADR 0010
-
-# 1. Stop the old services (if you installed them) and remove their unit files.
-systemctl --user disable --now "$old.service" "$old-herdr.service"
-rm ~/.config/systemd/user/"$old.service" ~/.config/systemd/user/"$old-herdr.service"
-systemctl --user daemon-reload
-
-# 2. Replace the CLI (from this checkout).
-uv tool uninstall "$old"
-uv tool install .
-
-# 3. Settings: new directory, file name and environment prefix.
-mv ~/.config/"$old" ~/.config/baton
-mv ~/.config/baton/"$old.toml" ~/.config/baton/baton.toml
-sed -i "s/^${old^^}_/BATON_/" ~/.config/baton/.env
-
-# 4. The event log.
-mv ~/.local/share/"$old" ~/.local/share/baton
-mv ~/.local/share/baton/"$old.db" ~/.local/share/baton/baton.db
-
-# 5. Check, then install and start the new services.
-baton doctor
-baton service install && systemctl --user daemon-reload
-systemctl --user enable --now baton.service
-```
-
-The service now runs its herdr server in the session `baton`. Attempts still running in the
-old session are not found there: they count as crashed and are resumed in the new session.
-A question or permission prompt that was already waiting before the move is answered at the
-terminal; remote actions apply to prompts recorded after it.
-
 ## Development
 
 Requirements: [uv](https://docs.astral.sh/uv/), a stable Rust toolchain (via rustup) and

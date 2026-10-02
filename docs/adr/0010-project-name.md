@@ -39,6 +39,7 @@ Unchanged on purpose:
 ### Consequences
 
 - Good: one name per layer, all derived from `baton`; the PyPI name is available.
-- Bad: existing installs have to move their settings, data and services; the README has a
-  section for it. Event logs written before the rename carry `coban:` evidence, so prompts
-  that were waiting before the move are answered at the terminal, not remotely.
+- The project used to be called coban; no installs were distributed under that name, so
+  there is no migration tool.
+- Event logs written under the old name carry `coban:` evidence, which the new code does
+  not recognise.
