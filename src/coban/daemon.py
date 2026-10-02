@@ -7,31 +7,41 @@ depends on the protocols in ``coban.core``.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from coban.adapters import ADAPTERS
+from coban.budget.availability import fold_availability
 from coban.core.clock import SystemClock
 from coban.core.events import TaskCreated
+from coban.core.logging import get_logger
 from coban.core.model import AgentKind, TaskId, TaskStatus
 from coban.core.notify import LoggingNotifier
 from coban.core.projection import project
 from coban.herdr import connect
 from coban.ledger import open_event_store
+from coban.scheduler.queue import (
+    Signature,
+    available_agents,
+    next_wake,
+    select_tasks,
+    task_positions,
+)
 from coban.scheduler.runner import RunnerSettings, TaskRunner
 from coban.telegram.notifier import telegram_notifier
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Sequence
 
     from coban.core.config import CobanSettings, SchedulerSettings
+    from coban.core.events import StoredEvent
     from coban.core.notify import Notifier
     from coban.core.panes import PaneHost
     from coban.core.ports import Clock, EventStore
-    from coban.core.projection import TaskView
 
 
 def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
@@ -51,6 +61,8 @@ def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
 class Runtime:
     store: EventStore
     runner: TaskRunner
+    settings: RunnerSettings
+    clock: Clock
 
 
 @asynccontextmanager
@@ -64,16 +76,18 @@ async def open_runtime(
     """Open the store and connect everything; arguments replace the real parts."""
     store = await open_event_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
+    clock = clock or SystemClock()
+    scheduling = runner_settings(settings.scheduler)
     try:
         runner = TaskRunner(
             store=store,
             host=host or connect(settings.herdr),
             adapters=ADAPTERS,
             notifier=notifier or telegram or LoggingNotifier(),
-            clock=clock or SystemClock(),
-            settings=runner_settings(settings.scheduler),
+            clock=clock,
+            settings=scheduling,
         )
-        yield Runtime(store=store, runner=runner)
+        yield Runtime(store=store, runner=runner, settings=scheduling, clock=clock)
     finally:
         if telegram is not None:
             await telegram.aclose()
@@ -104,15 +118,62 @@ async def add_task(
     return task_id
 
 
-def runnable(tasks: list[TaskView]) -> list[TaskView]:
-    """Open tasks without a live attempt, oldest first."""
-    return [t for t in tasks if not t.status.is_terminal and t.live_attempt is None]
+async def run_pending(
+    runtime: Runtime, *, seen: dict[TaskId, Signature] | None = None
+) -> dict[TaskId, TaskStatus]:
+    """Run, once and oldest first, every task that may make progress now.
 
-
-async def run_pending(runtime: Runtime) -> dict[TaskId, TaskStatus]:
-    """Run every runnable task once, in the order they were created."""
-    board = project(await runtime.store.read())
+    ``seen`` remembers, across calls, the state each task was last run in, so a
+    task that is waiting for the same thing is not run (and reported) again.
+    """
+    seen = {} if seen is None else seen
+    events = await runtime.store.read()
+    to_run = select_tasks(
+        list(project(events).tasks.values()),
+        positions=task_positions(events),
+        available=_available(runtime, events),
+        seen=seen,
+    )
     results: dict[TaskId, TaskStatus] = {}
-    for task in runnable(list(board.tasks.values())):
-        results[task.task_id] = await runtime.runner.run(task.task_id)
+    for task_id in to_run:
+        results[task_id] = await runtime.runner.run(task_id)
+        events = await runtime.store.read()
+        seen[task_id] = (task_positions(events).get(task_id, 0), _available(runtime, events))
     return results
+
+
+async def serve(
+    runtime: Runtime,
+    *,
+    stop: asyncio.Event,
+    idle_s: float = 30,
+    max_cycles: int | None = None,
+) -> None:
+    """Run tasks until ``stop`` is set: the cobanD main loop.
+
+    Between cycles it sleeps until new work may exist: ``idle_s`` to notice new
+    tasks, or less when an agent's limit resets sooner.
+    """
+    seen: dict[TaskId, Signature] = {}
+    cycles = 0
+    log = get_logger("coban.daemon")
+    while not stop.is_set():
+        await run_pending(runtime, seen=seen)
+        cycles += 1
+        if max_cycles is not None and cycles >= max_cycles:
+            break
+        availability = fold_availability(
+            await runtime.store.read(), cooldown=runtime.settings.limit_cooldown
+        )
+        now = runtime.clock.now()
+        delay = idle_s
+        if (wake_at := next_wake(availability, runtime.settings.agents, now)) is not None:
+            delay = max(0.0, min(delay, (wake_at - now).total_seconds()))
+        log.debug("sleeping", seconds=delay)
+        with suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=delay)
+
+
+def _available(runtime: Runtime, events: Sequence[StoredEvent]) -> frozenset[AgentKind]:
+    availability = fold_availability(events, cooldown=runtime.settings.limit_cooldown)
+    return available_agents(availability, runtime.settings.agents, runtime.clock.now())

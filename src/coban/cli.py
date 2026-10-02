@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import signal
 import sys
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -16,7 +17,7 @@ from coban.core.config import CobanSettings
 from coban.core.detection import DetectionRequest, DetectionResult
 from coban.core.logging import configure_logging
 from coban.core.projection import TaskView, project
-from coban.daemon import add_task, open_runtime, run_pending
+from coban.daemon import add_task, open_runtime, run_pending, serve
 from coban.ledger import open_event_store
 
 app = typer.Typer(name="coban", no_args_is_help=True, add_completion=False)
@@ -118,6 +119,24 @@ def status() -> None:
             for a in task.attempts
         )
         typer.echo(f"{task.task_id}  {task.status.value:<11}  {task.title}  {attempts}".rstrip())
+
+
+@app.command()
+def daemon(
+    idle: Annotated[float, typer.Option(help="Seconds between checks for new tasks.")] = 30,
+) -> None:
+    """Run cobanD: keep running tasks, resume them after limits reset. Ctrl+C stops."""
+    settings = _settings()
+
+    async def serve_until_interrupted() -> None:
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for signal_number in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(signal_number, stop.set)
+        async with open_runtime(settings) as runtime:
+            await serve(runtime, stop=stop, idle_s=idle)
+
+    asyncio.run(serve_until_interrupted())
 
 
 @app.command()

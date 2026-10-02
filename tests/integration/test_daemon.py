@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,16 +12,18 @@ from typer.testing import CliRunner
 from coban.cli import app
 from coban.core.config import CobanSettings, DatabaseSettings, SchedulerSettings
 from coban.core.fakes import FixedClock, RecordingNotifier
-from coban.core.model import AgentKind, TaskStatus
+from coban.core.model import AgentKind, TaskId, TaskStatus
 from coban.core.notify import NoticeKind
 from coban.core.projection import project
-from coban.daemon import add_task, open_runtime, run_pending, runner_settings
+from coban.daemon import add_task, open_runtime, run_pending, runner_settings, serve
 from coban.ledger import open_event_store
 
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from coban.scheduler.queue import Signature
 
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 cli = CliRunner()
@@ -109,3 +112,54 @@ def test_cli_run_without_agents_leaves_tasks_pending(tmp_path: Path, env: dict[s
 
     assert result.exit_code == 0, result.output
     assert result.stdout.split()[1] == "pending"
+
+
+async def test_the_daemon_waits_quietly_and_resumes_after_the_reset(tmp_path: Path) -> None:
+    db = tmp_path / "coban.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    limited = await add_task(store, title="one", instructions="do one", workdir="/w", clock=clock)
+    await store.close()
+    notifier = RecordingNotifier()
+    host = SimulatedAgents(clock)
+    seen: dict[TaskId, Signature] = {}
+
+    async with open_runtime(
+        settings_for(db, agents=["claude"]), host=host, notifier=notifier, clock=clock
+    ) as runtime:
+        assert await run_pending(runtime, seen=seen) == {limited: TaskStatus.WAITING}
+        notices = len(notifier.notices)
+
+        # Nothing changed: the waiting task is not run or reported again.
+        assert await run_pending(runtime, seen=seen) == {}
+        assert len(notifier.notices) == notices
+
+        # A task added meanwhile is picked up; with Claude limited it waits too.
+        later = await add_task(
+            runtime.store, title="two", instructions="do two", workdir="/w", clock=clock
+        )
+        assert await run_pending(runtime, seen=seen) == {later: TaskStatus.PENDING}
+
+        # The reset passes: the first task resumes its session and finishes; the second
+        # starts a fresh session, which in this simulation hits the limit again.
+        clock.advance(timedelta(minutes=31))
+        assert await run_pending(runtime, seen=seen) == {
+            limited: TaskStatus.COMPLETED,
+            later: TaskStatus.WAITING,
+        }
+    assert host.launched == ["claude", "claude --resume claude-session", "claude"]
+
+
+async def test_serve_stops_when_asked(tmp_path: Path) -> None:
+    clock = FixedClock(NOW)
+    stop = asyncio.Event()
+    async with open_runtime(
+        settings_for(tmp_path / "coban.db"),
+        host=SimulatedAgents(clock),
+        notifier=RecordingNotifier(),
+        clock=clock,
+    ) as runtime:
+        task = asyncio.create_task(serve(runtime, stop=stop, idle_s=0.01))
+        await asyncio.sleep(0.05)
+        stop.set()
+        await asyncio.wait_for(task, timeout=2)
