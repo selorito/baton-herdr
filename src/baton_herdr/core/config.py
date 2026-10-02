@@ -184,6 +184,27 @@ class SchedulerSettings(_Section):
     max_failure_resumes: int = Field(default=2, ge=0)
 
 
+class UsageSettings(_Section):
+    """The usage collector, `baton-detect usage` (ADR 0011)."""
+
+    enabled: bool = True
+    # A name on PATH or a path; `cargo install --path crates/baton-detect` puts it in
+    # ~/.cargo/bin.
+    binary: str = "baton-detect"
+    # The agents' log locations; unset means baton-detect's defaults (the agents' own).
+    claude_dir: Path | None = None
+    codex_dir: Path | None = None
+    opencode_db: Path | None = None
+    # How far before the newest stored record reading starts again after a restart.
+    # Repeats are dropped by the database, so this only needs to be generous.
+    reread_minutes: int = Field(default=60, ge=0)
+
+    @field_validator("claude_dir", "codex_dir", "opencode_db")
+    @classmethod
+    def _expand_user(cls, value: Path | None) -> Path | None:
+        return value.expanduser() if value else None
+
+
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat baton writes to. Without it no message is sent.
@@ -207,6 +228,7 @@ class BatonSettings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    usage: UsageSettings = Field(default_factory=UsageSettings)
 
     @classmethod
     def settings_customise_sources(

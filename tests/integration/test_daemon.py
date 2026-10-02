@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -10,7 +11,12 @@ import pytest
 from typer.testing import CliRunner
 
 from baton_herdr.cli import app
-from baton_herdr.core.config import BatonSettings, DatabaseSettings, SchedulerSettings
+from baton_herdr.core.config import (
+    BatonSettings,
+    DatabaseSettings,
+    SchedulerSettings,
+    UsageSettings,
+)
 from baton_herdr.core.fakes import FixedClock, RecordingNotifier
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
@@ -29,9 +35,13 @@ NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 cli = CliRunner()
 
 
-def settings_for(db: Path, **scheduler: object) -> BatonSettings:
+def settings_for(
+    db: Path, usage: UsageSettings | None = None, **scheduler: object
+) -> BatonSettings:
     return BatonSettings(
         database=DatabaseSettings(path=db),
+        # Never a real baton-detect here: it would read this machine's agent logs.
+        usage=usage or UsageSettings(enabled=False),
         scheduler=SchedulerSettings.model_validate(
             {"start_timeout_seconds": 2, "turn_timeout_seconds": 2, "poll_interval_seconds": 0.05}
             | scheduler
@@ -187,3 +197,32 @@ async def test_an_operator_action_wakes_the_loop_before_its_idle_time(tmp_path: 
         stop.set()
         await asyncio.wait_for(serving, timeout=5)
         assert project(await runtime.store.read()).tasks[task_id].attempts
+
+
+async def test_batond_collects_usage_while_it_serves(tmp_path: Path) -> None:
+    lines = tmp_path / "lines.ndjson"
+    lines.write_text(
+        '{"kind":"usage","agent":"codex","session_id":"c","record_id":"codex:c:1",'
+        '"at":"2026-10-02T09:00:00.000Z","model":null,'
+        '"tokens":{"input":1,"output":2,"cache_read":3,"cache_write":0,"reasoning":0}}\n'
+    )
+    detector = tmp_path / "baton-detect"
+    detector.write_text(
+        f"#!{sys.executable}\nimport sys, time\n"
+        f"sys.stdout.write(open({str(lines)!r}).read()); sys.stdout.flush(); time.sleep(30)\n"
+    )
+    detector.chmod(0o755)
+    clock = FixedClock(NOW)
+    stop = asyncio.Event()
+    settings = settings_for(tmp_path / "baton.db", UsageSettings(binary=str(detector)))
+    async with open_runtime(
+        settings, host=SimulatedAgents(clock), notifier=RecordingNotifier(), clock=clock
+    ) as runtime:
+        assert runtime.usage is not None
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=60))
+        async with asyncio.timeout(10):
+            while not await runtime.usage.usage():
+                await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(serving, 10)
+        assert [r.record_id for r in await runtime.usage.usage()] == ["codex:c:1"]

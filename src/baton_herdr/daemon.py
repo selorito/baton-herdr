@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.logging import get_logger
@@ -23,7 +24,7 @@ from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
 from baton_herdr.core.projection import project
 from baton_herdr.herdr import connect
-from baton_herdr.ledger import open_event_store
+from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.scheduler.queue import (
     Signature,
     available_agents,
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
-    from baton_herdr.core.ports import Clock, EventStore
+    from baton_herdr.core.ports import Clock, EventStore, UsageStore
 
 
 def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
@@ -71,6 +72,9 @@ class Runtime:
     wake: asyncio.Event = field(default_factory=asyncio.Event)
     operator: OperatorBot | None = None
     bot: Bot | None = None
+    # Agent usage telemetry (ADR 0011); the collector is None when [usage] is off.
+    usage: UsageStore | None = None
+    collector: UsageCollector | None = None
 
 
 @asynccontextmanager
@@ -83,6 +87,7 @@ async def open_runtime(
 ) -> AsyncIterator[Runtime]:
     """Open the store and connect everything; arguments replace the real parts."""
     store = await open_event_store(settings.database.path)
+    usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
     clock = clock or SystemClock()
     scheduling = runner_settings(settings.scheduler)
@@ -121,10 +126,17 @@ async def open_runtime(
             wake=wake,
             operator=operator,
             bot=telegram.bot if telegram is not None else None,
+            usage=usage,
+            collector=(
+                UsageCollector(store=usage, settings=settings.usage)
+                if settings.usage.enabled
+                else None
+            ),
         )
     finally:
         if telegram is not None:
             await telegram.aclose()
+        await usage.close()
         await store.close()
 
 
@@ -196,6 +208,9 @@ async def serve(
     )
     if bot_task is not None:
         bot_task.add_done_callback(_bot_stopped)
+    collecting = (
+        asyncio.create_task(runtime.collector.run(stop)) if runtime.collector is not None else None
+    )
     try:
         await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
     finally:
@@ -203,6 +218,11 @@ async def serve(
             bot_task.cancel()
             with suppress(asyncio.CancelledError):
                 await bot_task
+        if collecting is not None:
+            # It stops its baton-detect when stop is set; cancel if the loop ended otherwise.
+            collecting.cancel()
+            with suppress(asyncio.CancelledError):
+                await collecting
 
 
 def _bot_stopped(task: asyncio.Task[None]) -> None:
