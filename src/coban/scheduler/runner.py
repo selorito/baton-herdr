@@ -48,7 +48,8 @@ from coban.core.notify import Notice, NoticeKind
 from coban.core.panes import PaneHostError, PaneNotFoundError
 from coban.core.projection import project
 from coban.core.targeting import resolve_target
-from coban.recovery.policy import Verdict, assess, hands_off, interrupt_reason
+from coban.recovery.policy import hands_off
+from coban.scheduler.turn import Action, Step, TurnState, next_step
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -79,6 +80,15 @@ class RunnerSettings:
     screen_lines: int = 80
     # Overrides of the adapters' launch commands, per agent.
     launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class _Context:
+    task_id: TaskId
+    attempt_id: AttemptId
+    agent: AgentKind
+    prompt: str
+    pane_id: str | None  # verified to host the attempt, or None
 
 
 class _Outcome(StrEnum):
@@ -188,7 +198,7 @@ class TaskRunner:
             )
             return await self._supervise(task_id, attempt_id, agent, pane_id, prompt)
 
-    async def _supervise(  # noqa: PLR0912 - one state machine, kept in one place
+    async def _supervise(
         self,
         task_id: TaskId,
         attempt_id: AttemptId,
@@ -201,11 +211,12 @@ class TaskRunner:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._settings.start_timeout_s
         last_state: AgentState | None = None
-        saw_agent = prompt_sent = worked = False
+        saw_agent = False
+        turn = TurnState()
         try:
             while True:
                 if loop.time() > deadline:
-                    phase = "work" if prompt_sent else "start"
+                    phase = "work" if turn.prompt_sent else "start"
                     return await self._interrupt(
                         task_id, attempt_id, InterruptReason.STALLED, f"No progress during {phase}."
                     )
@@ -216,58 +227,77 @@ class TaskRunner:
                 state, evidence, resets_at = await self._classify(
                     adapter, observation, pane_id, saw_agent=saw_agent
                 )
-                if observation is not None and observation.agent is not None:
-                    saw_agent = True
+                saw_agent = saw_agent or (observation is not None and observation.agent is not None)
                 if not saw_agent and state is not AgentState.CRASHED:
                     continue  # the agent process has not started yet
                 if state is not last_state:
                     await self._observed(task_id, attempt_id, state, evidence)
                     last_state = state
                 pane_for_input = await self._locate(task_id, attempt_id)
-
-                if not prompt_sent:
-                    if state is AgentState.IDLE:
-                        if pane_for_input is None:
-                            return await self._interrupt(
-                                task_id,
-                                attempt_id,
-                                InterruptReason.STALLED,
-                                "The pane no longer hosts this attempt's agent.",
-                            )
-                        await self._host.send_prompt(pane_for_input, prompt)
-                        prompt_sent = True
-                        deadline = loop.time() + self._settings.turn_timeout_s
-                        continue
-                    verdict = assess(state, worked=False)
-                    if verdict is Verdict.CONTINUE:
-                        continue
-                else:
-                    worked = worked or state is AgentState.WORKING
-                    verdict = assess(state, worked=worked)
-
-                if verdict is Verdict.CONTINUE:
+                startup_keys = (
+                    adapter.startup_answer(evidence) if state is AgentState.BLOCKED_OTHER else None
+                )
+                turn, step = next_step(
+                    turn, state, startup_keys=startup_keys, can_send=pane_for_input is not None
+                )
+                if step.action is Action.WAIT:
                     continue
-                if verdict is Verdict.TURN_FINISHED:
-                    await self._finish(task_id)
-                    return _Outcome.FINISHED
-                if verdict is Verdict.NEEDS_HUMAN:
-                    await self._notify(
-                        NoticeKind.NEEDS_HUMAN,
-                        task_id,
-                        f"{agent.value} is waiting for a decision ({state.value}, {evidence}).",
-                        attempt_id,
-                    )
-                    return _Outcome.STOPPED
-                reason = interrupt_reason(state)
-                return await self._interrupt(
-                    task_id,
-                    attempt_id,
-                    reason,
-                    f"{agent.value} stopped: {reason.value}.",
+                if step.action is Action.SEND_PROMPT:
+                    deadline = loop.time() + self._settings.turn_timeout_s
+                outcome = await self._carry_out(
+                    step,
+                    _Context(task_id, attempt_id, agent, prompt, pane_for_input),
+                    state=state,
+                    evidence=evidence,
                     resets_at=resets_at,
                 )
+                if outcome is not None:
+                    return outcome
         finally:
             await feed.aclose()
+
+    async def _carry_out(
+        self,
+        step: Step,
+        ctx: _Context,
+        *,
+        state: AgentState,
+        evidence: str,
+        resets_at: datetime | None,
+    ) -> _Outcome | None:
+        """Perform ``step``; return an outcome when the attempt is over for now."""
+        if step.action is Action.SEND_PROMPT and ctx.pane_id is not None:
+            await self._host.send_prompt(ctx.pane_id, ctx.prompt)
+            return None
+        if step.action is Action.ANSWER_STARTUP and ctx.pane_id is not None:
+            self._log.info("answering start-up dialog", evidence=evidence)
+            await self._host.send_keys(ctx.pane_id, step.keys)
+            return None
+        if step.action is Action.FINISH:
+            await self._finish(ctx.task_id)
+            return _Outcome.FINISHED
+        if step.action is Action.ASK_HUMAN:
+            await self._notify(
+                NoticeKind.NEEDS_HUMAN,
+                ctx.task_id,
+                f"{ctx.agent.value} is waiting for a decision ({state.value}, {evidence}).",
+                ctx.attempt_id,
+            )
+            return _Outcome.STOPPED
+        if step.action is Action.INTERRUPT and step.reason is not None:
+            return await self._interrupt(
+                ctx.task_id,
+                ctx.attempt_id,
+                step.reason,
+                f"{ctx.agent.value} stopped: {step.reason.value}.",
+                resets_at=resets_at,
+            )
+        return await self._interrupt(
+            ctx.task_id,
+            ctx.attempt_id,
+            InterruptReason.STALLED,
+            "The pane no longer hosts this attempt's agent.",
+        )
 
     async def _classify(
         self,

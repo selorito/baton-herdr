@@ -38,20 +38,34 @@ HOST_STATES = {
         (AgentState.UNKNOWN, "herdr:idle-fallback"),
     ],
 }
+UPDATE_DIALOG = (
+    Path(__file__).parents[2]
+    / "fixtures/codex/blocked_question/20260930T075645Z/screen.detection.txt"
+)
 SCRIPT_FILES = {AgentKind.CLAUDE: "claude-limit.toml", AgentKind.CODEX: "codex-finish.toml"}
 
 
 class SimulatedAgents(FakePaneHost):
     """A pane host whose panes run scripted agents when their launch command is typed."""
 
-    def __init__(self, clock: Clock, *, crash_after_prompt: bool = False) -> None:
+    def __init__(
+        self,
+        clock: Clock,
+        *,
+        crash_after_prompt: bool = False,
+        codex_update_prompt: bool = False,
+    ) -> None:
         super().__init__()
         self._clock = clock
         self._crash_after_prompt = crash_after_prompt
+        # Show Codex's real update dialog (a recorded screen) before its prompt.
+        self._codex_update_prompt = codex_update_prompt
+        self.dialog_answers: list[tuple[str, ...]] = []
         self._typed: dict[str, str] = {}
         self._running: dict[str, tuple[AgentKind, int]] = {}
         self.prompts: list[tuple[AgentKind, str]] = []
         self._tasks: list[asyncio.Task[None]] = []
+        self._dialogs: set[str] = set()
 
     async def send_text(self, pane_id: str, text: str) -> None:
         await super().send_text(pane_id, text)
@@ -66,7 +80,27 @@ class SimulatedAgents(FakePaneHost):
         )
         if list(keys) == ["Enter"] and agent is not None:
             self._running[pane_id] = (agent, 0)
+            if agent is AgentKind.CODEX and self._codex_update_prompt:
+                self._show_update_dialog(pane_id)
+                return
             self._show(pane_id, prompt="")
+        elif pane_id in self._dialogs:
+            self.dialog_answers.append(tuple(keys))
+            self._dialogs.discard(pane_id)
+            self._show(pane_id, prompt="")
+
+    def _show_update_dialog(self, pane_id: str) -> None:
+        self._dialogs.add(pane_id)
+        self.screens[pane_id] = UPDATE_DIALOG.read_text()
+        self.set_observation(
+            PaneObservation(
+                pane_id=pane_id,
+                agent=AgentKind.CODEX,
+                state=AgentState.UNKNOWN,
+                evidence="herdr:idle-fallback",
+                session_ref="codex-session",
+            )
+        )
 
     async def send_prompt(self, pane_id: str, text: str) -> None:
         await super().send_prompt(pane_id, text)

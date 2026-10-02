@@ -50,7 +50,7 @@ SETTINGS = RunnerSettings(
 
 
 async def setup(
-    *, crash_after_prompt: bool = False
+    *, crash_after_prompt: bool = False, codex_update_prompt: bool = False
 ) -> tuple[InMemoryEventStore, SimulatedAgents, RecordingNotifier, TaskRunner]:
     clock = FixedClock(NOW)
     store = InMemoryEventStore()
@@ -65,7 +65,9 @@ async def setup(
             )
         ]
     )
-    host = SimulatedAgents(clock, crash_after_prompt=crash_after_prompt)
+    host = SimulatedAgents(
+        clock, crash_after_prompt=crash_after_prompt, codex_update_prompt=codex_update_prompt
+    )
     notifier = RecordingNotifier()
     runner = TaskRunner(
         store=store, host=host, adapters=ADAPTERS, notifier=notifier, clock=clock, settings=SETTINGS
@@ -170,3 +172,12 @@ async def test_a_terminal_task_is_left_alone() -> None:
     assert len(await store.read()) == before
     assert len(host.prompts) == 2
     assert notifier.kinds[-1] is NoticeKind.TASK_COMPLETED
+
+
+async def test_codex_update_prompt_is_skipped_on_the_way_to_the_task() -> None:
+    _store, host, notifier, runner = await setup(codex_update_prompt=True)
+
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+
+    assert host.dialog_answers == [("Down", "Enter")]  # "2. Skip"
+    assert NoticeKind.NEEDS_HUMAN not in notifier.kinds
