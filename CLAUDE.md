@@ -14,9 +14,9 @@ what is next, and ADR 0008 for the scope of v1.
 - **Detector**: Python, with agent rule sets in `adapters/` (ADR 0007). Its interface is an
   NDJSON contract defined by JSON Schema, so it can be replaced without touching callers.
   `crates/baton-detect` is a stub kept for a possible Rust implementation; no Rust feature
-  work is planned unless the benchmark in `bench/` justifies it.
-- **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `web/` and `baton_herdr.api` are empty
-  placeholders.
+  work is planned unless a benchmark justifies it.
+- **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `baton_herdr.api` is an empty
+  placeholder.
 - herdr is used only through its socket API / CLI and its plugin system. herdr is never forked
   (ADR 0003).
 - The append-only event log is the single source of truth. Every other piece of state is a
@@ -117,11 +117,9 @@ cargo run -p baton-detect -- --version
 ```
 src/baton_herdr/        Python package (batond + CLI)
 crates/           Rust workspace members
-web/              web panel (placeholder)
 herdr-plugin/     herdr plugin (placeholder)
 tools/fake-agent/ scripted fake agent for tests (placeholder)
 fixtures/<agent>/ captured screens per agent
-bench/            benchmarks
 docs/adr/         architecture decision records
 docs/devlog/      development log
 tests/            unit, property, integration

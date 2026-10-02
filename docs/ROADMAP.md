@@ -105,7 +105,7 @@ test keeps passing throughout.
 | 2. Quota accounting | Budget | Codex rollout `rate_limits`, Claude status line `rate_limits`, OpenCode session totals; Claude usage deduplicated by `message.id`. Tested against `fixtures/*/usage-sample.jsonl`. |
 | 3. Policy engine | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
-| 5. Benchmark | `bench/` | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
+| 5. Benchmark | A replay harness (not started) | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
 | 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
 
 ### Step 1 progress
