@@ -310,3 +310,20 @@ dialog) asks in plain text and ends the turn, which herdr reports as `done`
   - One fixed grammar, three statuses, no free-form fields: anything richer belongs in the
     text above the block.
 
+
+## First live coban runs (2026-10-03)
+
+`coban run` drove each real agent through one small task ("add a one-line docstring to `add`
+in `calc.py`") in `coban-sandbox`, in a dedicated herdr session. Versions as installed then;
+Codex ran as `codex -m gpt-5.6-luna -c model_reasoning_effort=low`, OpenCode on the free
+`opencode/big-pickle` model. All three completed the task with exactly the requested change.
+
+| Agent | Duration | What coban saw |
+|-------|----------|----------------|
+| Claude Code | 14 s | idle by herdr rule `live_prompt_box` → prompt → working (`osc_title_working`) → idle → done. Session id learned before the prompt. |
+| Codex CLI | 16 s | update prompt → answered automatically (Skip) → prompt → working → idle (`osc_title_idle`, a rule the remote catalog has added since H0). The session id arrived **after** the first prompt, so that prompt went out on the weaker kind-only check of ADR 0006. |
+| OpenCode | 69 s | herdr's idle was a fallback; coban's `opencode_idle_composer` recognised the composer → prompt → working (`progress_bar_working`) → idle reported by the plugin → done. Session id arrived with the first prompt. |
+
+One inconsistency found and fixed: once the pane status said `idle` while `agent explain`
+named the working-title rule. coban now takes the state from `explain` whenever it names a
+rule, and uses the pane status only when no rule matched (integration-reported state).
