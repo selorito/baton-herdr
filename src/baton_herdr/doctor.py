@@ -14,6 +14,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,6 +22,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import ValidationError
 
 from baton_herdr.adapters import ADAPTERS
+from baton_herdr.collector import detector_binary
 from baton_herdr.core.config import (
     HERDR_SOCKET_PATH_ENV_VAR,
     BatonSettings,
@@ -107,6 +109,8 @@ class Probes:
     count_events: Callable[[Path], Awaitable[int]] = _count_events
     local_timezone: Callable[[], str | None] = _local_timezone
     installed_session: Callable[[], str | None] = installed_session
+    detector: Callable[[str], Path | None] = detector_binary
+    package_version: Callable[[], str] = lambda: version("baton-herdr")
     environ: Callable[[], Mapping[str, str]] = os.environ.copy
 
 
@@ -140,6 +144,7 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     checks.append(await _database(settings, probes))
     checks.extend(await _herdr(settings, probes))
     checks.extend(_agents(settings, probes))
+    checks.append(_detector(settings, probes))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
     return checks
@@ -281,6 +286,34 @@ def _agents(settings: BatonSettings, probes: Probes) -> list[Check]:
             )
         )
     return checks
+
+
+def _detector(settings: BatonSettings, probes: Probes) -> Check:
+    """baton-detect, which batond runs to collect usage (ADR 0011)."""
+    if not settings.usage.enabled:
+        return Check("baton-detect", Level.OK, "usage collection is off ([usage] enabled)")
+    binary = probes.detector(settings.usage.binary)
+    if binary is None:
+        return Check(
+            "baton-detect",
+            Level.FAIL,
+            f"{settings.usage.binary} not found; usage is not collected",
+            "cargo install --path crates/baton-detect --locked (from the baton-herdr "
+            "checkout), or set [usage] binary to its path.",
+        )
+    try:
+        reported = probes.run([str(binary), "--version"]).strip()
+    except (OSError, subprocess.SubprocessError) as err:
+        return Check("baton-detect", Level.FAIL, f"{binary} does not run ({err})")
+    expected = probes.package_version()
+    if reported != f"baton-detect {expected}":
+        return Check(
+            "baton-detect",
+            Level.WARN,
+            f"{reported} at {binary}, but baton is {expected}",
+            "Install the matching version: cargo install --path crates/baton-detect --locked",
+        )
+    return Check("baton-detect", Level.OK, f"{reported} at {binary}")
 
 
 def _timezone(settings: BatonSettings, probes: Probes) -> Check:

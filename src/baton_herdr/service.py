@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
+from baton_herdr.collector import detector_binary
 from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME
 from baton_herdr.core.model import AgentKind
 
@@ -166,13 +167,14 @@ def plan_units(settings: BatonSettings, *, config: Path) -> UnitPlan:
             or ADAPTERS[AgentKind(name)].launch_command()
         )
         agents.append(shutil.which(shlex.split(command)[0]))
+    detector = detector_binary(settings.usage.binary) if settings.usage.enabled else None
     default_config = Path.home() / ".config" / "baton" / "baton.toml"
     pinned = config.resolve() if config.is_file() and config.resolve() != default_config else None
     return UnitPlan(
         herdr=herdr,
         baton=baton,
         session=session,
-        path=search_path([herdr, baton, *agents]),
+        path=search_path([herdr, baton, str(detector) if detector else None, *agents]),
         lang=os.environ.get("LANG") or "C.UTF-8",
         config=pinned,
     )

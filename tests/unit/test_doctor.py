@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     import pytest
 
@@ -30,7 +30,12 @@ def test_integration_status_lines_are_parsed() -> None:
     }
 
 
-def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude")) -> Probes:
+def probes(
+    *,
+    herdr_up: bool = True,
+    on_path: Sequence[str] = ("herdr", "claude"),
+    detector: str | None = "baton-detect 0.1.0",
+) -> Probes:
     async def ping(_: HerdrSettings) -> str:
         if not herdr_up:
             raise ConnectionRefusedError
@@ -43,7 +48,11 @@ def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude"
         return 3
 
     def run(command: Sequence[str]) -> str:
-        return STATUS if "integration" in command else "herdr 0.9.1\n"
+        if "integration" in command:
+            return STATUS
+        if command[0].endswith("baton-detect"):
+            return f"{detector}\n"
+        return "herdr 0.9.1\n"
 
     return Probes(
         which=lambda name: f"/bin/{name}" if name in on_path else None,
@@ -54,6 +63,8 @@ def probes(*, herdr_up: bool = True, on_path: Sequence[str] = ("herdr", "claude"
         local_timezone=lambda: "Europe/Istanbul",
         installed_session=lambda: None,  # never this machine's units
         environ=dict,
+        detector=lambda name: Path(f"/opt/{name}") if detector else None,
+        package_version=lambda: "0.1.0",
     )
 
 
@@ -145,3 +156,22 @@ async def test_doctor_names_a_service_session_the_settings_do_not_reach(
     # Matching: one line, ok; without an installed service: no line.
     assert by_name(await diagnose(with_service()))["service session"].level is Level.OK
     assert "service session" not in by_name(await diagnose(base))
+
+
+async def test_baton_detect_is_checked_unless_usage_collection_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert by_name(await diagnose(probes()))["baton-detect"].level is Level.OK
+
+    missing = by_name(await diagnose(probes(detector=None)))["baton-detect"]
+    assert missing.level is Level.FAIL
+    assert "cargo install --path crates/baton-detect" in missing.hint
+
+    stale = by_name(await diagnose(probes(detector="baton-detect 0.0.9")))["baton-detect"]
+    assert stale.level is Level.WARN
+    assert "but baton is 0.1.0" in stale.detail
+
+    monkeypatch.setenv("BATON_USAGE__ENABLED", "false")
+    off = by_name(await diagnose(probes(detector=None)))["baton-detect"]
+    assert off.level is Level.OK
+    assert "off" in off.detail
