@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = REPO_ROOT / "fixtures"
@@ -112,7 +112,16 @@ _ROOT_HOME = re.compile(r"(?<![\w.~-])/root(?=/|\b)")
 
 def _word(literal: str) -> re.Pattern[str]:
     # Alphanumeric boundaries only, so "-home-alice-dev" (encoded paths) masks too.
-    return re.compile(rf"(?<![A-Za-z0-9]){re.escape(literal)}(?![A-Za-z0-9])")
+    # A terminal escape right before the name ("\x1b[32malice@host", a coloured
+    # prompt in screen.ansi) ends in a letter, so it counts as a boundary too; it
+    # is kept in the "csi" group.
+    return re.compile(
+        rf"(?:(?P<csi>\x1b\[[0-9;:?]*[@-~])|(?<![A-Za-z0-9])){re.escape(literal)}(?![A-Za-z0-9])"
+    )
+
+
+def _replace_word(placeholder: str) -> Callable[[re.Match[str]], str]:
+    return lambda match: (match.group("csi") or "") + placeholder
 
 
 @dataclass(frozen=True)
@@ -146,7 +155,9 @@ class Masker:
         text = _SECRET_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", text)
         text = _EMAIL.sub("<email>", text)
         for pattern, placeholder in self._identity:
-            text = pattern.sub(placeholder, text)
+            text = pattern.sub(
+                _replace_word(placeholder) if "csi" in pattern.groupindex else placeholder, text
+            )
         text = _OTHER_HOME.sub(r"\1<user>", text)
         return _ROOT_HOME.sub("/<root>", text)
 

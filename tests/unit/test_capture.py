@@ -275,3 +275,11 @@ def test_snap_stops_with_a_clear_message_when_the_pane_is_missing() -> None:
     )
     with pytest.raises(capture.CaptureError, match=r"cannot read pane w9:p9: .*pane_not_found"):
         capture.snap(args, herdr, MASKER)
+
+
+def test_names_right_after_a_terminal_escape_are_masked_and_audited() -> None:
+    # A coloured shell prompt in screen.ansi: the escape ends in "m", a letter.
+    prompt = "\x1b[1m\x1b[38;5;2malice@alice-laptop:~/dev/coban-sandbox$ "
+    assert MASKER.mask(prompt) == "\x1b[1m\x1b[38;5;2m<user>@<host>:~/dev/coban-sandbox$ "
+    findings = audit_text(Path("screen.ansi"), prompt, MASKER)
+    assert {finding.kind for finding in findings} >= {"username", "hostname"}
