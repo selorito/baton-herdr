@@ -298,3 +298,25 @@ def test_names_right_after_a_terminal_escape_are_masked_and_audited() -> None:
 def test_any_sandbox_named_by_the_convention_is_allowed(line: str, *, flagged: bool) -> None:
     findings = audit_text(Path("screen.txt"), line, MASKER)
     assert any(f.kind == "path_outside_sandbox" for f in findings) is flagged
+
+
+def test_record_ids_get_stable_pseudonyms_so_split_records_still_deduplicate() -> None:
+    # Claude splits one API response into several records sharing message.id.
+    first = {"type": "assistant", "requestId": "req_011CA1", "message": {"id": "msg_01AbCdEf"}}
+    second = {"type": "assistant", "requestId": "req_011CA1", "message": {"id": "msg_01AbCdEf"}}
+    other = {"type": "assistant", "requestId": "req_011CA2", "message": {"id": "msg_01ZzZzZz"}}
+    sanitizer = Sanitizer(key=b"k")
+    a, b, c = (sanitizer.clean(r) for r in (first, second, other))
+
+    assert a["message"]["id"] == b["message"]["id"] != c["message"]["id"]
+    assert a["requestId"] == b["requestId"] != c["requestId"]
+    assert a["message"]["id"].startswith("msg_")
+    assert a["requestId"].startswith("req_")
+    assert "01AbCdEf" not in json.dumps(a)
+    # Deterministic for a key; another key gives other pseudonyms.
+    assert Sanitizer(key=b"k").clean(first) == a
+    assert Sanitizer(key=b"other").clean(first)["message"]["id"] != a["message"]["id"]
+
+
+def test_free_text_under_an_id_key_is_still_redacted() -> None:
+    assert Sanitizer().clean({"id": "not an id, a sentence"}) == {"id": "<redacted>"}

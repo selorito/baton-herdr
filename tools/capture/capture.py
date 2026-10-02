@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import shlex
 import socket
 import sqlite3
@@ -518,6 +521,24 @@ KEPT_STRING_KEYS = frozenset(
     {"type", "subtype", "role", "model", "stop_reason", "service_tier", "timestamp", "status"}
 )
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+# Record identifiers that are not UUIDs: Claude's message.id ("msg_…") and requestId
+# ("req_…"), Codex response and call ids, OpenCode message ids. Tools deduplicate by
+# them, so they are pseudonymised (same id, same pseudonym), not redacted.
+ID_KEYS = frozenset(
+    {
+        "id",
+        "requestId",
+        "request_id",
+        "response_id",
+        "messageId",
+        "message_id",
+        "messageID",
+        "parentID",
+        "call_id",
+        "tool_use_id",
+    }
+)
+_ID_VALUE = re.compile(r"^(?:(?P<prefix>[A-Za-z]{1,8})_)?[A-Za-z0-9_-]{6,128}$")
 _PLAIN_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 MAX_ARRAY_ITEMS = 3
 
@@ -527,6 +548,15 @@ class Sanitizer:
     """Whitelist-based structure-preserving redaction for agent session logs."""
 
     uuids: dict[str, str] = field(default_factory=dict)
+    # Random per run, so a pseudonym cannot be traced back by hashing known ids.
+    key: bytes = field(default_factory=lambda: secrets.token_bytes(32))
+
+    def pseudonym(self, real: str) -> str:
+        """Same id, same pseudonym, keeping a short type prefix such as ``msg_``."""
+        match = _ID_VALUE.match(real)
+        prefix = match["prefix"] if match and match["prefix"] else "id"
+        digest = hmac.new(self.key, real.encode(), hashlib.sha256).hexdigest()[:24]
+        return f"{prefix}_{digest}"
 
     def fake_uuid(self, real: str) -> str:
         if real not in self.uuids:
@@ -543,12 +573,17 @@ class Sanitizer:
         if isinstance(value, list):
             return [self.clean(item, key) for item in value[:MAX_ARRAY_ITEMS]]
         if isinstance(value, str):
-            if key in KEPT_STRING_KEYS:
-                return value
-            if _UUID.match(value):
-                return self.fake_uuid(value)
-            return REDACTED
+            return self._clean_string(value, key)
         return value  # numbers, booleans, null
+
+    def _clean_string(self, value: str, key: str | None) -> str:
+        if key in KEPT_STRING_KEYS:
+            return value
+        if _UUID.match(value):
+            return self.fake_uuid(value)
+        if key in ID_KEYS and _ID_VALUE.match(value):
+            return self.pseudonym(value)
+        return REDACTED
 
 
 def record_kind(record: dict[str, Any]) -> str:
@@ -598,7 +633,7 @@ def iter_opencode_db(path: Path) -> Iterator[dict[str, Any]]:
 def usage_sample(args: argparse.Namespace, _herdr: Herdr, masker: Masker) -> Path:
     per_kind: dict[str, int] = {}
     usage_kept = 0
-    sanitizer = Sanitizer()
+    sanitizer = Sanitizer(key=args.pseudonym_key.encode()) if args.pseudonym_key else Sanitizer()
     out_lines: list[str] = []
     source = Path(args.input).expanduser()
     records = iter_opencode_db(source) if source.suffix == ".db" else iter_jsonl(source)
@@ -728,6 +763,10 @@ def build_parser() -> argparse.ArgumentParser:
     usage_p.add_argument("--out")
     usage_p.add_argument("--per-kind", type=int, default=2)
     usage_p.add_argument("--usage", type=int, default=4, help="extra records carrying usage")
+    usage_p.add_argument(
+        "--pseudonym-key",
+        help="fixed key for id pseudonyms, for a reproducible sample (default: random)",
+    )
     usage_p.set_defaults(handler=usage_sample)
 
     audit_p = sub.add_parser("audit", help="scan fixtures for leaked paths, emails and keys")
