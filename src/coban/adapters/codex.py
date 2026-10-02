@@ -1,0 +1,83 @@
+"""Codex CLI adapter. Evidence: fixtures/codex/, docs/research/agents.md."""
+
+from __future__ import annotations
+
+import re
+import shlex
+from typing import TYPE_CHECKING
+
+from coban.core.clock_text import parse_duration, parse_month_date_time
+from coban.core.detection import ScreenRule, detect, refine_blocked
+from coban.core.model import AgentKind, AgentState
+
+if TYPE_CHECKING:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from coban.core.detection import DetectionRequest, DetectionResult
+
+# "You've hit your usage limit. … try again at Feb 23rd, 2026 9:01 PM." or
+# "… try again in 3 hours 2 minutes." (openai/codex issues #3031, #12299, #16917).
+# The screen may wrap the sentence, so whitespace includes newlines.
+_LIMIT = re.compile(
+    r"You've\s+hit\s+your\s+usage\s+limit\.[\s\S]{0,300}?try\s+again\s+"
+    r"(?:at\s+(?P<at>[A-Z][a-z]{2}\w*\.?\s+\d{1,2}\w*,?\s+\d{4},?\s+\d{1,2}:\d{2}\s*[AP]M)"
+    r"|in\s+(?P<in>(?:\d+\s+\w+\s*)+))"
+    r"|You've\s+hit\s+your\s+usage\s+limit\.",
+)
+# Codex marks the composer and the selected dialog option with U+203A; numbered lines
+# after it are dialog options, not the composer. While a turn runs the footer ends with a
+# braille spinner (U+2800..U+28FF).
+_MARK = "\u203a"
+_SPINNER = "\u2800-\u28ff"
+_IDLE_PROMPT = re.compile(rf"^{_MARK} (?!\d+\.\s)[^\n]*\n {{2}}\S[^\n]* · [^\n]*[^\n{_SPINNER}]\Z")
+_TRUST = re.compile(rf"Trust this folder\?[\s\S]*?^{_MARK} 1\. Trust and continue", re.MULTILINE)
+_HOOKS = re.compile(rf"Hooks need review[\s\S]*?^{_MARK} 1\. Review hooks", re.MULTILINE)
+_UPDATE = re.compile(r"Update available[\s\S]*?Skip until next version")
+_RESUME_PICKER = re.compile(r"Resume a previous session[\s\S]*?enter resume")
+_APPROVAL = re.compile(
+    r"(?:Would you like to make the following edits\?|Allow command\?)"
+    r"[\s\S]*?Press enter to confirm or esc to cancel"
+)
+
+
+def _limit_resets(match: re.Match[str], after: datetime, zone: ZoneInfo) -> datetime | None:
+    if match.group("at"):
+        return parse_month_date_time(" ".join(match.group("at").split()), zone=zone)
+    if match.group("in"):
+        duration = parse_duration(match.group("in"))
+        return after + duration if duration is not None else None
+    return None
+
+
+_ONLY_WITHOUT_HOST_SIGNAL = frozenset({AgentState.UNKNOWN})
+
+RULES = (
+    ScreenRule("codex_usage_limit", AgentState.RATE_LIMITED, _LIMIT, reset_parser=_limit_resets),
+    ScreenRule("codex_edit_or_command_approval", AgentState.BLOCKED_PERMISSION, _APPROVAL),
+    ScreenRule("codex_trust_folder", AgentState.BLOCKED_OTHER, _TRUST),
+    ScreenRule("codex_hooks_review", AgentState.BLOCKED_OTHER, _HOOKS),
+    ScreenRule("codex_update_prompt", AgentState.BLOCKED_OTHER, _UPDATE),
+    ScreenRule("codex_resume_picker", AgentState.BLOCKED_OTHER, _RESUME_PICKER),
+    # herdr has no idle rule for Codex, so its idle is always a fallback (unknown).
+    ScreenRule(
+        "codex_idle_prompt",
+        AgentState.IDLE,
+        _IDLE_PROMPT,
+        bottom_lines=2,
+        applies_when=_ONLY_WITHOUT_HOST_SIGNAL,
+    ),
+)
+
+
+class CodexAdapter:
+    kind = AgentKind.CODEX
+
+    def launch_command(self) -> str:
+        return "codex"
+
+    def resume_command(self, session_ref: str) -> str:
+        return f"codex resume {shlex.quote(session_ref)}"
+
+    def classify(self, request: DetectionRequest) -> DetectionResult:
+        return refine_blocked(detect(request, RULES), {})

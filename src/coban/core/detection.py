@@ -19,7 +19,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from coban.core.model import AgentKind, AgentState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
 DETECTION_CONTRACT_VERSION = 1
@@ -97,3 +97,18 @@ def bottom(screen: str, lines: int) -> str:
     """The last ``lines`` non-empty lines, right-trimmed, joined by newlines."""
     kept = [line.rstrip() for line in screen.splitlines() if line.strip()]
     return "\n".join(kept[-lines:])
+
+
+def refine_blocked(
+    result: DetectionResult, rule_kinds: Mapping[str, AgentState]
+) -> DetectionResult:
+    """Turn a host ``blocked_other`` into a specific kind using the host's rule id.
+
+    ``rule_kinds`` maps herdr rule ids (``evidence == "herdr:rule:<id>"``) to a
+    blocked kind; adapters supply it.
+    """
+    prefix = "herdr:rule:"
+    if result.state is not AgentState.BLOCKED_OTHER or not result.evidence.startswith(prefix):
+        return result
+    kind = rule_kinds.get(result.evidence.removeprefix(prefix))
+    return result if kind is None else result.model_copy(update={"state": kind})
