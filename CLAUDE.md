@@ -4,8 +4,8 @@ Orchestrator that runs on top of [herdr](https://github.com/herdrdev/herdr). It 
 agents (Claude Code, Codex CLI, OpenCode; Gemini CLI in v1.1) working until their tasks are
 finished and distributes work according to each agent's remaining token quota.
 
-Status: pre-alpha. See `docs/ROADMAP.md` for what exists and what is next, and ADR 0008 for
-the scope of v1.
+Status: MVP (usable unattended on one machine). See `docs/ROADMAP.md` for what exists and
+what is next, and ADR 0008 for the scope of v1.
 
 ## Architecture
 

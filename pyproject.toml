@@ -1,6 +1,6 @@
 [project]
 name = "coban"
-version = "0.0.0"
+version = "0.1.0"
 description = "Orchestrator that keeps coding agents running on herdr until their tasks are done."
 readme = "README.md"
 license = "Apache-2.0"
@@ -16,6 +16,10 @@ dependencies = [
     "structlog>=26.1.0",
     "typer>=0.27.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/selorito/coban"
+Issues = "https://github.com/selorito/coban/issues"
 
 [project.scripts]
 coban = "coban.cli:app"

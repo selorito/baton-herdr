@@ -1,5 +1,7 @@
 # coban
 
+[![CI](https://github.com/selorito/coban/actions/workflows/ci.yml/badge.svg)](https://github.com/selorito/coban/actions/workflows/ci.yml)
+
 coban is an orchestrator for coding agents (Claude Code, Codex CLI and OpenCode in v1)
 running inside [herdr](https://github.com/herdrdev/herdr). It watches each agent through
 herdr's socket API and plugin system, resumes work an agent left unfinished, and assigns new
@@ -27,7 +29,7 @@ You need Linux, [uv](https://docs.astral.sh/uv/), [herdr](https://github.com/her
 signed in once by you.
 
 ```bash
-git clone <this repository> coban && cd coban
+git clone https://github.com/selorito/coban.git && cd coban
 uv tool install .                         # puts `coban` in ~/.local/bin
 herdr integration install claude          # and codex / opencode: coban needs the session
 herdr integration install codex           # ids these integrations report
