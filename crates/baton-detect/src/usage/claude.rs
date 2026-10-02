@@ -13,7 +13,7 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 
-use super::{Agent, ParseError, Tokens, UsageRecord, parse_time};
+use super::{Agent, ParseError, Tokens, UsageRecord, parse_json, parse_time};
 
 /// Model name Claude Code writes for responses it made up itself (errors, interrupts).
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -62,7 +62,7 @@ impl ClaudeLog {
     /// A line that is not JSON, or an assistant usage record without a session, message
     /// id or valid timestamp. The caller reports it and goes on.
     pub fn parse_line(&mut self, line: &str) -> Result<Option<UsageRecord>, ParseError> {
-        let line: Line = serde_json::from_str(line)?;
+        let line: Line = parse_json(line)?;
         if line.kind.as_deref() != Some("assistant") {
             return Ok(None);
         }

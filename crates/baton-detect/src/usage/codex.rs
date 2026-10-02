@@ -17,7 +17,7 @@ use time::OffsetDateTime;
 
 use super::{
     Agent, Event, ParseError, RateLimitObservation, RateLimitWindow, Tokens, UsageRecord,
-    format_time, from_unix, parse_time,
+    format_time, from_unix, parse_json, parse_time,
 };
 
 #[derive(Debug, Deserialize)]
@@ -149,7 +149,7 @@ impl CodexLog {
     /// A line that is not JSON, or a `token_count` before the session is known or
     /// without a valid timestamp. The caller reports it and goes on.
     pub fn parse_line(&mut self, line: &str) -> Result<Vec<Event>, ParseError> {
-        let line: Line = serde_json::from_str(line)?;
+        let line: Line = parse_json(line)?;
         let Some(payload) = line.payload else {
             return Ok(Vec::new());
         };

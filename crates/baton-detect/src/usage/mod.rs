@@ -6,6 +6,7 @@
 
 pub mod claude;
 pub mod codex;
+pub mod collect;
 pub mod opencode;
 
 use serde::{Serialize, Serializer};
@@ -100,6 +101,26 @@ pub enum ParseError {
     Missing(&'static str),
 }
 
+/// Parses one log line as JSON, tolerating raw control characters in strings.
+///
+/// Claude Code has been seen writing them (JSON requires them escaped). They are only
+/// ever in free text, never in the numbers or ids read here, so they become spaces.
+///
+/// # Errors
+/// [`ParseError::Json`] when the line is not JSON even then.
+pub fn parse_json<T: serde::de::DeserializeOwned>(line: &str) -> Result<T, ParseError> {
+    match serde_json::from_str(line) {
+        Err(error) if error.is_syntax() && line.bytes().any(|b| b < 0x20) => {
+            let cleaned: String = line
+                .chars()
+                .map(|c| if c < ' ' { ' ' } else { c })
+                .collect();
+            Ok(serde_json::from_str(&cleaned)?)
+        }
+        parsed => Ok(parsed?),
+    }
+}
+
 /// Parses the RFC 3339 times agents write (`2026-09-30T07:15:26.612Z`).
 ///
 /// # Errors
@@ -161,6 +182,14 @@ mod tests {
             format_time(from_unix_millis(1_790_755_334_879).unwrap()),
             "2026-09-30T08:02:14.879Z"
         );
+    }
+
+    #[test]
+    fn raw_control_characters_in_strings_are_tolerated() {
+        let line = "{\"text\":\"a\u{1}b\tc\",\"n\":3}";
+        let value: serde_json::Value = parse_json(line).unwrap();
+        assert_eq!(value["n"], 3);
+        assert!(parse_json::<serde_json::Value>("{\"n\":").is_err());
     }
 
     #[test]
