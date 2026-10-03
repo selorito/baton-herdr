@@ -128,7 +128,9 @@ async def open_runtime(
                     owner_id=settings.telegram.owner_id,
                     agents=scheduling.agents,
                     limit_cooldown=scheduling.limit_cooldown,
+                    timezone=scheduling.timezone,
                 ),
+                budget=budget,
                 on_action=wake.set,
             )
         yield Runtime(

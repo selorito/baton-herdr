@@ -13,8 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.budget.report import budget_lines, when
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction, TaskId
 from baton_herdr.core.projection import project
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
     from aiogram import Bot
     from aiogram.types import CallbackQuery, Message
 
+    from baton_herdr.budget.load import BudgetReader
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.model import AgentKind
     from baton_herdr.core.panes import PaneHost
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
 
 HELP = (
     "/status: open tasks and agents.\n"
+    "/budget: what each agent has left; Claude's figure is an estimate.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
 _DONE = {
@@ -50,6 +54,8 @@ class BotSettings:
     owner_id: int
     agents: tuple[AgentKind, ...]
     limit_cooldown: timedelta
+    # Zone for the times shown, as configured for the scheduler.
+    timezone: str = "UTC"
 
 
 class OperatorBot:
@@ -61,6 +67,7 @@ class OperatorBot:
         adapters: Mapping[AgentKind, AgentAdapter],
         clock: Clock,
         settings: BotSettings,
+        budget: BudgetReader | None = None,
         on_action: Callable[[], None] | None = None,
     ) -> None:
         self._store = store
@@ -68,6 +75,8 @@ class OperatorBot:
         self._adapters = adapters
         self._clock = clock
         self._settings = settings
+        self._budget = budget
+        self._zone = ZoneInfo(settings.timezone)
         # Called after an action was carried out, so the daemon looks at the task now.
         self._on_action = on_action or (lambda: None)
         self._log = get_logger("baton.telegram")
@@ -82,7 +91,16 @@ class OperatorBot:
         name = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0] if text.strip() else ""
         if name == "/status":
             return await self.status()
+        if name == "/budget":
+            return await self.budget()
         return HELP
+
+    async def budget(self) -> str:
+        if self._budget is None:
+            return "Budgets are not available."
+        now = self._clock.now()
+        budgets = await self._budget.read(self._settings.agents, await self._store.read(), now)
+        return "\n".join(budget_lines(budgets.values(), now=now, zone=self._zone))
 
     async def status(self) -> str:
         events = await self._store.read()
@@ -104,7 +122,7 @@ class OperatorBot:
             until = availability.limited_until.get(agent)
             limited = until is not None and until > now
             agents.append(
-                f"{agent.value}: limited until {until:%H:%M} UTC"
+                f"{agent.value}: limited until {when(until, now, self._zone)}"
                 if limited and until is not None
                 else f"{agent.value}: available"
             )
@@ -162,7 +180,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     def sender(update: Message | CallbackQuery) -> int | None:
         return update.from_user.id if update.from_user else None
 
-    @router.message(Command("status", "help", "start"))
+    @router.message(Command("status", "budget", "help", "start"))
     async def on_command(message: Message) -> None:
         if operator.authorized(message.chat.id, sender(message)):
             await message.answer(await operator.command(message.text or ""))

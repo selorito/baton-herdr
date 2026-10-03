@@ -5,22 +5,28 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from datetime import timedelta
 from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import typer
 from pydantic import ValidationError
 
 from baton_herdr.adapters import ADAPTERS
+from baton_herdr.budget.choice import choose_agent
+from baton_herdr.budget.load import BudgetReader
+from baton_herdr.budget.report import budget_lines
+from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BatonSettings, config_file
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.logging import configure_logging
-from baton_herdr.core.model import OperatorAction, TaskId
+from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
 from baton_herdr.daemon import add_task, open_runtime, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, render
-from baton_herdr.ledger import open_event_store
+from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.service import (
     BATON_UNIT,
@@ -132,6 +138,46 @@ def status() -> None:
             for a in task.attempts
         )
         typer.echo(f"{task.task_id}  {task.status.value:<11}  {task.title}  {attempts}".rstrip())
+
+
+@app.command()
+def budget() -> None:
+    """Show what each agent has left and which one a new task would go to.
+
+    Codex's figures are its own; Claude's are baton's estimate (ADR 0012).
+    """
+    settings = _settings()
+    agents = tuple(AgentKind(agent) for agent in settings.scheduler.agents)
+    zone = ZoneInfo(settings.scheduler.timezone)
+
+    async def read() -> list[str]:
+        store = await open_event_store(settings.database.path)
+        usage = await open_usage_store(settings.database.path)
+        try:
+            reader = BudgetReader(
+                usage=usage,
+                cooldown=timedelta(minutes=settings.scheduler.limit_cooldown_minutes),
+                claude_window_tokens=settings.budget.claude_window_tokens,
+            )
+            now = SystemClock().now()
+            budgets = await reader.read(agents, await store.read(), now)
+        finally:
+            await usage.close()
+            await store.close()
+        choice = choose_agent(
+            [a for a in agents if a in ADAPTERS],
+            budgets,
+            reserve_percent=settings.budget.reserve_percent,
+            zone=zone,
+        )
+        return [
+            *budget_lines(budgets.values(), now=now, zone=zone),
+            "",
+            f"Next task: {choice.reason}",
+        ]
+
+    for line in asyncio.run(read()):
+        typer.echo(line)
 
 
 @app.command()
