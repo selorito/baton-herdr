@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from alembic import command
@@ -21,3 +23,8 @@ def upgrade(db_path: Path) -> None:
     """Create the database if needed and apply every pending migration. Blocking."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     command.upgrade(alembic_config(db_path), "head")
+    # WAL is a property of the file. Set it here, once, before the stores connect:
+    # switching takes an exclusive lock, which two engines opening a fresh file at
+    # the same moment would fight over.
+    with closing(sqlite3.connect(db_path, timeout=5)) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")

@@ -38,8 +38,9 @@ def create_engine(db_path: Path) -> AsyncEngine:
         # Take transaction control away from the driver; see do_begin below.
         dbapi_connection.isolation_level = None
         cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
+        # Wait for locks first, so that even the journal mode check below waits.
         cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        cursor.execute("PRAGMA journal_mode=WAL")  # already set by upgrade(); a no-op
         cursor.close()
 
     @event.listens_for(engine.sync_engine, "begin")
