@@ -65,6 +65,7 @@ async def setup(
     crash_after_prompt: bool = False,
     codex_update_prompt: bool = False,
     resume_fails: bool = False,
+    settings: RunnerSettings = SETTINGS,
 ) -> tuple[InMemoryEventStore, SimulatedAgents, RecordingNotifier, TaskRunner]:
     clock = FixedClock(NOW)
     store = InMemoryEventStore()
@@ -87,7 +88,7 @@ async def setup(
     )
     notifier = RecordingNotifier()
     runner = TaskRunner(
-        store=store, host=host, adapters=ADAPTERS, notifier=notifier, clock=clock, settings=SETTINGS
+        store=store, host=host, adapters=ADAPTERS, notifier=notifier, clock=clock, settings=settings
     )
     return store, host, notifier, runner
 
@@ -152,7 +153,9 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
         NoticeKind.TASK_HANDED_OFF,
         NoticeKind.TASK_COMPLETED,
     ]
-    assert "Available again at 2026-10-02 09:30 UTC" in notifier.notices[1].text
+    assert notifier.notices[1].text == (
+        "claude hit its usage limit. Available again at 2026-10-02 09:30 UTC."
+    )
 
     board = project(await store.read())
     assert board.tasks[TASK].status is TaskStatus.COMPLETED
@@ -381,3 +384,15 @@ async def test_a_turn_that_ends_with_a_question_waits_for_a_person() -> None:
     host.reshow()
     assert await runner.run(TASK) is TaskStatus.COMPLETED
     assert len(host.prompts) == 1
+
+
+async def test_notices_give_times_in_the_configured_zone() -> None:
+    # The simulated Claude prints "resets 9:30am" (UTC's clock); read in Istanbul, where it
+    # is already 12:00, that is 9:30 the next morning, and the notice says so in that zone.
+    settings = replace(SETTINGS, timezone="Europe/Istanbul")
+    _, _, notifier, runner = await setup(settings=settings)
+
+    await runner.run(TASK)
+
+    limited = next(n for n in notifier.notices if n.kind is NoticeKind.AGENT_LIMITED)
+    assert limited.text == "claude hit its usage limit. Available again at 2026-10-03 09:30 +03."

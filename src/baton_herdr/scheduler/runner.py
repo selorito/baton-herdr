@@ -95,6 +95,16 @@ DENIED_NOTE = (
     "The permission was denied and the agent stopped. Reply with what it should do instead."
 )
 
+# How a notice says why an attempt stopped.
+_STOPPED = {
+    InterruptReason.RATE_LIMITED: "hit its usage limit",
+    InterruptReason.CONTEXT_FULL: "ran out of context",
+    InterruptReason.CRASHED: "crashed",
+    InterruptReason.STALLED: "stopped responding",
+    InterruptReason.OPERATOR: "was stopped by the operator",
+    InterruptReason.RESUME_FAILED: "could not reopen its session",
+}
+
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "baton:resume-failed"
 
@@ -236,7 +246,7 @@ class TaskRunner:
             return _Outcome.HANDED_OFF if plan is Plan.HAND_OFF else _Outcome.RESTARTED
         if plan is Plan.WAIT:
             until = availability.limited_until.get(attempt.agent)
-            when = f" after {until:%Y-%m-%d %H:%M} UTC" if until else " later"
+            when = f" after {self._local(until)}" if until else " later"
             await self._notify(
                 NoticeKind.WAITING_FOR_AGENT,
                 task.task_id,
@@ -247,7 +257,7 @@ class TaskRunner:
         await self._notify(
             NoticeKind.NEEDS_HUMAN,
             task.task_id,
-            f"{attempt.agent.value} stopped ({reason.value}) and will not be resumed "
+            f"{attempt.agent.value} {_STOPPED[reason]} and will not be resumed "
             "automatically. A person needs to look at it.",
             attempt.attempt_id,
         )
@@ -563,7 +573,7 @@ class TaskRunner:
                 ctx.task_id,
                 ctx.attempt_id,
                 reason,
-                f"{ctx.agent.value} stopped: {reason.value}.",
+                f"{ctx.agent.value} {_STOPPED[reason]}.",
                 resets_at=resets_at,
             )
         return await self._interrupt(
@@ -661,7 +671,7 @@ class TaskRunner:
             if reason is InterruptReason.RATE_LIMITED
             else NoticeKind.TASK_STOPPED
         )
-        until = f" Available again at {resets_at:%Y-%m-%d %H:%M} UTC." if resets_at else ""
+        until = f" Available again at {self._local(resets_at)}." if resets_at else ""
         await self._notify(kind, task_id, text + until, attempt_id)
         return _Outcome.INTERRUPTED
 
@@ -682,6 +692,10 @@ class TaskRunner:
     async def _deliver(self, notice: Notice) -> None:
         self._log.info("notice", kind=notice.kind.value, text=notice.text)
         await self._notifier.notify(notice)
+
+    def _local(self, at: datetime) -> str:
+        """``at`` in the configured zone, for notices: ``2026-10-03 17:00 +03``."""
+        return f"{at.astimezone(ZoneInfo(self._settings.timezone)):%Y-%m-%d %H:%M %Z}"
 
     async def _append(self, *events: Event) -> None:
         await self._store.append(events)
