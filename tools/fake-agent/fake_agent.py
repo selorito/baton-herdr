@@ -22,8 +22,12 @@ A script is a TOML file::
     [[step]]
     screen = "text"         # printed after clearing the terminal
     title = "text"          # optional terminal title (Codex shows a spinner there while working)
-    wait = "prompt"         # "prompt" (one line on stdin), a number of seconds, or "forever"
+    wait = "prompt"         # "prompt" (one line on stdin), "key", a number of seconds, or "forever"
+    name = "text"           # optional, for "key" steps to jump to
+    keys = { enter = "approved", escape = "denied" }   # with wait = "key": where each key goes
 
+Steps run in order; a "key" step waits for one key press (Enter or Esc, as a permission
+prompt does) and jumps to the step its ``keys`` name for it, ignoring other keys.
 Screens may use ``{reset_clock}`` (local time 30 minutes from now, e.g. ``3:45pm``)
 and ``{prompt}`` (the last line received).
 """
@@ -35,10 +39,12 @@ import os
 import shutil
 import subprocess
 import sys
+import termios
 import time
 import tomllib
+import tty
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -48,6 +54,8 @@ if TYPE_CHECKING:
     from typing import TextIO
 
 CLEAR = "\x1b[2J\x1b[H"
+# What a key press reads as; herdr's send-keys writes Enter as CR and Esc as ESC.
+KEY_NAMES = {"\r": "enter", "\n": "enter", "\x1b": "escape"}
 
 
 class ScriptError(Exception):
@@ -59,6 +67,8 @@ class Step:
     screen: str
     wait: str | float
     title: str | None = None
+    name: str | None = None
+    keys: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,20 +86,32 @@ def load_script(path: Path) -> Script:
     steps = []
     for index, raw in enumerate(data.get("step", []), start=1):
         wait = raw.get("wait", 0)
-        if not (wait in {"prompt", "forever"} or isinstance(wait, int | float)):
-            msg = f"{path}: step {index}: wait must be 'prompt', 'forever' or seconds"
+        if not (wait in {"prompt", "key", "forever"} or isinstance(wait, int | float)):
+            msg = f"{path}: step {index}: wait must be 'prompt', 'key', 'forever' or seconds"
             raise ScriptError(msg)
-        title = raw.get("title")
+        keys = raw.get("keys", {})
+        if (wait == "key") != bool(keys):
+            msg = f"{path}: step {index}: 'keys' goes with wait = 'key', and only there"
+            raise ScriptError(msg)
+        title, name = raw.get("title"), raw.get("name")
         steps.append(
             Step(
                 screen=str(raw.get("screen", "")),
                 wait=wait,
                 title=str(title) if title is not None else None,
+                name=str(name) if name is not None else None,
+                keys={str(k): str(v) for k, v in keys.items()},
             )
         )
     if not steps:
         msg = f"{path}: no [[step]] entries"
         raise ScriptError(msg)
+    names = {step.name for step in steps if step.name}
+    for step in steps:
+        for target in step.keys.values():
+            if target not in names:
+                msg = f"{path}: no step is named {target!r}"
+                raise ScriptError(msg)
     return Script(agent=agent, steps=tuple(steps))
 
 
@@ -154,13 +176,22 @@ class Terminal:
     stdout: TextIO
     now: Callable[[], datetime]
     sleep: Callable[[float], None]
+    # One key press; "" when input ends. Default: one character of ``stdin``.
+    read_key: Callable[[], str] | None = None
+
+    def key(self) -> str:
+        return self.read_key() if self.read_key is not None else self.stdin.read(1)
 
 
 def play(script: Script, *, session_id: str, reporter: Reporter, terminal: Terminal) -> None:
     """Run the steps. Returns when the script ends, stdin closes, or ``/exit`` is typed."""
     reporter.session(session_id)
     prompt = ""
-    for step in script.steps:
+    named = {step.name: index for index, step in enumerate(script.steps) if step.name}
+    index = 0
+    while index < len(script.steps):
+        step = script.steps[index]
+        index += 1
         title = "" if step.title is None else f"\x1b]0;{step.title}\x07"  # OSC 0: window title
         screen = render(step.screen, now=terminal.now(), prompt=prompt)
         terminal.stdout.write(CLEAR + title + screen)
@@ -175,8 +206,29 @@ def play(script: Script, *, session_id: str, reporter: Reporter, terminal: Termi
             if not line or line.strip() == "/exit":
                 return
             prompt = line.strip()
+        elif step.wait == "key":
+            while (key := terminal.key()) and KEY_NAMES.get(key) not in step.keys:
+                pass
+            if not key:
+                return
+            index = named[step.keys[KEY_NAMES[key]]]
         elif isinstance(step.wait, int | float) and step.wait > 0:
             terminal.sleep(float(step.wait))
+
+
+def tty_key(stdin: TextIO) -> Callable[[], str]:
+    """Read one key from a terminal without waiting for Enter, as a TUI does."""
+    fd = stdin.fileno()
+
+    def read() -> str:
+        saved = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            return os.read(fd, 1).decode(errors="replace")
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+
+    return read
 
 
 def make_launcher(directory: Path, agent: str) -> Path:
@@ -225,6 +277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             stdout=sys.stdout,
             now=lambda: datetime.now().astimezone(),
             sleep=time.sleep,
+            read_key=tty_key(sys.stdin) if sys.stdin.isatty() else None,
         ),
     )
     return 0

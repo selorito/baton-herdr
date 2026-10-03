@@ -1,0 +1,72 @@
+# Claude Code that ends its turn with a question (the [[BATON:END status=question]] mark),
+# then takes the answer at its prompt and finishes.
+agent = "claude"
+
+[[step]]
+wait = "prompt"
+screen = """
+ ▐▛███▜▌   Claude Code (fake)
+  ~/dev/baton-sandbox
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (2s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "prompt"
+screen = """
+❯ {prompt}
+
+● divide has a TODO about division by zero. Should divide(a, 0) raise
+  ZeroDivisionError with a clear message, or return float('inf')?
+
+  [[BATON:END status=question]]
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (2s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "forever"
+screen = """
+❯ {prompt}
+
+● Done as you said: "{prompt}". All tests pass.
+
+  [[BATON:END status=done]]
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""

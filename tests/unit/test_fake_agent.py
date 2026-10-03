@@ -106,12 +106,46 @@ def test_limit_screen_reset_time_is_read_back_by_the_adapter() -> None:
     )
 
 
+def test_a_permission_prompt_waits_for_esc_or_enter_and_branches() -> None:
+    # Esc denies; the fake waits for what to do instead, asks again, and Enter approves.
+    # Other keys (here "x") are ignored, as by the real prompt.
+    _, screens, _ = run("claude-permission.toml", "clean up\nx\x1brun the tests\n\r/exit\n")
+
+    assert ["Do you want to proceed?" in screen for screen in screens] == [
+        False,
+        False,
+        True,
+        False,
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert "What should Claude do instead?" in screens[3]
+    assert "python3 -m unittest -v" in screens[5]
+    assert "[[BATON:END status=done]]" in screens[7]
+    summary = ADAPTERS[AgentKind.CLAUDE].permission_summary(screens[2])
+    assert summary is not None
+    assert "rm -rf build/" in summary
+
+
+def test_the_question_script_ends_its_turn_with_a_question_mark_and_takes_the_answer() -> None:
+    _, screens, _ = run("claude-question.toml", "fix divide\nraise\n/exit\n")
+
+    assert "[[BATON:END status=question]]" in screens[2]
+    assert '"raise"' in screens[4]
+    assert "[[BATON:END status=done]]" in screens[4]
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
         ("[[step]]\nwait = 1\n", "'agent' must be"),
         ('agent = "claude"\n', "no [[step]]"),
         ('agent = "claude"\n[[step]]\nwait = "later"\n', "wait must be"),
+        ('agent = "claude"\n[[step]]\nwait = "key"\n', "'keys' goes with"),
+        ('agent = "claude"\n[[step]]\nwait = 1\nkeys = { enter = "x" }\n', "'keys' goes with"),
+        ('agent = "claude"\n[[step]]\nwait = "key"\nkeys = { enter = "x" }\n', "no step is named"),
     ],
 )
 def test_invalid_scripts_are_rejected(tmp_path: Path, text: str, message: str) -> None:

@@ -1,0 +1,132 @@
+# Claude Code that asks permission for a shell command; Esc denies, Enter approves.
+# After a denial it waits at its prompt to be told what to do instead, then asks again.
+# The prompt follows fixtures/claude/blocked_permission/ (herdr's bash_permission_prompt).
+agent = "claude"
+
+[[step]]
+wait = "prompt"
+screen = """
+ ▐▛███▜▌   Claude Code (fake)
+  ~/dev/baton-sandbox
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (2s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "key"
+keys = { enter = "approved", escape = "denied" }
+screen = """
+❯ {prompt}
+
+  Cleaning up before the change
+  ⎿  $ rm -rf build/
+
+────────────────────────────────────────
+ Bash command
+
+   rm -rf build/
+   Remove the build directory
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don’t ask again for: rm *
+   3. No
+
+ Esc to cancel · Tab to amend
+"""
+
+[[step]]
+name = "denied"
+wait = "prompt"
+screen = """
+❯ {prompt}
+
+  Cleaning up before the change
+  ⎿  Interrupted · What should Claude do instead?
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
+
+[[step]]
+wait = 2
+screen = """
+❯ {prompt}
+
+✻ Pondering… (2s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "key"
+keys = { enter = "approved", escape = "denied" }
+screen = """
+❯ {prompt}
+
+  Running the tests instead
+  ⎿  $ python3 -m unittest -v
+
+────────────────────────────────────────
+ Bash command
+
+   python3 -m unittest -v
+   Run the unit test suite verbosely
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don’t ask again for: python3 *
+   3. No
+
+ Esc to cancel · Tab to amend
+"""
+
+[[step]]
+name = "approved"
+wait = 2
+screen = """
+  Ran 1 shell command
+
+✻ Pondering… (2s · esc to interrupt)
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
+"""
+
+[[step]]
+wait = "forever"
+screen = """
+  Ran 1 shell command
+
+● All 4 tests pass.
+
+  [[BATON:END status=done]]
+
+────────────────────────────────────────
+❯
+────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts
+"""
