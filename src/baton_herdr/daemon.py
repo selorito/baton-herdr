@@ -16,8 +16,10 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
+from baton_herdr.core.config import BudgetSettings
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
@@ -48,7 +50,10 @@ if TYPE_CHECKING:
     from baton_herdr.core.ports import Clock, EventStore, UsageStore
 
 
-def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
+def runner_settings(
+    settings: SchedulerSettings, budget: BudgetSettings | None = None
+) -> RunnerSettings:
+    budget = budget or BudgetSettings()
     return RunnerSettings(
         agents=tuple(AgentKind(agent) for agent in settings.agents),
         limit_cooldown=timedelta(minutes=settings.limit_cooldown_minutes),
@@ -58,6 +63,7 @@ def runner_settings(settings: SchedulerSettings) -> RunnerSettings:
         timezone=settings.timezone,
         launch_commands={AgentKind(a): cmd for a, cmd in settings.launch_commands.items()},
         max_failure_resumes=settings.max_failure_resumes,
+        reserve_percent=budget.reserve_percent,
     )
 
 
@@ -75,6 +81,8 @@ class Runtime:
     # Agent usage telemetry (ADR 0011); the collector is None when [usage] is off.
     usage: UsageStore | None = None
     collector: UsageCollector | None = None
+    # Remaining budget per agent (ADR 0012), as the scheduler sees it.
+    budget: BudgetReader | None = None
 
 
 @asynccontextmanager
@@ -90,9 +98,14 @@ async def open_runtime(
     usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
     clock = clock or SystemClock()
-    scheduling = runner_settings(settings.scheduler)
+    scheduling = runner_settings(settings.scheduler, settings.budget)
     host = host or connect(settings.herdr)
     wake = asyncio.Event()
+    budget = BudgetReader(
+        usage=usage,
+        cooldown=scheduling.limit_cooldown,
+        claude_window_tokens=settings.budget.claude_window_tokens,
+    )
     try:
         runner = TaskRunner(
             store=store,
@@ -101,6 +114,7 @@ async def open_runtime(
             notifier=notifier or telegram or LoggingNotifier(),
             clock=clock,
             settings=scheduling,
+            budget=budget,
         )
         operator = None
         if telegram is not None and settings.telegram.owner_id is not None:
@@ -132,6 +146,7 @@ async def open_runtime(
                 if settings.usage.enabled
                 else None
             ),
+            budget=budget,
         )
     finally:
         if telegram is not None:

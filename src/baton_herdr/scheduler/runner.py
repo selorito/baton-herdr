@@ -24,8 +24,11 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
+from zoneinfo import ZoneInfo
 
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.budget.choice import choose_agent
+from baton_herdr.budget.load import BudgetReader
 from baton_herdr.core.commands import complete_task, start_attempt
 from baton_herdr.core.contract import (
     DENIED_EVIDENCE,
@@ -37,6 +40,7 @@ from baton_herdr.core.contract import (
 )
 from baton_herdr.core.detection import DetectionRequest
 from baton_herdr.core.events import (
+    AgentChosen,
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -108,6 +112,8 @@ class RunnerSettings:
     launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
     # Automatic resumes after crashes and stalls, per task (ADR 0005).
     max_failure_resumes: int = 2
+    # An agent with less budget left than this goes behind the others (ADR 0012).
+    reserve_percent: float = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +148,7 @@ class TaskRunner:
         notifier: Notifier,
         clock: Clock,
         settings: RunnerSettings | None = None,
+        budget: BudgetReader | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -149,6 +156,8 @@ class TaskRunner:
         self._notifier = notifier
         self._clock = clock
         self._settings = settings or RunnerSettings()
+        # Without usage data the budget is folded from the event log alone.
+        self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
         self._log = get_logger("baton.scheduler")
 
     async def run(self, task_id: TaskId) -> TaskStatus:
@@ -168,7 +177,7 @@ class TaskRunner:
                 if task.status.is_terminal:
                     break
                 if live is None:
-                    agent = await self._pick_agent(tried)
+                    agent = await self._choose_agent(task_id, tried)
                     if agent is None:
                         await self._notify(
                             NoticeKind.WAITING_FOR_AGENT,
@@ -339,6 +348,31 @@ class TaskRunner:
         ]
         available = availability.available(candidates, self._clock.now())
         return available[0] if available else None
+
+    async def _choose_agent(self, task_id: TaskId, tried: set[AgentKind]) -> AgentKind | None:
+        """Pick the agent for the task's next attempt and record why (ADR 0012)."""
+        events = await self._store.read()
+        now = self._clock.now()
+        agents = [agent for agent in self._settings.agents if agent in self._adapters]
+        budgets = await self._budget.read(agents, events, now)
+        choice = choose_agent(
+            agents,
+            budgets,
+            reserve_percent=self._settings.reserve_percent,
+            zone=ZoneInfo(self._settings.timezone),
+            tried=tried,
+        )
+        self._log.info("agent chosen", agent=choice.agent, reason=choice.reason)
+        await self._append(
+            AgentChosen(
+                occurred_at=now,
+                task_id=task_id,
+                agent=choice.agent,
+                reason=choice.reason,
+                budgets=choice.notes,
+            )
+        )
+        return choice.agent
 
     async def _attempt(
         self, task_id: TaskId, agent: AgentKind, previous: AgentKind | None

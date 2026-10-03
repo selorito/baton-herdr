@@ -16,6 +16,7 @@ from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.core.contract import END_CONTRACT
 from baton_herdr.core.events import (
+    AgentChosen,
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -101,12 +102,14 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     kinds = [type(e).__name__ for e in events if not isinstance(e, AgentStateObserved)]
     assert kinds == [
         "TaskCreated",
+        "AgentChosen",  # claude, first in preference order
         "AttemptStarted",  # claude
         "AttemptLocated",  # pane
         "AttemptLocated",  # claude's session id, learned from the pane
         "AttemptPrompted",
         "AttemptInterrupted",
         "AttemptEnded",
+        "AgentChosen",  # codex, claude being limited
         "AttemptStarted",  # codex
         "AttemptLocated",
         "AttemptLocated",
@@ -116,6 +119,15 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     ]
     starts = [e for e in events if isinstance(e, AttemptStarted)]
     assert [e.agent for e in starts] == [AgentKind.CLAUDE, AgentKind.CODEX]
+    choices = [e for e in events if isinstance(e, AgentChosen)]
+    assert [(c.agent, c.reason) for c in choices] == [
+        (AgentKind.CLAUDE, "claude: first in preference order, budget unknown."),
+        (
+            AgentKind.CODEX,
+            "codex: next in preference order (claude limited until 2026-10-02 09:30), "
+            "budget unknown.",
+        ),
+    ]
 
     limit = next(e for e in events if isinstance(e, AttemptInterrupted))
     assert limit.reason is InterruptReason.RATE_LIMITED
