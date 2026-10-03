@@ -50,6 +50,23 @@ and reports the tokens each response used and Codex's rate-limit windows. batond
 in their own tables, apart from the task log. `baton-detect usage --once` prints what it
 finds, one JSON object per line (`schemas/usage-event.v1.json`).
 
+Checked on real logs (one Linux machine, 2026-10-03, read-only). One `--once` pass over every
+session took 0.66 s and produced:
+
+| Source | Records |
+|--------|--------:|
+| Claude Code responses | 1,809 |
+| Codex responses | 4,074 |
+| OpenCode messages | 16 |
+| Codex rate-limit observations | 1,063 |
+
+- No `record_id` appeared twice.
+- OpenCode's records add up exactly to the token totals OpenCode keeps per session.
+- Codex's per-response deltas, worked out from its running totals, match the per-response
+  figures Codex writes itself.
+- Two Claude Code lines were not valid JSON (Python's parser rejects them as well); they are
+  reported and skipped.
+
 Then check everything:
 
 ```bash
@@ -105,6 +122,30 @@ on its own:
 - **End of a turn:** every prompt asks the agent to end with `[[BATON:END status=done]]`,
   `question` or `blocked`. A question or a blocker comes to you instead of closing the task.
 
+### Budget
+
+```bash
+baton budget
+```
+
+```
+claude: ~61% left (estimate against [budget] claude_window_tokens) · 5h window 1.2M of ~3.1M tokens, resets ~16:40
+codex: 99% left · 5h 0% used · weekly 1% used, resets 23:37
+
+Next task: claude: first in preference order, ~61% left (estimate).
+```
+
+Codex's figures are its own (`rate_limits` in its logs). Claude Code does not report its
+limits, so baton estimates its 5-hour session window from the tokens it recorded. The cap
+comes from `[budget] claude_window_tokens`, or from the last session limit baton saw. With
+neither, Claude's budget is `unknown`. Estimates are always marked as such.
+
+The scheduler keeps your `[scheduler] agents` order. An agent with less than
+`[budget] reserve_percent` (default 10) left goes behind the others. A low budget never
+stops a task; only a limit the agent actually hits does. Every choice is recorded in the
+event log as `task.agent_chosen`, with its reason. See
+[ADR 0012](docs/adr/0012-remaining-budget.md).
+
 ### When an agent needs you
 
 You get a notice: a permission prompt (with what it asks for), a question, or a blocker.
@@ -131,7 +172,8 @@ the terminal.
 3. Set both under `[telegram]` and restart: `systemctl --user restart baton`.
 
 Notices then arrive in that chat. Permission prompts carry Approve / Deny buttons; reply to a
-question to answer it; `/status` lists open tasks and agents. Messages from anyone else, or
+question to answer it; `/status` lists open tasks and agents, `/budget` what each agent has
+left. Messages from anyone else, or
 from another chat, are ignored. Without `owner_id` the bot only sends notices.
 
 ### Operate
