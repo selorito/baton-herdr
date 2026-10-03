@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.events import (
+    AgentChosen,
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -148,6 +149,8 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "an attempt is still live")
             return replace(task, closed_as=_CLOSED_AS[event.type])
+        case AgentChosen():
+            return task  # a scheduling decision; the attempt it leads to is its own event
         case AttemptStarted():
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "another attempt is still live")

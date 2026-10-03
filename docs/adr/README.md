@@ -16,3 +16,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0009](0009-remote-operator-actions.md) | Remote operator actions: one owner, actions bound to a blocker, no free-form input | accepted |
 | [0010](0010-project-name.md) | Project name: baton-herdr, and its name layers | accepted |
 | [0011](0011-baton-detect-in-rust.md) | baton-detect is written in Rust, for reasons other than speed | accepted |
+| [0012](0012-remaining-budget.md) | Remaining budget per agent: reported for Codex, estimated for Claude, never a hard gate | accepted |

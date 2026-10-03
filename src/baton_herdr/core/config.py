@@ -205,6 +205,18 @@ class UsageSettings(_Section):
         return value.expanduser() if value else None
 
 
+class BudgetSettings(_Section):
+    """Remaining budget per agent and how it steers agent choice (ADR 0012)."""
+
+    # An agent with less than this share of its budget left is chosen only when no
+    # other available agent has more. Unknown budgets never count as low.
+    reserve_percent: float = Field(default=10, ge=0, le=100)
+    # Claude Code does not report its limits. Its 5-hour session budget, in counted
+    # tokens (input + cache writes + output), turns its usage into an estimate. Unset:
+    # learned from the last session limit baton saw, if any.
+    claude_window_tokens: int | None = Field(default=None, gt=0)
+
+
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat baton writes to. Without it no message is sent.
@@ -229,6 +241,7 @@ class BatonSettings(BaseSettings):
     scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
+    budget: BudgetSettings = Field(default_factory=BudgetSettings)
 
     @classmethod
     def settings_customise_sources(

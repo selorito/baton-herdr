@@ -37,6 +37,15 @@ timezone = "UTC"
 # codex_dir = "~/.codex/sessions"
 # opencode_db = "~/.local/share/opencode/opencode.db"
 
+[budget]
+# How agent choice weighs what each agent has left (ADR 0012). An agent with less than
+# this share left goes behind the others; it is never skipped for budget alone.
+# reserve_percent = 10
+# Claude Code does not report its limits. Its 5-hour session budget in counted tokens
+# (input + cache writes + output) turns baton's records into an estimate. Unset: learned
+# from the last session limit baton saw, else unknown.
+# claude_window_tokens = 3000000
+
 [telegram]
 # Numeric id of the one private chat baton sends to. The bot token goes in .env:
 # BATON_TELEGRAM__BOT_TOKEN=...

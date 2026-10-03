@@ -9,13 +9,22 @@ from pydantic import ValidationError
 
 from baton_herdr.core.events import (
     EVENT_ADAPTER,
+    AgentChosen,
     AgentStateObserved,
     AttemptInterrupted,
     AttemptLocated,
+    BudgetNote,
     StoredEvent,
     TaskCreated,
 )
-from baton_herdr.core.model import AgentState, AttemptId, InterruptReason, ObservationSource, TaskId
+from baton_herdr.core.model import (
+    AgentKind,
+    AgentState,
+    AttemptId,
+    InterruptReason,
+    ObservationSource,
+    TaskId,
+)
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 TASK = TaskId("t1")
@@ -33,6 +42,24 @@ def test_event_round_trips_through_json_by_its_type_tag() -> None:
 
     assert json.loads(raw)["type"] == "attempt.interrupted"
     assert EVENT_ADAPTER.validate_json(raw) == event
+
+
+def test_an_agent_choice_keeps_its_reason_and_what_it_was_based_on() -> None:
+    event = AgentChosen(
+        occurred_at=NOW,
+        task_id=TASK,
+        agent=None,
+        reason="No agent can take the task: claude limited.",
+        budgets=(
+            BudgetNote(agent=AgentKind.CLAUDE, available=False, remaining_percent=0, estimate=True),
+        ),
+    )
+    raw = EVENT_ADAPTER.dump_json(event)
+
+    assert json.loads(raw)["type"] == "task.agent_chosen"
+    assert EVENT_ADAPTER.validate_json(raw) == event
+    with pytest.raises(ValidationError):
+        AgentChosen(occurred_at=NOW, task_id=TASK, agent=AgentKind.CODEX, reason="")
 
 
 def test_stored_event_picks_the_event_class_from_the_type_tag() -> None:

@@ -66,6 +66,33 @@ class TaskCancelled(_Event):
     reason: str | None = None
 
 
+class BudgetNote(BaseModel):
+    """One agent's standing when an agent was chosen (ADR 0012)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    agent: AgentKind
+    # Limited by a usage limit it hit (the event log), or free to start.
+    available: bool
+    # Share of its budget left; None when unknown.
+    remaining_percent: float | None = None
+    # True when baton derived the figure (Claude); False when the agent reported it.
+    estimate: bool = False
+
+
+class AgentChosen(_Event):
+    """The scheduler picked the agent for the task's next attempt, or found none.
+
+    ``reason`` is the decision in words; ``budgets`` what it was based on, for
+    every agent that was considered.
+    """
+
+    type: Literal["task.agent_chosen"] = "task.agent_chosen"
+    agent: AgentKind | None
+    reason: str = Field(min_length=1)
+    budgets: tuple[BudgetNote, ...] = ()
+
+
 class _AttemptEvent(_Event):
     attempt_id: AttemptId
 
@@ -150,6 +177,7 @@ type Event = Annotated[
     | TaskCompleted
     | TaskFailed
     | TaskCancelled
+    | AgentChosen
     | AttemptStarted
     | AttemptLocated
     | AgentStateObserved
