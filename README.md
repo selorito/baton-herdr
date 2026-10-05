@@ -9,9 +9,12 @@ baton keeps a queue of coding tasks moving across Claude Code, Codex CLI and Ope
 in [herdr](https://github.com/herdrdev/herdr). When one agent hits its usage limit, crashes or
 stalls, baton resumes the task or hands it to another agent, and tells you on Telegram.
 
-<!-- Demo: record a 30-60 s run (task add → limit → hand-off → done notice) and save it as
-     docs/assets/demo.gif; then uncomment the line below. -->
-<!-- ![baton handing a task from Claude Code to Codex](docs/assets/demo.gif) -->
+![baton handing a task from Claude Code to Codex in herdr](docs/assets/demo.gif)
+
+Simulated agents; reproduce with `just demo`.
+
+<!-- Real run, recorded on a phone: Telegram notices for a hand-off and a finished task.
+     Add it as docs/assets/telegram.gif (or .mp4 linked from here) when it exists. -->
 
 ## Why
 
@@ -342,6 +345,7 @@ You need [uv](https://docs.astral.sh/uv/), a stable Rust toolchain and
 uv sync          # .venv with Python 3.12 and all dependencies
 just check       # what CI runs: lint, types, import contracts, Python and Rust tests, fixture audit
 just bench       # the benchmark → bench/results/<date>.md
+just demo        # record docs/assets/demo.gif: a throwaway herdr, fake agents, real batond
 just smoke       # optional: live test against an installed herdr, in a throwaway session
 ```
 
