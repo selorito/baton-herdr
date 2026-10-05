@@ -34,7 +34,8 @@ jobs:
       - uses: extractions/setup-just@v4
       - run: just check-rs
 
-  # baton-detect against the usage contract, from the Python side (ADR 0011).
+  # baton-detect from the Python side (ADR 0011): the usage contract, and the screen
+  # classifier against the Python detector.
   parity:
     runs-on: ubuntu-latest
     steps:
@@ -45,6 +46,10 @@ jobs:
         with:
           enable-cache: true
       - run: cargo build --locked -p baton-detect
-      - run: uv run --locked pytest tests/integration/test_usage_contract_binary.py
+      - run: >-
+          uv run --locked pytest
+          tests/integration/test_usage_contract_binary.py
+          tests/integration/test_detect_parity_binary.py
+          tests/integration/test_detector_engines.py
         env:
           BATON_REQUIRE_DETECT: "1"
