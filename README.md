@@ -157,15 +157,19 @@ agent actually hits does. Every choice is logged as `task.agent_chosen`, with it
 Agents ask before running shell commands. baton answers the harmless ones itself and sends
 you the rest ([ADR 0013](docs/adr/0013-permission-policy.md)).
 
-- **Allowed** by default: reading (`ls`, `cat`, `grep`, `git status`, `git diff`, …) and
-  running tests (`pytest`, `cargo test`, `npm test`, `just check`, …).
+- **Allowed** by default: only commands that read (`ls`, `cat`, `grep`, `git status`,
+  `git diff`, …).
+- **Allowed only in your `trusted_dirs`**: tests and builds (`pytest`, `cargo test`,
+  `npm test`, `make`, …). They run the project's own code, which can do anything, so
+  whether to trust it is your call, made once per repository. Elsewhere they ask.
 - **Asked** by default:
   - deleting (`rm`), pushing (`git push`), forcing (`--force`);
   - history rewrites, migrations, `sudo`;
   - downloads (`curl`, `wget`, package installs, `git clone`);
   - anything no rule matches.
-- **Your rules** go in `~/.config/baton/policy.yaml` ([example](policy.example.yaml)). They
-  are tried first and may `allow`, `ask` or `deny` by shell pattern or regex, per agent.
+- **Your rules and `trusted_dirs`** go in `~/.config/baton/policy.yaml`
+  ([example](policy.example.yaml)). Rules are tried first and may `allow`, `ask` or
+  `deny` by shell pattern or regex, per agent.
 
 A command is split where the shell would split it, and the strictest part wins, so
 `pytest && git push` asks. These always ask:
@@ -174,13 +178,14 @@ A command is split where the shell would split it, and the strictest part wins, 
 - anything baton cannot read with certainty.
 
 ```
-$ baton policy check "pytest -q && git push origin main"
-ask: git push origin main: publishes to a remote
-rule: ^git\s+push(\s|$) (defaults)
+$ baton policy check "pytest -q" --dir ~/src/other
+ask: pytest -q: runs the project's own code (tests, builds), so it is allowed only in trusted_dirs, and /home/you/src/other is not one
 ```
 
-Each decision is logged as `attempt.permission_decided`, with the rule and the reason. In
-v1 the policy reads Claude Code's Bash prompts. Codex command approvals, file edits and
+Each decision is logged as `attempt.permission_decided`, with the rule and the reason.
+Upgrading from 0.1, where every prompt came to you: `baton doctor` warns until a
+`policy.yaml` exists, and `[policy] enabled = false` restores the old behaviour. In v1 the
+policy reads Claude Code's Bash prompts. Codex command approvals, file edits and
 OpenCode prompts still come to you.
 
 ## Limitations and terms

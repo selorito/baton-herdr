@@ -68,9 +68,10 @@ timezone = "UTC"
 
 [policy]
 # Agents' shell commands baton approves, refuses, or asks you about (ADR 0013).
-# Rules in this file are tried before the defaults: reading and tests allowed;
-# deleting, pushing, forcing, migrations, sudo and downloads ask. See policy.example.yaml;
-# try a command with `baton policy check "git push"`.
+# The policy file's rules are tried before the defaults: read-only commands allowed; tests
+# and builds allowed only in the file's trusted_dirs; deleting, pushing, forcing,
+# migrations, sudo and downloads ask. See policy.example.yaml; try a command with
+# `baton policy check "pytest" --dir ~/src/calc`. enabled = false: every prompt asks you.
 # enabled = true
 # path = "~/.config/baton/policy.yaml"
 

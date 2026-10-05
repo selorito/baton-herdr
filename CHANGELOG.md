@@ -16,6 +16,17 @@ is:
 The first release: baton runs a queue of coding tasks unattended on one Linux machine,
 across Claude Code, Codex CLI and OpenCode in herdr.
 
+### Upgrading from 0.1: behaviour changes
+
+- **batond now answers some permission prompts itself.** Read-only shell commands
+  (`ls`, `cat`, `grep`, `git status`, `git diff`, …) that Claude Code asks to run are
+  approved without asking you. Tests and builds are approved only in the `trusted_dirs`
+  of `~/.config/baton/policy.yaml`; everything else still comes to you. To keep 0.1's
+  behaviour (every prompt to you), set `[policy] enabled = false`. `baton doctor` warns
+  while no `policy.yaml` exists and states what the defaults approve (ADR 0013).
+- **A hang is caught after 15 minutes** of a still screen and no recorded tokens, not
+  after the one-hour turn timeout (ADR 0014). Tune with `[scheduler] stall_minutes`.
+
 ### Added
 
 - **Tasks and the event log.** `baton task add`, `baton status`. Every state change is an
@@ -55,8 +66,9 @@ across Claude Code, Codex CLI and OpenCode in herdr.
   configured or learned five-hour cap. The scheduler moves short agents behind the
   others and logs each choice with its reason. `baton budget` (ADR 0012).
 - **Permission policy**: `~/.config/baton/policy.yaml` allows, asks about or denies agents'
-  shell commands by rule. Safe defaults: reading and tests are allowed, risky commands
-  ask. Each decision is logged. `baton policy check` (ADR 0013).
+  shell commands by rule. Defaults: read-only commands are allowed; tests and builds only
+  in `trusted_dirs`; risky commands ask. Each decision is logged. `baton policy check`
+  (ADR 0013).
 - **Screen classifier in Rust** (`baton-detect classify`), equal to the Python one on 1,949
   parity cases. `[detector] engine = "python" | "shadow" | "rust"`.
 - **`baton doctor`**: config, database, herdr and its integrations, agents, baton-detect,
