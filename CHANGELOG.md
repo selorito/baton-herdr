@@ -30,6 +30,9 @@ across Claude Code, Codex CLI and OpenCode in herdr.
   - screen detection of usage limits (with their reset time), full contexts, permission
     prompts, questions and crashes, tested against recorded screens in `fixtures/`;
   - safe start-up answers (only Codex's update prompt).
+- **Stall detection** (ADR 0014): a working agent whose screen and recorded tokens both
+  stay still for `stall_minutes` (15; 30 without usage collection) is resumed. The reason
+  is recorded on `attempt.interrupted` as `detail`.
 - **Recovery** (ADR 0005):
   - a usage limit hands the task to the next available agent, or waits for the reset
     and resumes the same session;

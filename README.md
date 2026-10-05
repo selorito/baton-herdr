@@ -72,21 +72,25 @@ done notice, with the file and function behind each step.
 
 `just bench` runs baton's own loop, scheduler, detection and recovery against simulated
 agents, on simulated time. It uses 50 one-task worlds per scenario and seed 1
-([full results](bench/results/2026-10-05.md); the model and its limits are in
+([full results](bench/results/2026-10-05-2.md); the model and its limits are in
 [bench/README.md](bench/README.md)).
 
 | Scenario | Done without a person | Stop → work goes on (median) | Steps redone per stop |
 |---|---:|---:|---:|
 | Usage limit mid-task, another agent free | 100 % | 6.0 s | 1.00 |
 | Crash, 1–3 times | 86 % (the rest: a third crash, sent to you by policy) | 4.7 s | 1.00 |
-| Hang (screen says "working", nothing moves) | 100 % | 53 min | 1.00 |
+| Hang (screen says "working", nothing moves) | 100 % | 14.5 min (was 53 min) | 1.00 |
+| Hang, usage not collected | 100 % | 29.5 min | 1.00 |
+| Long response (5–10 min, still screen, not a hang) | 100 %, no false alarm | – | – |
 | Both agents hit limits in turn | 100 % | 11.6 min | 0.94 |
 | Every agent limited, wait for the reset | 100 % | 26 min (work resumes 35 s after the reset) | 0.50 |
 
 - **Limits** are acted on as soon as herdr reports the screen. baton's own delay is zero in
   the simulation; herdr's is not modelled.
-- **A hang** is found only when the turn timeout runs out (`turn_timeout_seconds`, default
-  1 h). That is the weakest case.
+- **A hang** is a working agent whose screen (counters and spinners aside) and recorded
+  tokens both stay still for 15 minutes ([ADR 0014](docs/adr/0014-stall-detection.md)).
+  That is longer than either agent's own request timeout. Before this rule, only the
+  one-hour turn timeout caught hangs ([earlier results](bench/results/2026-10-05.md)).
 - **Budget-aware choice**, measured on 30 queues of ten tasks with Claude's window 40–80 %
   used:
   - with `claude_window_tokens` set, mid-task limits dropped from 30 to 7, and counted
@@ -185,7 +189,8 @@ OpenCode prompts still come to you.
 - **Screen reading.** baton reads agents' screens. A new agent version can change a screen
   baton relies on; the rules are tested against recorded screens in `fixtures/`, so a
   change shows up as a failing test once recorded, not before.
-- **Hangs** are only caught by the turn timeout (one hour by default).
+- **Hangs** take 15 minutes to catch (30 without usage collection): long enough not to
+  mistake a slow response for one.
 - **Claude's budget** is an estimate. Codex's is its own figure.
 - **The Rust classifier** has passed the parity tests but has not yet replaced the Python
   one in daily use (`[detector] engine = "shadow"` to compare on your own work).
@@ -207,7 +212,6 @@ governed by its vendor's terms; read them before you let baton run unattended:
   - with no mismatch, make it the default and remove the Python rules (ADR 0011, step 4).
 - **Next:**
   - read Codex's command approvals for the policy, once one is recorded;
-  - catch hangs from the screen instead of a timeout;
   - Claude's status-line limits instead of an estimate.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 
@@ -241,7 +245,7 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
   keys in CI.
 - **Reproducible benchmark.** The real loop runs on simulated time, so the same seed gives
   the same report ([bench/](bench/README.md)).
-- **Decisions on record:** [ADRs 0001–0013](docs/adr/README.md). Examples:
+- **Decisions on record:** [ADRs 0001–0014](docs/adr/README.md). Examples:
   - automation boundaries ([0005](docs/adr/0005-automation-boundaries.md));
   - attempt identity vs. location ([0006](docs/adr/0006-attempt-identity-and-location.md));
   - remote actions ([0009](docs/adr/0009-remote-operator-actions.md));

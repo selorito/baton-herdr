@@ -10,7 +10,8 @@ just bench --worlds 5      # fewer worlds per scenario, for a quick look
 ```
 
 A full run takes about half a minute on a 20-thread machine. The same seed gives the same file,
-whatever the machine. Only the file name, the date, changes.
+whatever the machine. Only the file name, the date, changes. A later run on the same day
+with different results is written as `<date>-2.md`, so earlier results stay.
 
 ## What runs
 
@@ -48,7 +49,10 @@ Small on purpose. Each part is there because a figure depends on it.
   the quota ends. The agent then shows its limit message with the time the window ends,
   rounded up to the minute, as Claude and Codex print it.
 - **A crash** ends the agent process partway through a step.
-- **A hang** freezes it: the screen keeps showing work, and nothing changes.
+- **A hang** freezes it: the screen keeps showing work, and nothing changes. The frozen
+  response never completes, so no tokens are logged for it.
+- **A long response** is one step that takes 5–10 minutes. The screen stays the same and no
+  tokens arrive until it ends. It is not a fault, and baton must not take it for one.
 
 Not modelled:
 - herdr's own detection delay (it reports a state change in well under a second);
