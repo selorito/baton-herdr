@@ -695,7 +695,7 @@ class TaskRunner:
         await self._deliver(Notice(kind, task_id, text, attempt_id))
 
     async def _deliver(self, notice: Notice) -> None:
-        self._log.info("notice", kind=notice.kind.value, text=notice.text)
+        self._log.info("notice", kind=notice.kind.value, text=notice.plain)
         await self._notifier.notify(notice)
 
     def _local(self, at: datetime) -> str:

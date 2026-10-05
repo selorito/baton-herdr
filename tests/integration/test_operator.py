@@ -15,7 +15,7 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot
-from baton_herdr.telegram.notifier import button_data, format_notice
+from baton_herdr.telegram.notifier import as_shown, button_data, format_notice
 
 from simulated_agents import SimulatedAgents
 
@@ -193,12 +193,13 @@ async def test_a_reply_answers_the_question_and_wakes_the_daemon() -> None:
 
     assert await bot.reply("[power] something else", "yes") is None
     host.end_mark = DONE
-    assert await bot.reply(format_notice(asked), "Return 1.") == "Answer sent."
+    assert await bot.reply(as_shown(format_notice(asked)), "Return 1.") == "Answer sent."
     assert woken == [True]
     assert host.prompts[-1] == (AgentKind.CLAUDE, "Return 1.")
     # The same reply again is refused: the question was answered.
     assert (
-        await bot.reply(format_notice(asked), "Return 1.") == f"{TASK}: this was already answered."
+        await bot.reply(as_shown(format_notice(asked)), "Return 1.")
+        == f"{TASK}: this was already answered."
     )
     assert await runner.run(TASK) is TaskStatus.COMPLETED
 
