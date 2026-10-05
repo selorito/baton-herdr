@@ -42,7 +42,7 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "bench"]
 
 [tool.ruff.lint]
 select = [
@@ -57,6 +57,8 @@ ignore = ["PLR2004"]
 "tests/**" = ["S101", "PLR2004", "PLR0911", "ARG", "RUF001", "ASYNC110", "FBT001"]
 # Standalone capture tool: shells out to the herdr and agent CLIs by design.
 "tools/**" = ["S603", "S607"]
+# The benchmark draws simulated timings from a seeded generator and prints agent glyphs.
+"bench/**" = ["S311", "RUF001"]
 
 [tool.ruff.lint.flake8-type-checking]
 # pydantic evaluates annotations at runtime; keep their imports out of TYPE_CHECKING blocks.
@@ -72,8 +74,8 @@ ban-relative-imports = "all"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests", "tools"]
-mypy_path = "tools/capture:tools/fake-agent:tests/support"
+files = ["src", "tests", "tools", "bench"]
+mypy_path = "tools/capture:tools/fake-agent:tests/support:bench"
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
@@ -86,7 +88,7 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
-pythonpath = ["tools/capture", "tools/fake-agent", "tests/support"]
+pythonpath = ["tools/capture", "tools/fake-agent", "tests/support", "bench"]
 addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config", "-ra", "-m", "not live"]
 markers = [
   "live: needs a real herdr binary; excluded by default, run with `just smoke`",

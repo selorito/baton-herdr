@@ -41,6 +41,11 @@ smoke:
 demo:
     uv run pytest -m live tests/integration/test_demo_live.py -v
 
+# The benchmark: baton's scheduler against simulated agents, on simulated time.
+# Writes bench/results/<date>.md; the same seed gives the same results.
+bench *ARGS:
+    PYTHONPATH=bench uv run python -m baton_bench {{ARGS}}
+
 # Regenerate the JSON Schemas in schemas/ after deliberately changing a contract model.
 schemas:
     uv run python -c "from pathlib import Path; from baton_herdr.core.schemas import write_all; write_all(Path('schemas'))"
