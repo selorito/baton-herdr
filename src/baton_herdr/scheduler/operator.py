@@ -83,7 +83,7 @@ def allowed_actions(blocker: Blocker, adapter: AgentAdapter) -> tuple[OperatorAc
     return ()
 
 
-def _answered(events: Iterable[StoredEvent], blocker_seq: int) -> bool:
+def answered(events: Iterable[StoredEvent], blocker_seq: int) -> bool:
     return any(
         isinstance(s.event, OperatorActed) and s.event.blocker_seq == blocker_seq for s in events
     )
@@ -112,7 +112,7 @@ async def act(  # noqa: PLR0913 - the ports, the action and who takes it
         raise ActionRefusedError(f"{task_id} is not waiting for a decision.")
     if blocker_seq is not None and blocker.seq != blocker_seq:
         raise ActionRefusedError(f"{task_id} has moved on; that question is no longer open.")
-    if _answered(events, blocker.seq):
+    if answered(events, blocker.seq):
         raise ActionRefusedError(f"{task_id}: this was already answered.")
     adapter = adapters.get(blocker.agent)
     if adapter is None or action not in allowed_actions(blocker, adapter):

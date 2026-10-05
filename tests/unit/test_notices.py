@@ -95,6 +95,13 @@ CASES: dict[str, Notice] = {
         blocker_seq=42,
         actions=(OperatorAction.APPROVE, OperatorAction.DENY),
     ),
+    "permission-policy-ask": notices.needs_human(
+        TASK,
+        "claude asks for permission: Bash command · git push origin main · Publish the branch",
+        blocker_seq=44,
+        actions=(OperatorAction.APPROVE, OperatorAction.DENY),
+        policy="Policy: ask, git push origin main: publishes to a remote.",
+    ),
     "question": notices.needs_human(
         TASK,
         "claude is waiting for a decision: Should divide(a, 0) raise or return inf?",

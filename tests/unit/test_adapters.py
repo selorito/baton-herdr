@@ -320,3 +320,29 @@ def test_permission_keys_only_for_verified_tool_prompts(
     adapter = ADAPTERS[agent]
     assert adapter.permission_keys(evidence, approve=True) == approve
     assert adapter.permission_keys(evidence, approve=False) == deny
+
+
+def _bash_prompt(*body: str) -> str:
+    lines = "\n".join(f"   {line}" for line in body)
+    return f"─────────\n Bash command\n Tip: x\n\n{lines}\n\n Do you want to proceed?\n ❯ 1. Yes\n"
+
+
+def test_the_command_of_a_permission_prompt_is_read_for_the_policy() -> None:
+    claude = ClaudeAdapter()
+    recorded = _screen("claude/blocked_permission/20260930T072344Z")
+    assert claude.permission_command(recorded) == "python3 -m unittest -v 2>&1"
+    # Only a last line that reads as prose is taken for the description.
+    assert claude.permission_command(_bash_prompt("ls", "List the files")) == "ls"
+    assert claude.permission_command(_bash_prompt("ls")) == "ls"
+    # Not prose: kept as part of the command, where the policy asks about it.
+    assert claude.permission_command(_bash_prompt("pytest", "rm -rf /")) == "pytest\nrm -rf /"
+    assert (
+        claude.permission_command(_bash_prompt("pytest", "Remove /tmp/x"))
+        == "pytest\nRemove /tmp/x"
+    )
+    # Not a shell command, or no prompt at all.
+    edit = "─────\n Edit file\n calc.py\n Do you want to proceed?\n"
+    assert claude.permission_command(edit) is None
+    assert claude.permission_command(_screen("claude/idle/" + _first("claude/idle"))) is None
+    codex = _screen("codex/blocked_permission/20260930T075730Z")
+    assert CodexAdapter().permission_command(codex) is None

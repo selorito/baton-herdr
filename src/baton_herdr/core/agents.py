@@ -52,6 +52,16 @@ class AgentAdapter(Protocol):
         """
         ...
 
+    def permission_command(self, screen: str) -> str | None:
+        """The shell command a permission prompt on ``screen`` asks to run, or ``None``.
+
+        Read for baton's policy (ADR 0013). ``None`` for anything that is not a shell
+        command, or that cannot be read with certainty; a person then decides. When in
+        doubt about where the command ends, include more: extra lines make the policy
+        ask, missing ones could let a command through unread.
+        """
+        ...
+
     def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
         """Keys that approve (or deny) the permission prompt behind ``evidence``, or ``None``.
 

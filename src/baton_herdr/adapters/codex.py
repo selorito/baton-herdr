@@ -127,6 +127,12 @@ class CodexAdapter:
             kept.append(text)
         return one_line_summary(kept)
 
+    def permission_command(self, screen: str) -> str | None:
+        # Only edit approvals are recorded (fixtures/codex/blocked_permission/); a command
+        # approval's layout has not been seen yet, so a person decides it.
+        del screen
+        return None
+
     def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
         if evidence != "baton:codex_edit_or_command_approval":
             return None  # folder trust and hook review stay at the terminal

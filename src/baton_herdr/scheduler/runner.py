@@ -50,6 +50,7 @@ from baton_herdr.core.events import (
     AttemptResumed,
     AttemptStarted,
     Event,
+    PermissionDecided,
     StoredEvent,
 )
 from baton_herdr.core.logging import get_logger, log_context
@@ -60,14 +61,24 @@ from baton_herdr.core.model import (
     AttemptStatus,
     InterruptReason,
     ObservationSource,
+    OperatorAction,
+    PermissionDecision,
     TaskStatus,
 )
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
 from baton_herdr.core.projection import project
+from baton_herdr.core.redact import redact
 from baton_herdr.core.targeting import resolve_target
+from baton_herdr.policy.rules import Verdict
 from baton_herdr.recovery.policy import Plan, plan_recovery
 from baton_herdr.scheduler import notices
-from baton_herdr.scheduler.operator import allowed_actions, find_blocker
+from baton_herdr.scheduler.operator import (
+    ActionRefusedError,
+    act,
+    allowed_actions,
+    answered,
+    find_blocker,
+)
 from baton_herdr.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
 if TYPE_CHECKING:
@@ -81,6 +92,8 @@ if TYPE_CHECKING:
     from baton_herdr.core.panes import PaneHost, PaneObservation
     from baton_herdr.core.ports import Clock, EventStore, Workspace
     from baton_herdr.core.projection import AttemptView, Board, TaskView
+    from baton_herdr.policy.load import Policy
+    from baton_herdr.scheduler.operator import Blocker
 
 CONTINUE_NOTE = (
     "Your session was interrupted. Continue the task from where you stopped; the working "
@@ -97,6 +110,13 @@ type PromptKind = Literal["task", "handoff", "continue"]
 DENIED_NOTE = (
     "The permission was denied and the agent stopped. Reply with what it should do instead."
 )
+
+# What the runner does about a permission prompt the policy decided (ADR 0013).
+_POLICY_ACTIONS = {
+    PermissionDecision.ALLOW: OperatorAction.APPROVE,
+    PermissionDecision.DENY: OperatorAction.DENY,
+}
+POLICY_ACTOR = "policy"
 
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "baton:resume-failed"
@@ -159,6 +179,7 @@ class TaskRunner:
         budget: BudgetReader | None = None,
         detector: Detector | None = None,
         workspace: Workspace | None = None,
+        policy: Policy | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -170,6 +191,8 @@ class TaskRunner:
         self._workspace = workspace
         # Classifies screens; the adapters' own rules unless batond chose another engine.
         self._detector = detector or AdapterDetector(adapters)
+        # Decides permission prompts it can read (ADR 0013); without it, a person decides all.
+        self._policy = policy
         # Without usage data the budget is folded from the event log alone.
         self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
         self._log = get_logger("baton.scheduler")
@@ -497,6 +520,19 @@ class TaskRunner:
                 )
                 if step.action is Action.WAIT:
                     continue
+                if (
+                    step.action is Action.ASK_HUMAN
+                    and state is AgentState.BLOCKED_PERMISSION
+                    and pane_for_input is not None
+                    and (
+                        applied := await self._apply_policy(
+                            task_id, attempt_id, adapter, evidence, screen
+                        )
+                    )
+                ):
+                    # After a refusal the agent stops and waits to be told what to do instead.
+                    turn = replace(turn, denied=turn.denied or applied is OperatorAction.DENY)
+                    continue
                 if step.action is Action.SEND_PROMPT:
                     deadline = loop.time() + self._settings.turn_timeout_s
                 outcome = await self._carry_out(
@@ -571,6 +607,7 @@ class TaskRunner:
                         attempt_id=ctx.attempt_id,
                         blocker_seq=blocker.seq if blocker else None,
                         actions=actions,
+                        policy=_policy_note(events, ctx.attempt_id),
                     )
                 )
             else:
@@ -589,6 +626,100 @@ class TaskRunner:
             InterruptReason.STALLED,
             "The pane no longer hosts this attempt's agent.",
         )
+
+    async def _apply_policy(
+        self,
+        task_id: TaskId,
+        attempt_id: AttemptId,
+        adapter: AgentAdapter,
+        evidence: str,
+        screen: str,
+    ) -> OperatorAction | None:
+        """Let the policy answer a permission prompt; ``None`` leaves it to a person.
+
+        Each prompt is decided once, and the decision is recorded before anything is
+        sent. The answer goes through the operator's own path (``act``), with its checks:
+        the prompt still open, not answered yet, the pane verified.
+        """
+        if self._policy is None:
+            return None
+        command = adapter.permission_command(screen)
+        prompt = adapter.permission_summary(screen)
+        prompt = redact(prompt)[:1000] if prompt else None
+        events, blocker, decided = await self._open_prompt(task_id, attempt_id, evidence, prompt)
+        if blocker is None:
+            return None
+        if decided is not None:
+            action = _POLICY_ACTIONS.get(decided.decision)
+            # Already answered: wait for the screen to move on. Not answered (the pane
+            # could not be verified): a person decides.
+            return action if action and answered(events, blocker.seq) else None
+        verdict = self._policy.decide(adapter.kind, command)
+        action = _POLICY_ACTIONS.get(verdict.decision)
+        if action is not None and not adapter.permission_keys(
+            evidence, approve=action is OperatorAction.APPROVE
+        ):
+            verdict = Verdict(
+                PermissionDecision.ASK,
+                f"{verdict.reason}; but baton does not know this prompt's keys",
+                verdict.rule,
+            )
+            action = None
+        await self._append(
+            PermissionDecided(
+                occurred_at=self._clock.now(),
+                task_id=task_id,
+                attempt_id=attempt_id,
+                blocker_seq=blocker.seq,
+                decision=verdict.decision,
+                prompt=prompt,
+                command=redact(command)[:1000] if command else None,
+                rule=verdict.rule.label if verdict.rule else None,
+                reason=redact(verdict.reason),
+            )
+        )
+        self._log.info(
+            "permission decided by policy",
+            decision=verdict.decision.value,
+            rule=verdict.rule.label if verdict.rule else None,
+        )
+        if action is None:
+            return None
+        try:
+            await act(
+                store=self._store,
+                host=self._host,
+                adapters=self._adapters,
+                clock=self._clock,
+                task_id=task_id,
+                action=action,
+                by=POLICY_ACTOR,
+                blocker_seq=blocker.seq,
+            )
+        except ActionRefusedError as err:
+            self._log.warning("policy decision not carried out", error=str(err))
+            return None
+        return action
+
+    async def _open_prompt(
+        self, task_id: TaskId, attempt_id: AttemptId, evidence: str, prompt: str | None
+    ) -> tuple[Sequence[StoredEvent], Blocker | None, PermissionDecided | None]:
+        """The permission prompt the attempt waits on, and the policy's decision on it so far.
+
+        Another prompt on screen under an unchanged state is observed afresh, so it
+        becomes a blocker of its own and is decided on its own. A screen that shows no
+        prompt (herdr's state lags behind the answer) is the same blocker.
+        """
+        events = await self._store.read()
+        blocker = find_blocker(events, task_id)
+        if blocker is None or blocker.state is not AgentState.BLOCKED_PERMISSION:
+            return events, None, None
+        decided = _decision_for(events, blocker.seq)
+        if decided is None or prompt is None or decided.prompt == prompt:
+            return events, blocker, decided
+        await self._observed(task_id, attempt_id, blocker.state, evidence)
+        events = await self._store.read()
+        return events, find_blocker(events, task_id), None
 
     async def _classify(
         self,
@@ -870,3 +1001,28 @@ def _last_observation(
         elif isinstance(event, AgentStateObserved):
             last = event
     return last
+
+
+def _decision_for(events: Iterable[StoredEvent], blocker_seq: int) -> PermissionDecided | None:
+    for stored in events:
+        if isinstance(stored.event, PermissionDecided) and stored.event.blocker_seq == blocker_seq:
+            return stored.event
+    return None
+
+
+def _policy_note(events: Iterable[StoredEvent], attempt_id: AttemptId) -> str:
+    """What the policy said about the turn's newest prompt, if it left it to a person or refused."""
+    note = ""
+    for stored in events:
+        event = stored.event
+        if getattr(event, "attempt_id", None) != attempt_id:
+            continue
+        if isinstance(event, AttemptPrompted | AttemptResumed):
+            note = ""
+        elif isinstance(event, PermissionDecided):
+            note = (
+                ""
+                if event.decision is PermissionDecision.ALLOW
+                else f"Policy: {event.decision.value}, {event.reason}."
+            )
+    return note

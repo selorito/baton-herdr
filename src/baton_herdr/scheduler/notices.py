@@ -154,7 +154,9 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
     attempt_id: AttemptId | None = None,
     blocker_seq: int | None = None,
     actions: tuple[OperatorAction, ...] = (),
+    policy: str = "",
 ) -> Notice:
+    """``policy`` is what baton's policy said, when it left the decision to a person."""
     tail = screen_tail(screen)
     return Notice(
         NoticeKind.NEEDS_HUMAN,
@@ -164,6 +166,7 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
         blocker_seq=blocker_seq,
         actions=actions,
         title=task.title,
+        details=(policy,) if policy else (),
         blocks=(tail,) if tail else (),
     )
 

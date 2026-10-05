@@ -105,6 +105,11 @@ class OpenCodeAdapter:
         del screen  # not offered remotely yet (see permission_keys)
         return None
 
+    def permission_command(self, screen: str) -> str | None:
+        # Not read yet: OpenCode's permission dialog goes to a person.
+        del screen
+        return None
+
     def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
         # The permission dialog's keys have not been verified yet: answer at the terminal.
         del evidence, approve

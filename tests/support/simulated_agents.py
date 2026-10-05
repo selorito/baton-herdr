@@ -47,6 +47,8 @@ RESUMED_SCRIPT_FILES = {
     AgentKind.CLAUDE: "claude-finish.toml",
     AgentKind.CODEX: "codex-finish.toml",
 }
+# A Claude permission prompt as the runner reads it (fixtures/claude/blocked_permission/).
+PERMISSION_SCREEN = "Bash command\n  rm -rf build\nDo you want to proceed?\n"
 SCRIPT_FILES = {AgentKind.CLAUDE: "claude-limit.toml", AgentKind.CODEX: "codex-finish.toml"}
 
 
@@ -62,6 +64,7 @@ class SimulatedAgents(FakePaneHost):
         resume_fails: bool = False,
         scripts: dict[AgentKind, str] | None = None,
         permission_after_prompt: bool = False,
+        permission_screen: str = PERMISSION_SCREEN,
         end_mark: str | None = None,
     ) -> None:
         super().__init__()
@@ -74,6 +77,9 @@ class SimulatedAgents(FakePaneHost):
         # Ask for a permission once the prompt arrives; ``approve`` lets the turn go on.
         self._permission_after_prompt = permission_after_prompt
         self._waiting_for_approval: dict[str, str] = {}
+        self._permission_screen = permission_screen
+        # The keys each permission prompt was answered with.
+        self.permission_answers: list[tuple[str, ...]] = []
         # Closing lines of a finished turn: the agent's message and its end mark.
         self.end_mark = end_mark
         # Script played by a freshly launched agent; resumed sessions always finish.
@@ -120,6 +126,7 @@ class SimulatedAgents(FakePaneHost):
                 return
             self._show(pane_id, prompt="")
         elif pane_id in self._waiting_for_approval and list(keys) in (["Enter"], ["Escape"]):
+            self.permission_answers.append(tuple(keys))
             self.approve()  # approved or denied, the agent ends its turn
         elif pane_id in self._dialogs:
             self.dialog_answers.append(tuple(keys))
@@ -161,7 +168,7 @@ class SimulatedAgents(FakePaneHost):
         if self._permission_after_prompt:
             self._permission_after_prompt = False
             self._waiting_for_approval[pane_id] = prompt
-            self.screens[pane_id] = "Bash command\n  rm -rf build\nDo you want to proceed?\n"
+            self.screens[pane_id] = self._permission_screen
             self.set_observation(
                 PaneObservation(
                     pane_id=pane_id,
