@@ -73,6 +73,8 @@ class WorldResult:
     recovery: tuple[tuple[str, float], ...]
     # Seconds from the first agent becoming free again to the task going on, after a wait.
     after_reset: tuple[float, ...]
+    # Every interruption baton recorded: its reason and its detail.
+    interruptions: tuple[tuple[str, str | None], ...]
     limits: int
     makespan_s: float
 
@@ -230,6 +232,11 @@ def _measure(
         detection=tuple(detection),
         recovery=tuple(recovery),
         after_reset=tuple(after_reset),
+        interruptions=tuple(
+            (e.event.reason.value, e.event.detail)
+            for e in events
+            if isinstance(e.event, AttemptInterrupted)
+        ),
         limits=sum(1 for i in world.incidents if i.kind == "limit"),
         makespan_s=(_last_completion(events) or end - START).total_seconds(),
     )

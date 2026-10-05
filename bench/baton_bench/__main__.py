@@ -102,6 +102,17 @@ def render(
     return "\n".join(lines)
 
 
+def _free_path(directory: Path, stem: str, text: str) -> Path:
+    """``<date>.md``; a later run that day with other results gets ``<date>-2.md`` and so on,
+    so earlier results are never overwritten. The same results reuse their file."""
+    n = 1
+    while True:
+        path = directory / (f"{stem}.md" if n == 1 else f"{stem}-{n}.md")
+        if not path.exists() or path.read_text(encoding="utf-8") == text:
+            return path
+        n += 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="baton_bench", description=__doc__)
     parser.add_argument("--seed", type=int, default=1)
@@ -110,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     text = run(args.seed, args.worlds)
     args.out.mkdir(parents=True, exist_ok=True)
-    path = args.out / f"{datetime.now(tz=UTC).date().isoformat()}.md"
+    path = _free_path(args.out, datetime.now(tz=UTC).date().isoformat(), text)
     path.write_text(text, encoding="utf-8")
     sys.stdout.write(f"{path}\n")
     return 0

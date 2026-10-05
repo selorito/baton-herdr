@@ -97,8 +97,11 @@ class Quota:
 
 @dataclass(frozen=True, slots=True)
 class Fault:
-    kind: str  # "crash" or "hang"
+    # "crash" or "hang"; or "slow": a step that is one long response, with a still screen
+    # and no tokens until it ends. Not a fault of the agent, but one a watcher could mistake.
+    kind: str
     step: int  # it happens during this step (0-based)
+    seconds: float = 0  # for "slow": how long the step takes
 
 
 @dataclass(slots=True)
@@ -302,20 +305,28 @@ class World(FakePaneHost):
             workdir.started += 1
             self._show(pane_id, f"● Step {step + 1} of {workdir.steps}.", working=True)
             fault = workdir.fault_at(step)
-            if fault is not None:
+            if fault is not None and fault.kind != "slow":
                 await self._fail(pane_id, process, fault)
                 return
-            if not await self._respond(pane_id, process, share=1.0, overhead=False):
+            took = fault.seconds if fault is not None else None
+            if not await self._respond(pane_id, process, share=1.0, overhead=False, took=took):
                 return
             workdir.done += 1
         self._show(pane_id, "● Done. All tests pass.", working=False)
 
     async def _respond(
-        self, pane_id: str, process: _Process, *, share: float, overhead: bool
+        self,
+        pane_id: str,
+        process: _Process,
+        *,
+        share: float,
+        overhead: bool,
+        took: float | None = None,
     ) -> bool:
         """One response: time passes, tokens are spent. False if the limit cut it short."""
         workdir = self.workdirs[process.workdir]
         seconds, tokens = self._response(process.agent, share)
+        seconds = took if took is not None else seconds
         counted = tokens.input + tokens.cache_write + tokens.output
         quota = self.quotas[process.agent]
         room = quota.room(self._clock.now())
@@ -342,6 +353,7 @@ class World(FakePaneHost):
         *,
         overhead: bool = False,
         lost: bool = False,
+        logged: bool = True,
     ) -> None:
         now = self._clock.now()
         quota.spend(now, counted)
@@ -350,7 +362,7 @@ class World(FakePaneHost):
             workdir.wasted += counted
         elif overhead:
             workdir.overhead += counted
-        if self._usage is None or counted == 0:
+        if self._usage is None or counted == 0 or not logged:
             return
         if tokens is None:  # a response cut short: what it got to spend
             tokens = UsageTokens(input=counted, output=0, cache_read=0, cache_write=0)
@@ -400,8 +412,15 @@ class World(FakePaneHost):
         await asyncio.sleep(seconds)
         counted = tokens.input + tokens.cache_write + tokens.output
         quota = self.quotas[process.agent]
+        # A frozen response never completes, so the agent never logs it: no usage record.
         await self._spend(
-            process, quota, counted, tokens, self.workdirs[process.workdir], lost=True
+            process,
+            quota,
+            counted,
+            tokens,
+            self.workdirs[process.workdir],
+            lost=True,
+            logged=fault.kind != "hang",
         )
         self.incidents.append(
             Incident(fault.kind, process.workdir, process.agent, self._clock.now())

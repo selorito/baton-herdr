@@ -76,6 +76,22 @@ def hang(rng: random.Random) -> Setup:
     return Setup(tasks=[task], quotas={CLAUDE: Quota(cap=PLENTY), CODEX: Quota(cap=PLENTY)})
 
 
+def hang_without_usage(rng: random.Random) -> Setup:
+    """As ``hang``, with usage collection off: the screen is the only signal."""
+    setup = hang(rng)
+    setup.budget = Budget(collect_usage=False)
+    return setup
+
+
+def long_response(rng: random.Random) -> Setup:
+    """One step is a single response of 5 to 10 minutes: a still screen and no tokens until
+    it ends, as when a model thinks for long. Not a hang; it must not be taken for one."""
+    task = _task(rng)
+    step = rng.randrange(task.steps)
+    task.faults.append(Fault("slow", step, seconds=rng.uniform(300, 600)))
+    return Setup(tasks=[task], quotas={CLAUDE: Quota(cap=PLENTY), CODEX: Quota(cap=PLENTY)})
+
+
 def consecutive_limits(rng: random.Random) -> Setup:
     """Claude runs out, then Codex does too; Claude's window ends first."""
     task = _task(rng)
@@ -118,6 +134,19 @@ SCENARIOS = (
         "Hang",
         "Claude freezes partway through; its screen keeps saying it works.",
         hang,
+    ),
+    Scenario(
+        "hang-no-usage",
+        "Hang, usage not collected",
+        "As above, with `[usage] enabled = false`: the screen is the only signal.",
+        hang_without_usage,
+    ),
+    Scenario(
+        "long-response",
+        "Long response (not a hang)",
+        "One step is a single 5–10 min response: the screen stays still and no tokens "
+        "arrive until it ends. It must not be taken for a hang.",
+        long_response,
     ),
     Scenario(
         "consecutive-limits",
