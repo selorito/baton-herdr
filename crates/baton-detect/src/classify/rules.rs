@@ -22,7 +22,6 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use fancy_regex::Regex;
 use serde::Deserialize;
 
 use super::{AgentKind, AgentState, ClassifyError, Outcome};
@@ -32,6 +31,10 @@ const CODEX: &str = include_str!("../../rules/codex.toml");
 const OPENCODE: &str = include_str!("../../rules/opencode.toml");
 
 const REGION: &str = "bottom_non_empty_trimmed";
+/// How many times a look-around pattern may backtrack on one screen before it gives up.
+/// Every rule today stays below a thousand on the recorded screens; a screen built to
+/// make a pattern backtrack hits this in milliseconds instead of hanging the classifier.
+pub const BACKTRACK_LIMIT: usize = 100_000;
 const HOST_RULE: &str = "herdr:rule:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -72,7 +75,7 @@ pub struct Rule {
     pub id: String,
     pub state: AgentState,
     pub bottom_lines: usize,
-    pub regex: Regex,
+    pub pattern: Pattern,
     pub applies_when: Option<Vec<AgentState>>,
     pub resets: Resets,
 }
@@ -97,13 +100,13 @@ impl RuleSet {
             .map(|rule| {
                 let bottom_lines = region_lines(&rule.region)
                     .ok_or_else(|| format!("rule {}: unknown region {:?}", rule.id, rule.region))?;
-                let regex = Regex::new(&rule.regex)
+                let pattern = Pattern::new(&rule.regex)
                     .map_err(|e| format!("rule {}: pattern: {e}", rule.id))?;
                 Ok(Rule {
                     id: rule.id,
                     state: rule.state,
                     bottom_lines,
-                    regex,
+                    pattern,
                     applies_when: rule.applies_when,
                     resets: rule.resets,
                 })
@@ -130,6 +133,102 @@ impl RuleSet {
             Some(&state) => Outcome { state, ..result },
             None => result,
         }
+    }
+}
+
+/// A rule's pattern, on the engine it needs.
+///
+/// Most patterns run on `regex`, whose matching time is linear in the screen. Only a
+/// pattern that needs look-around (which `regex` does not have) runs on `fancy-regex`,
+/// a backtracking engine, and then with [`BACKTRACK_LIMIT`]. Both read the same syntax,
+/// so a pattern means the same on either.
+#[derive(Debug)]
+pub enum Pattern {
+    Linear(regex::Regex),
+    Backtracking(fancy_regex::Regex),
+}
+
+/// The outcome of one search.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Found<'t> {
+    /// A match, with the named groups that took part in it.
+    Match(Vec<(String, &'t str)>),
+    NoMatch,
+    /// The backtracking limit was reached: no answer, rather than a slow or wrong one.
+    GaveUp,
+}
+
+impl<'t> Found<'t> {
+    #[must_use]
+    pub fn group(&self, name: &str) -> Option<&'t str> {
+        match self {
+            Found::Match(groups) => groups.iter().find(|(n, _)| n == name).map(|(_, t)| *t),
+            Found::NoMatch | Found::GaveUp => None,
+        }
+    }
+}
+
+impl Pattern {
+    /// Compile `source` on the linear engine if it can, else on the backtracking one.
+    ///
+    /// # Errors
+    /// Neither engine compiles the pattern.
+    pub fn new(source: &str) -> Result<Self, String> {
+        if let Ok(linear) = regex::Regex::new(source) {
+            return Ok(Self::Linear(linear));
+        }
+        fancy_regex::RegexBuilder::new(source)
+            .backtrack_limit(BACKTRACK_LIMIT)
+            .build()
+            .map(Self::Backtracking)
+            .map_err(|e| e.to_string())
+    }
+
+    #[must_use]
+    pub fn is_backtracking(&self) -> bool {
+        matches!(self, Self::Backtracking(_))
+    }
+
+    #[must_use]
+    pub fn find<'t>(&self, text: &'t str) -> Found<'t> {
+        match self {
+            Self::Linear(regex) => match regex.captures(text) {
+                Some(caps) => Found::Match(named(regex.capture_names(), |n| caps.name(n))),
+                None => Found::NoMatch,
+            },
+            Self::Backtracking(regex) => match regex.captures(text) {
+                Ok(Some(caps)) => Found::Match(named(regex.capture_names(), |n| caps.name(n))),
+                Ok(None) => Found::NoMatch,
+                Err(_) => Found::GaveUp,
+            },
+        }
+    }
+}
+
+fn named<'n, 't, M: Matched<'t>>(
+    names: impl Iterator<Item = Option<&'n str>>,
+    group: impl Fn(&str) -> Option<M>,
+) -> Vec<(String, &'t str)> {
+    names
+        .flatten()
+        .filter_map(|name| group(name).map(|m| (name.to_owned(), m.text())))
+        .collect()
+}
+
+/// A matched group on either engine.
+trait Matched<'t> {
+    fn text(&self) -> &'t str;
+}
+
+impl<'t> Matched<'t> for regex::Match<'t> {
+    fn text(&self) -> &'t str {
+        self.as_str()
+    }
+}
+
+impl<'t> Matched<'t> for fancy_regex::Match<'t> {
+    fn text(&self) -> &'t str {
+        self.as_str()
     }
 }
 
@@ -204,5 +303,39 @@ mod tests {
         let unknown_field = "agent = \"codex\"\nrules = []\npriority = 1\n";
         assert!(RuleSet::parse(unknown_field).is_err());
         assert_eq!(region_lines(" bottom_non_empty_trimmed(12) "), Some(12));
+    }
+
+    #[test]
+    fn only_rules_that_need_look_around_backtrack() {
+        let backtracking: Vec<&str> = [AgentKind::Claude, AgentKind::Codex, AgentKind::Opencode]
+            .into_iter()
+            .flat_map(|agent| &for_agent(agent).unwrap().unwrap().rules)
+            .filter(|rule| rule.pattern.is_backtracking())
+            .map(|rule| rule.id.as_str())
+            .collect();
+        assert_eq!(
+            backtracking,
+            ["codex_idle_prompt", "opencode_idle_composer"]
+        );
+    }
+
+    #[test]
+    fn both_engines_report_named_groups() {
+        for source in [r"in (?P<in>\d+) min", r"in (?P<in>\d+) min(?!utes)"] {
+            let found = Pattern::new(source).unwrap().find("resets in 15 min.");
+            assert_eq!(found.group("in"), Some("15"), "{source}");
+            assert_eq!(found.group("clock"), None);
+        }
+        assert_eq!(Pattern::new("a(?=b)").unwrap().find("ac"), Found::NoMatch);
+    }
+
+    #[test]
+    fn a_pattern_that_would_backtrack_for_ever_gives_up() {
+        // Two ways to read each "a", so 2^60 ways to fail on a screen of sixty.
+        let exponential = Pattern::new(r"^(?:a(?=a|c)|a)*c$").unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(exponential.find(&"a".repeat(60)), Found::GaveUp);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(matches!(exponential.find("aaac"), Found::Match(_)));
     }
 }

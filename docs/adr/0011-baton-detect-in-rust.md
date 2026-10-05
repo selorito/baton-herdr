@@ -61,10 +61,26 @@ line and writes one `DetectionResult` (`schemas/detector-*.v1.json`), the same c
 - **The region** is `bottom_non_empty_trimmed(N)`: the last N non-blank lines,
   right-trimmed. That is the Python detector's view. It is deliberately not called herdr's
   `bottom_non_empty_lines`, which keeps blank lines.
-- **Patterns are the Python ones, verbatim** (`fancy-regex`, so the two lookaheads stay as
-  they are). The only change is `\Z`, which Rust writes `\z`. Lines are split and trimmed
+- **Patterns are the Python ones, verbatim.** The only change is `\Z`, which Rust writes `\z`. Lines are split and trimmed
   the way Python does it, and local times resolve the way Python's `zoneinfo` resolves them
   (`jiff`).
+- **Two engines, bounded.** A screen is text an agent printed, so it can be shaped by
+  whatever the agent reads, and a pattern that backtracks badly on it would stall
+  batond. A pattern runs on `regex`, which matches in linear time, whenever it compiles
+  there. Only the two that need a look-ahead (`codex_idle_prompt`,
+  `opencode_idle_composer`) run on `fancy-regex`. They run with a limit of 100,000
+  backtracking steps per screen (`rules::BACKTRACK_LIMIT`). A pattern that reaches the
+  limit counts as no match: the screen is read again a moment later, and no answer is
+  better than a hung classifier.
+  - Neither look-ahead rule is exponential today: `fancy-regex` hands the parts without
+    look-around to the linear engine, and the opencode rule reads at most 12 lines. The
+    limit guards the next rule someone writes. Tests show a hostile screen (lines of
+    800,000 characters) answered in under a second, and an exponential pattern giving up.
+  - The limit is far above what a terminal screen needs, and the parity run shows no
+    answer changing. A region of more than ~100,000 characters could make
+    `opencode_idle_composer` give up where Python would answer; herdr screens are a few
+    thousand characters.
+  - The Python detector has no such limit. It goes in step 4.
 - **Parity** (`tests/integration/test_detect_parity_binary.py`): every recorded capture
   under every host state, limit messages at moments around daylight-saving changes in seven
   zones, the fake agents' screens and edge cases go through the binary in one run. In

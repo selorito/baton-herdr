@@ -13,7 +13,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
-use rules::{Resets, RuleSet};
+use rules::{Found, Resets, RuleSet};
 
 /// What an agent is doing, as baton understands it (ADR 0004).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -162,11 +162,12 @@ fn detect(request: &Request, rules: &RuleSet) -> Result<Outcome, ClassifyError> 
             continue;
         }
         let region = text::bottom(&request.screen, rule.bottom_lines);
-        // A pattern that gives up (backtracking limit) is no match, as no answer is better
-        // than a wrong one; the parity tests would show it.
-        let Ok(Some(caps)) = rule.regex.captures(region.as_str()) else {
+        // A pattern that gives up (the backtracking limit) is no match: no answer is
+        // better than a hung classifier, and the next screen is read a moment later.
+        let caps = rule.pattern.find(region.as_str());
+        if !matches!(caps, Found::Match(_)) {
             continue;
-        };
+        }
         let resets_at = match rule.resets {
             Resets::Never => None,
             Resets::FromGroups => resets_from(&caps, request.observed_at, &zone),
@@ -196,35 +197,89 @@ pub fn time_zone(name: &str) -> Option<TimeZone> {
 
 /// The reset time a limit message names, from the rule's named groups: `clock` (with
 /// `weekday` and `zone`), `at` (a full local date) or `in` (a duration).
-fn resets_from(
-    caps: &fancy_regex::Captures<'_, str>,
-    observed_at: Timestamp,
-    zone: &TimeZone,
-) -> Option<Timestamp> {
-    if let Some(clock) = caps.name("clock") {
+fn resets_from(caps: &Found<'_>, observed_at: Timestamp, zone: &TimeZone) -> Option<Timestamp> {
+    if let Some(clock) = caps.group("clock") {
         // A zone printed after the time wins, if it exists.
-        let printed = caps.name("zone").and_then(|m| time_zone(m.as_str()));
-        let weekday = caps.name("weekday").map(|m| m.as_str());
+        let printed = caps.group("zone").and_then(time_zone);
+        let weekday = caps.group("weekday");
         return clock::next_clock_time(
-            clock.as_str(),
+            clock,
             observed_at,
             printed.as_ref().unwrap_or(zone),
             weekday,
         );
     }
-    if let Some(at) = caps.name("at") {
-        let words: Vec<&str> = at
-            .as_str()
-            .split(text::is_space)
-            .filter(|w| !w.is_empty())
-            .collect();
+    if let Some(at) = caps.group("at") {
+        let words: Vec<&str> = at.split(text::is_space).filter(|w| !w.is_empty()).collect();
         return clock::parse_month_date_time(&words.join(" "), zone);
     }
-    if let Some(duration) = caps.name("in") {
-        let seconds = clock::parse_duration(duration.as_str())?;
+    if let Some(duration) = caps.group("in") {
+        let seconds = clock::parse_duration(duration)?;
         return observed_at
             .checked_add(jiff::SignedDuration::from_secs(seconds))
             .ok();
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+
+    fn request(agent: AgentKind, screen: String) -> Request {
+        Request {
+            contract: Contract,
+            agent,
+            agent_version: None,
+            screen,
+            host_state: AgentState::Unknown,
+            host_evidence: None,
+            agent_running: true,
+            observed_at: "2026-10-01T11:00:00Z".parse().unwrap(),
+            timezone: "UTC".to_owned(),
+        }
+    }
+
+    fn rule(agent: AgentKind, id: &str) -> &'static rules::Rule {
+        let rules = rules::for_agent(agent).unwrap().unwrap();
+        rules.rules.iter().find(|rule| rule.id == id).unwrap()
+    }
+
+    /// Text built to make each look-around rule backtrack: lines far longer than any
+    /// terminal, full of the separator the pattern splits on, that never complete a match.
+    fn hostile() -> Vec<(AgentKind, &'static str, String)> {
+        let separators = " ·".repeat(200_000);
+        vec![
+            // Every " · " is a place to split, and the last character (a spinner) fails
+            // each split.
+            (
+                AgentKind::Codex,
+                "codex_idle_prompt",
+                format!("› go\n  x{separators} ⠋"),
+            ),
+            // Every line looks like the composer, and the look-ahead reads on to the end
+            // of the screen from each.
+            (
+                AgentKind::Opencode,
+                "opencode_idle_composer",
+                format!("Build ·{separators}\n{}esc interrupt", "·".repeat(400_000)),
+            ),
+        ]
+    }
+
+    #[test]
+    fn a_hostile_screen_is_answered_quickly_and_not_as_idle() {
+        for (agent, id, text) in hostile() {
+            let started = Instant::now();
+            let found = rule(agent, id).pattern.find(&text);
+            let classified = classify(&request(agent, text.clone())).unwrap();
+            let took = started.elapsed();
+            assert!(!matches!(found, Found::Match(_)), "{id}");
+            assert_ne!(classified.state, AgentState::Idle, "{id}");
+            // Generous for a debug build on a slow runner; it takes well under a second.
+            assert!(took < Duration::from_secs(5), "{id} took {took:?}");
+        }
+    }
 }

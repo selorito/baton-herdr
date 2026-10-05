@@ -8,14 +8,15 @@
 
 use std::sync::LazyLock;
 
-use fancy_regex::Regex;
 use jiff::Timestamp;
 use jiff::civil::{Date, DateTime, Time, Weekday};
 use jiff::tz::TimeZone;
+use regex::Regex;
 
 use super::text::is_space;
 
-// Hand-written patterns that compile; checked by the tests.
+// Hand-written patterns that compile; checked by the tests. None needs look-around, so
+// they run on the linear-time engine.
 #[allow(clippy::expect_used)]
 static CLOCK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(\d{1,2})(?::(\d{2}))?\s*([ap]\.?m\.?)?$").expect("valid clock pattern")
@@ -55,7 +56,7 @@ fn number(text: &str) -> Option<i64> {
 /// `3:45pm`, `3pm`, `12:00am`, `15:45` → time of day.
 #[must_use]
 pub fn parse_clock(text: &str) -> Option<Time> {
-    let caps = CLOCK.captures(strip(text)).ok()??;
+    let caps = CLOCK.captures(strip(text))?;
     let mut hour = number(caps.get(1)?.as_str())?;
     let minute = caps.get(2).map_or(Some(0), |m| number(m.as_str()))?;
     let meridiem = caps
@@ -112,7 +113,7 @@ fn add_days(at: DateTime, days: i64) -> Option<DateTime> {
 /// `Feb 23rd, 2026 9:01 PM`, a local time in `zone`.
 #[must_use]
 pub fn parse_month_date_time(text: &str, zone: &TimeZone) -> Option<Timestamp> {
-    let caps = MONTH_DATE_TIME.captures(strip(text)).ok()??;
+    let caps = MONTH_DATE_TIME.captures(strip(text))?;
     let month_name = caps.get(1)?.as_str().to_lowercase();
     let clock = parse_clock(caps.get(4)?.as_str())?;
     let month = MONTHS.iter().position(|m| *m == month_name)?;
@@ -133,7 +134,6 @@ pub fn parse_duration(text: &str) -> Option<i64> {
     let mut seconds: i64 = 0;
     let mut found = false;
     for caps in DURATION_PART.captures_iter(text) {
-        let caps = caps.ok()?;
         found = true;
         let count = number(caps.get(1)?.as_str())?;
         let unit = match caps.get(2)?.as_str().to_lowercase().as_str() {
