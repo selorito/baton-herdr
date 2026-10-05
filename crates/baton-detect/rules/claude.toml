@@ -1,0 +1,33 @@
+# Claude Code screen rules. Evidence: fixtures/claude/, docs/research/agents.md.
+# Same rules as baton_herdr/adapters/claude.py; the parity tests hold them together.
+agent = "claude"
+
+# herdr rule ids (fixtures/herdr/agent-detection/claude-*.toml) → the kind of blocked.
+[refine_blocked]
+bash_permission_prompt = "blocked_permission"
+generic_permission_prompt = "blocked_permission"
+live_blocked_form = "blocked_question"
+mcp_elicitation_prompt = "blocked_question"
+
+# Usage limits, per code.claude.com/docs/en/errors: "You've hit your <name> limit", then a
+# reset clause such as "resets 3:45pm" or "resets Mon 12:00am"; spend limits have none. A
+# zone name in parentheses after the time is honoured. "You've used …" (a warning) is not
+# matched.
+[[rules]]
+id = "claude_usage_limit"
+state = "rate_limited"
+region = "bottom_non_empty_trimmed(30)"
+resets = "from_groups"
+regex = '''(?i)You've\s+hit\s+your\s+[^\n·]{0,60}?(?:limit|budget)(?:\s*·\s*(?:your\s+\w+\s+limit\s+)?resets\s+(?:(?P<weekday>Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*\s+)?(?P<clock>\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?)(?:\s*\((?P<zone>[A-Za-z_]+/[A-Za-z_/+-]+)\))?)?'''
+
+[[rules]]
+id = "claude_context_limit"
+state = "context_full"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''(?m)^\s*Context limit reached · /(?:compact|clear)'''
+
+[[rules]]
+id = "claude_resume_picker"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''Ctrl\+A to show all projects[\s\S]{0,200}?Space to preview'''

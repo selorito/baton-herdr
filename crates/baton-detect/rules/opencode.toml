@@ -1,0 +1,42 @@
+# OpenCode screen rules. Evidence: fixtures/opencode/, docs/research/agents.md.
+# Same rules as baton_herdr/adapters/opencode.py; the parity tests hold them together.
+#
+# OpenCode is a full-screen interface: dialogs open in the middle of the screen, so most
+# rules look at the whole recent screen (200 lines) rather than the bottom.
+agent = "opencode"
+
+# OpenCode's own retry layer (anomalyco/opencode v1.18.32, session/retry.ts): its free-tier
+# and Go plan limits. Provider errors ("Too Many Requests") are retried by OpenCode itself.
+[[rules]]
+id = "opencode_usage_limit"
+state = "rate_limited"
+region = "bottom_non_empty_trimmed(200)"
+resets = "from_groups"
+regex = '''(?i)Free limit reached|usage limit reached\.\s+It will reset in\s+(?P<in>(?:\d+\s*[a-z]+\s*)+)'''
+
+[[rules]]
+id = "opencode_permission"
+state = "blocked_permission"
+region = "bottom_non_empty_trimmed(200)"
+regex = '''△ Permission required[\s\S]*?Allow once\s+Allow always\s+Reject'''
+
+[[rules]]
+id = "opencode_question"
+state = "blocked_question"
+region = "bottom_non_empty_trimmed(200)"
+regex = '''↑↓ select\s+enter submit\s+esc dismiss'''
+
+[[rules]]
+id = "opencode_sessions_dialog"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(200)"
+regex = '''(?m)^\W*Sessions\s*(?:esc)?\s*\n(?:.*\n){0,3}?\W*Search\b'''
+
+# The composer's mode line ("Build · <model> <provider>") with no progress bar ("esc
+# interrupt") anywhere after it.
+[[rules]]
+id = "opencode_idle_composer"
+state = "idle"
+region = "bottom_non_empty_trimmed(12)"
+applies_when = ["unknown"]
+regex = '''(?m)^\W*(?:Build|Plan) · [^\n]+$(?![\s\S]*esc interrupt)'''

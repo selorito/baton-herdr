@@ -144,3 +144,80 @@ mod usage {
         assert_eq!(event["record_id"], "claude:msg_new");
     }
 }
+
+// Helpers of a test file: a failure should stop the test, with the error.
+#[allow(clippy::unwrap_used)]
+mod classify {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    use serde_json::{Value, json};
+
+    fn run(input: &str) -> (i32, Vec<Value>, String) {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_baton-detect"))
+            .arg("classify")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        let lines = String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        (
+            output.status.code().unwrap(),
+            lines,
+            String::from_utf8(output.stderr).unwrap(),
+        )
+    }
+
+    #[test]
+    fn one_result_per_request_in_order() {
+        let limit = json!({
+            "agent": "claude",
+            "screen": "out\nYou've hit your session limit · resets 3:45pm\n❯\n",
+            "host_state": "idle",
+            "observed_at": "2026-10-01T11:00:00Z",
+            "timezone": "Europe/Istanbul",
+        });
+        let gone = json!({
+            "agent": "codex",
+            "screen": "",
+            "host_evidence": "herdr:no-agent",
+            "agent_running": false,
+            "observed_at": "2026-10-01T11:00:00Z",
+        });
+        let (code, lines, _) = run(&format!("{limit}\n\n{gone}\n"));
+        assert_eq!(code, 0);
+        assert_eq!(
+            lines,
+            [
+                json!({"contract": 1, "state": "rate_limited",
+                       "evidence": "baton:claude_usage_limit",
+                       "resets_at": "2026-10-01T12:45:00Z"}),
+                json!({"contract": 1, "state": "unknown", "evidence": "herdr:no-agent",
+                       "resets_at": null}),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_request_it_cannot_read_stops_it() {
+        let (code, lines, stderr) = run("{\"agent\": \"claude\"}\n");
+        assert_eq!(code, 2);
+        assert_eq!(lines, Vec::<Value>::new());
+        assert!(
+            stderr.contains("line 1: invalid detection request"),
+            "{stderr}"
+        );
+    }
+}

@@ -1,0 +1,63 @@
+# Codex CLI screen rules. Evidence: fixtures/codex/, docs/research/agents.md.
+# Same rules as baton_herdr/adapters/codex.py; the parity tests hold them together.
+#
+# Codex marks the composer and the selected dialog option with U+203A (›); numbered lines
+# after it are dialog options, not the composer. While a turn runs, the footer ends with a
+# braille spinner (U+2800..U+28FF).
+agent = "codex"
+
+# "You've hit your usage limit. … try again at Feb 23rd, 2026 9:01 PM." or "… try again in
+# 3 hours 2 minutes." (openai/codex issues #3031, #12299, #16917). The screen may wrap the
+# sentence, so whitespace includes newlines.
+[[rules]]
+id = "codex_usage_limit"
+state = "rate_limited"
+region = "bottom_non_empty_trimmed(30)"
+resets = "from_groups"
+regex = '''You've\s+hit\s+your\s+usage\s+limit\.[\s\S]{0,300}?try\s+again\s+(?:at\s+(?P<at>[A-Z][a-z]{2}\w*\.?\s+\d{1,2}\w*,?\s+\d{4},?\s+\d{1,2}:\d{2}\s*[AP]M)|in\s+(?P<in>(?:\d+\s+\w+\s*)+))|You've\s+hit\s+your\s+usage\s+limit\.'''
+
+[[rules]]
+id = "codex_edit_or_command_approval"
+state = "blocked_permission"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''(?:Would you like to make the following edits\?|Allow command\?)[\s\S]*?Press enter to confirm or esc to cancel'''
+
+[[rules]]
+id = "codex_trust_folder"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''(?m)Trust this folder\?[\s\S]*?^› 1\. Trust and continue'''
+
+[[rules]]
+id = "codex_hooks_review"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''(?m)Hooks need review[\s\S]*?^› 1\. Review hooks'''
+
+[[rules]]
+id = "codex_update_prompt"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''Update available[\s\S]*?Skip until next version'''
+
+[[rules]]
+id = "codex_resume_picker"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''Resume a previous session[\s\S]*?enter resume'''
+
+# herdr sees work from the spinner in the window title; this also sees it in the footer.
+[[rules]]
+id = "codex_working_footer"
+state = "working"
+region = "bottom_non_empty_trimmed(1)"
+applies_when = ["unknown"]
+regex = '''^ {2}\S[^\n]* · [^\n]*[\x{2800}-\x{28FF}]\z'''
+
+# herdr has no idle rule for Codex, so this idle is a fallback for when herdr knows nothing.
+[[rules]]
+id = "codex_idle_prompt"
+state = "idle"
+region = "bottom_non_empty_trimmed(2)"
+applies_when = ["unknown"]
+regex = '''^› (?!\d+\.\s)[^\n]*\n {2}\S[^\n]* · [^\n]*[^\n\x{2800}-\x{28FF}]\z'''
