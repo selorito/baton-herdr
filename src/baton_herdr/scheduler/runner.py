@@ -718,7 +718,8 @@ class TaskRunner:
             # Already answered: wait for the screen to move on. Not answered (the pane
             # could not be verified): a person decides.
             return action if action and answered(events, blocker.seq) else None
-        verdict = self._policy.decide(adapter.kind, command)
+        workdir = project(events).tasks[task_id].workdir
+        verdict = self._policy.decide(adapter.kind, command, workdir)
         action = _POLICY_ACTIONS.get(verdict.decision)
         if action is not None and not adapter.permission_keys(
             evidence, approve=action is OperatorAction.APPROVE

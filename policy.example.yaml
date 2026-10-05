@@ -1,8 +1,14 @@
-# Copy to ~/.config/baton/policy.yaml. Rules here are tried first, then baton's defaults
-# (reading and running tests allowed; deleting, pushing, forcing, migrations, sudo and
-# downloads ask). The first matching rule decides; no match asks. A command made of
+# Copy to ~/.config/baton/policy.yaml. Rules here are tried first, then baton's defaults:
+# read-only commands allowed; tests and builds allowed only in trusted_dirs (they run the
+# project's code); deleting, pushing, forcing, migrations, sudo and downloads ask. The first matching rule decides; no match asks. A command made of
 # several (a && b, a | b) is decided part by part, and the strictest answer wins.
-# Try it: baton policy check "make lint && git push" --agent codex
+# Try it: baton policy check "make lint && git push" --agent codex --dir ~/src/calc
+
+# Repositories whose tests and builds agents may run without asking. Only list code you
+# trust: a test can do anything your user can.
+trusted_dirs:
+  - ~/src/calc
+
 rules:
   # Your own safe commands.
   - decision: allow

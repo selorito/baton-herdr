@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.events import OperatorActed, PermissionDecided, TaskCreated
@@ -74,8 +75,11 @@ def decisions(store: InMemoryEventStore) -> list[PermissionDecided]:
     return [s.event for s in store._events if isinstance(s.event, PermissionDecided)]
 
 
+TRUSTED = Policy(trusted_dirs=(Path("/work/calc"),))
+
+
 async def test_an_allowed_command_is_approved_without_a_person() -> None:
-    store, host, notifier, status = await run(TESTS, Policy())
+    store, host, notifier, status = await run(TESTS, TRUSTED)
 
     assert status is TaskStatus.COMPLETED
     assert NoticeKind.NEEDS_HUMAN not in notifier.kinds
@@ -84,10 +88,20 @@ async def test_an_allowed_command_is_approved_without_a_person() -> None:
     assert decided.decision is PermissionDecision.ALLOW
     assert decided.command == "python3 -m unittest -v 2>&1"
     assert decided.rule == "python3 -m unittest* (defaults)"
-    assert decided.reason == "python3 -m unittest -v: runs the tests"
+    assert decided.reason == "python3 -m unittest -v: runs the project's own code (tests, builds)"
     (acted,) = [s.event for s in store._events if isinstance(s.event, OperatorActed)]
     assert acted.by == "policy"
     assert acted.blocker_seq == decided.blocker_seq
+
+
+async def test_tests_outside_trusted_dirs_go_to_a_person() -> None:
+    store, host, notifier, status = await run(TESTS, Policy())
+
+    assert status is TaskStatus.NEEDS_HUMAN
+    assert host.permission_answers == []
+    (decided,) = decisions(store)
+    assert decided.decision is PermissionDecision.ASK
+    assert "/work/calc is not one" in decided.reason
 
 
 async def test_a_risky_command_goes_to_a_person_with_the_reason() -> None:

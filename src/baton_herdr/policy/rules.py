@@ -44,6 +44,9 @@ class Rule:
     regex: bool = False
     agents: frozenset[AgentKind] | None = None  # None: every agent
     origin: str = "defaults"  # where the rule comes from, for the event log
+    # An allow that holds only in a trusted directory; elsewhere the command asks. For
+    # commands that run the project's own code: tests, builds.
+    trusted_only: bool = False
 
     def matches(self, agent: AgentKind, command: str) -> bool:
         if self.agents is not None and agent not in self.agents:
@@ -111,11 +114,19 @@ def split_command(command: str) -> list[str]:
     return commands
 
 
-def decide(rules: Sequence[Rule], agent: AgentKind, command: str | None) -> Verdict:
-    """What to do with ``agent``'s request to run ``command``.
+def decide(
+    rules: Sequence[Rule],
+    agent: AgentKind,
+    command: str | None,
+    *,
+    trusted: bool = False,
+    workdir: str | None = None,
+) -> Verdict:
+    """What to do with ``agent``'s request to run ``command`` in ``workdir``.
 
-    ``None`` is a permission prompt that is not a shell command (a file edit, a tool, a
-    dialog baton cannot read): a person decides.
+    ``trusted`` says whether ``workdir`` is one of the policy's trusted directories, where
+    ``trusted_only`` rules allow. ``None`` is a permission prompt that is not a shell
+    command (a file edit, a tool, a dialog baton cannot read): a person decides.
     """
     if command is None or not command.strip():
         return Verdict(Decision.ASK, "not a shell command baton can read; a person decides")
@@ -125,17 +136,28 @@ def decide(rules: Sequence[Rule], agent: AgentKind, command: str | None) -> Verd
         return Verdict(Decision.ASK, f"{err}; a person decides")
     if not parts:
         return Verdict(Decision.ASK, "an empty command; a person decides")
-    verdicts = [_decide_one(rules, agent, part) for part in parts]
+    verdicts = [_decide_one(rules, agent, part, trusted=trusted, workdir=workdir) for part in parts]
     strictest = max(verdicts, key=lambda v: _STRICTNESS[v.decision])
     if strictest.decision is not Decision.ALLOW:
         return strictest
     return Verdict(Decision.ALLOW, "; ".join(v.reason for v in verdicts), verdicts[0].rule)
 
 
-def _decide_one(rules: Sequence[Rule], agent: AgentKind, command: str) -> Verdict:
+def _decide_one(
+    rules: Sequence[Rule], agent: AgentKind, command: str, *, trusted: bool, workdir: str | None
+) -> Verdict:
     for rule in rules:
-        if rule.matches(agent, command):
-            return Verdict(rule.decision, f"{_short(command)}: {rule.reason}", rule)
+        if not rule.matches(agent, command):
+            continue
+        if rule.trusted_only and rule.decision is Decision.ALLOW and not trusted:
+            where = workdir or "this directory"
+            return Verdict(
+                Decision.ASK,
+                f"{_short(command)}: {rule.reason}, so it is allowed only in trusted_dirs, "
+                f"and {where} is not one",
+                rule,
+            )
+        return Verdict(rule.decision, f"{_short(command)}: {rule.reason}", rule)
     return Verdict(Decision.ASK, f"{_short(command)}: no rule matches; a person decides")
 
 

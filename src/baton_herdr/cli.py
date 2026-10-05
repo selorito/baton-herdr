@@ -187,8 +187,12 @@ def policy_check(
     agent: Annotated[
         str, typer.Option(help="The agent asking: claude, codex or opencode.")
     ] = "claude",
+    directory: Annotated[
+        Path | None,
+        typer.Option("--dir", "-C", help="The task's directory (default: the current one)."),
+    ] = None,
 ) -> None:
-    """Say what the policy would do if AGENT asked to run COMMAND (ADR 0013)."""
+    """Say what the policy would do if AGENT asked to run COMMAND in DIR (ADR 0013)."""
     settings = _settings()
     try:
         kind = AgentKind(agent)
@@ -203,7 +207,8 @@ def policy_check(
     except PolicyError as err:
         typer.echo(str(err), err=True)
         raise typer.Exit(1) from None
-    verdict = policy.decide(kind, command)
+    workdir = str((directory or Path.cwd()).expanduser().resolve())
+    verdict = policy.decide(kind, command, workdir)
     typer.echo(f"{verdict.decision.value}: {verdict.reason}")
     typer.echo(f"rule: {verdict.rule.label if verdict.rule else 'none'}")
     typer.echo(f"policy: {policy.source}")
