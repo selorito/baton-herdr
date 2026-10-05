@@ -9,6 +9,11 @@ default:
 # Rust first: its build is the baton-detect the Python contract test runs.
 check: check-rs check-py fixtures-audit
 
+# Run `just check` before every `git push` (.githooks/pre-push).
+install-hooks:
+    git config core.hooksPath .githooks
+    @echo "pre-push hook installed: git push runs just check first"
+
 # Python: lint, format, types, import boundaries, tests with coverage.
 check-py:
     uv sync --locked

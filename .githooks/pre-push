@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Runs `just check` before every push and stops the push when it fails.
+# Installed by `just install-hooks`; skip once with `git push --no-verify`.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+echo "pre-push: just check" >&2
+if ! just check >&2; then
+    echo "pre-push: just check failed; nothing was pushed" >&2
+    exit 1
+fi

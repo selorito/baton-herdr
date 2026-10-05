@@ -18,7 +18,8 @@ on both sides.
 
 ```bash
 uv sync
-just check      # lint, format, types, import contracts, Python and Rust tests, fixture audit
+just install-hooks   # once: git push then runs just check first, and stops if it fails
+just check           # lint, format, types, import contracts, Python and Rust tests, fixture audit
 ```
 
 - `just check` must pass; CI runs the same, plus the Rust/Python parity job.
