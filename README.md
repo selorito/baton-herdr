@@ -203,6 +203,32 @@ else, or from another chat, are ignored. Without `owner_id` the bot only sends n
 - Stop: `systemctl --user stop baton baton-herdr` (agents in the baton session stop with
   their herdr server).
 
+## Results
+
+`just bench` runs baton's own loop, scheduler, detection and recovery against simulated
+agents, on simulated time. 50 one-task worlds run per scenario, seed 1
+([full results](bench/results/2026-10-05.md); the model and its limits are in
+[bench/README.md](bench/README.md)).
+
+| Scenario | Done without a person | Stop → work goes on (median) | Steps redone per stop |
+|---|---:|---:|---:|
+| Usage limit mid-task, another agent free | 100 % | 6.0 s | 1.00 |
+| Crash, 1–3 times | 86 % (the rest: a third crash, sent to you by policy) | 4.7 s | 1.00 |
+| Hang (screen says "working", nothing moves) | 100 % | 53 min | 1.00 |
+| Both agents hit limits in turn | 100 % | 11.6 min | 0.94 |
+| Every agent limited, wait for the reset | 100 % | 26 min (work resumes 35 s after the reset) | 0.50 |
+
+- A limit is acted on as soon as herdr reports the screen. baton's own detection delay is
+  zero in the simulation; herdr's is not modelled.
+- A hang is found only when the turn timeout runs out (`turn_timeout_seconds`, default
+  1 h). That is the weakest case.
+- Budget-aware choice was measured on 30 queues of ten tasks, with Claude's window
+  40–80 % used:
+  - with `claude_window_tokens` set, mid-task limits dropped from 30 to 7, and counted
+    tokens fell by 1.9 %;
+  - with a 20 % reserve, limits dropped to 0 and tokens fell by 3.5 %;
+  - learning the cap from a limit alone changed nothing within one window.
+
 ## Development
 
 Requirements: [uv](https://docs.astral.sh/uv/), a stable Rust toolchain (via rustup) and
