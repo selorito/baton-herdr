@@ -103,9 +103,9 @@ test keeps passing throughout.
 |------|------------|-------|
 | 1. Real agents (in progress) | Adapters for Claude Code, Codex, OpenCode | Start-up blockers (trust, hooks, update prompts), resume commands, refining `blocked` into permission / question, positive idle for Codex, crash detection with `processes`. Tested against `fixtures/`; opt-in live runs in the sandbox repository. |
 | 2. Quota accounting ✅ | Budget | Collection: `baton-detect usage` (Rust, ADR 0011) records every response's tokens and Codex's `rate_limits` into their own tables; Claude deduplicated by `message.id`, Codex cumulative counts turned into deltas across resumes; golden-tested against `fixtures/*/usage-sample.jsonl`. Remaining budget per agent (ADR 0012): Codex reported, Claude estimated against a configured or learned 5-hour cap; the scheduler moves agents short of budget behind the others and records each choice as `task.agent_chosen`; `baton budget` and Telegram `/budget`. Later: Claude's status-line `rate_limits` instead of the estimate. |
-| 3. Policy engine | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
+| 3. Policy engine (permissions ✅, ADR 0013) | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
-| 5. Benchmark | A replay harness (not started) | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
+| 5. Benchmark ✅ | `bench/` | baton's own loop against simulated agents on simulated time: limits, crashes, hangs, consecutive limits, waiting for a reset, and budget-aware choice on or off. `just bench`, reproducible per seed; results in `bench/results/`. |
 | 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
 
 ### baton-detect in Rust (ADR 0011)
