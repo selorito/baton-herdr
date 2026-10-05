@@ -33,6 +33,7 @@ from baton_herdr.core.config import (
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.service import installed_session
 
 if TYPE_CHECKING:
@@ -170,6 +171,7 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     checks.extend(_agents(settings, probes))
     checks.append(_detector(settings, probes))
     checks.append(_classifier(settings, probes))
+    checks.append(_policy(settings))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
     return checks
@@ -339,6 +341,25 @@ def _detector(settings: BatonSettings, probes: Probes) -> Check:
             "Install the matching version: cargo install --path crates/baton-detect --locked",
         )
     return Check("baton-detect", Level.OK, f"{reported} at {binary}")
+
+
+def _policy(settings: BatonSettings) -> Check:
+    """The permission policy batond applies (ADR 0013); batond will not start with a broken one."""
+    if not settings.policy.enabled:
+        return Check("policy", Level.OK, "off: every permission prompt goes to you")
+    try:
+        policy = load_policy(settings.policy.path)
+    except PolicyError as err:
+        return Check(
+            "policy",
+            Level.FAIL,
+            str(err),
+            "Fix the file (format: docs/adr/0013-permission-policy.md); batond will not start.",
+        )
+    own = sum(1 for rule in policy.rules if rule.origin != "defaults")
+    rules = "rule" if own == 1 else "rules"
+    where = f"{own} {rules} from {policy.source}, then" if own else "no policy.yaml; only"
+    return Check("policy", Level.OK, f"{where} the defaults")
 
 
 def _classifier(settings: BatonSettings, probes: Probes) -> Check:

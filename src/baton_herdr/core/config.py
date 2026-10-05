@@ -233,6 +233,20 @@ class BudgetSettings(_Section):
     claude_window_tokens: int | None = Field(default=None, gt=0)
 
 
+class PolicySettings(_Section):
+    """Which agent commands are approved or refused without a person (ADR 0013)."""
+
+    # Off: every permission prompt goes to a person, as before the policy existed.
+    enabled: bool = True
+    # The user's rules, tried before the defaults. A missing file means the defaults.
+    path: Path = Field(default_factory=lambda: user_config_dir() / "policy.yaml")
+
+    @field_validator("path")
+    @classmethod
+    def _expand_user(cls, value: Path) -> Path:
+        return value.expanduser()
+
+
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat baton writes to. Without it no message is sent.
@@ -259,6 +273,7 @@ class BatonSettings(BaseSettings):
     usage: UsageSettings = Field(default_factory=UsageSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     detector: DetectorSettings = Field(default_factory=DetectorSettings)
+    policy: PolicySettings = Field(default_factory=PolicySettings)
 
     @classmethod
     def settings_customise_sources(

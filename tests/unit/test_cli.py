@@ -53,3 +53,17 @@ def test_detect_rejects_an_invalid_line_with_its_number() -> None:
 
     assert result.exit_code == 2
     assert "line 2: invalid detection request" in result.stderr
+
+
+def test_policy_check_says_what_would_happen_and_why() -> None:
+    allowed = runner.invoke(app, ["policy", "check", "pytest -q && git status"])
+    assert allowed.exit_code == 0
+    assert allowed.stdout.splitlines()[0] == (
+        "allow: pytest -q: runs the tests; git status: reads only"
+    )
+    asked = runner.invoke(app, ["policy", "check", "git push --force", "--agent", "codex"])
+    assert asked.stdout.splitlines()[:2] == [
+        "ask: git push --force: forces past a safety check",
+        "rule: (^|\\s)(--force(-with-lease)?|--force-push)(\\s|=|$) (defaults)",
+    ]
+    assert runner.invoke(app, ["policy", "check", "ls", "--agent", "gpt"]).exit_code == 2

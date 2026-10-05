@@ -61,3 +61,11 @@ timezone = "UTC"
 # and only in that chat. Without it the bot only sends notices.
 # owner_id = 123456789
 
+[policy]
+# Agents' shell commands baton approves, refuses, or asks you about (ADR 0013).
+# Rules in this file are tried before the defaults: reading and tests allowed;
+# deleting, pushing, forcing, migrations, sudo and downloads ask. See policy.example.yaml;
+# try a command with `baton policy check "git push"`.
+# enabled = true
+# path = "~/.config/baton/policy.yaml"
+

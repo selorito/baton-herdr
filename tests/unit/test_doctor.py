@@ -202,3 +202,23 @@ async def test_the_detector_engine_is_checked_when_it_is_not_python(
     assert "misreads a test screen (host:no-evidence)" in wrong.detail
     broken = by_name(await diagnose(probes(classified="Usage: baton-detect")))["detector"]
     assert "does not classify (ValidationError)" in broken.detail
+
+
+async def test_a_broken_policy_file_fails_before_batond_would(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BATON_CONFIG", str(tmp_path / "missing.toml"))
+    monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
+    checks = by_name(await diagnose(probes()))
+    assert checks["policy"].detail == "no policy.yaml; only the defaults"
+
+    policy = tmp_path / "policy.yaml"
+    policy.write_text("rules: [{decision: allow}]\n", encoding="utf-8")
+    monkeypatch.setenv("BATON_POLICY__PATH", str(policy))
+    checks = by_name(await diagnose(probes()))
+    assert checks["policy"].level is Level.FAIL
+    assert "give either command or regex" in checks["policy"].detail
+
+    policy.write_text('rules: [{decision: deny, command: "terraform *"}]\n', encoding="utf-8")
+    checks = by_name(await diagnose(probes()))
+    assert checks["policy"].detail == f"1 rule from {policy}, then the defaults"

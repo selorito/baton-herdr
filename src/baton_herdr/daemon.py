@@ -29,6 +29,7 @@ from baton_herdr.core.projection import project
 from baton_herdr.detector import FallbackDetector, ProcessDetector, ShadowDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
+from baton_herdr.policy.load import Policy, load_policy
 from baton_herdr.scheduler.queue import (
     Signature,
     available_agents,
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
 
     from aiogram import Bot
 
-    from baton_herdr.core.config import BatonSettings, SchedulerSettings
+    from baton_herdr.core.config import BatonSettings, PolicySettings, SchedulerSettings
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notifier
@@ -63,6 +64,14 @@ def make_detector(settings: DetectorSettings) -> Detector:
     if settings.engine == "shadow":
         return ShadowDetector(python, rust)
     return FallbackDetector(rust, python)
+
+
+def make_policy(settings: PolicySettings) -> Policy | None:
+    """The permission policy batond applies (ADR 0013); ``None`` when it is off.
+
+    Raises ``PolicyError`` for a policy file that cannot be read, before anything runs.
+    """
+    return load_policy(settings.path) if settings.enabled else None
 
 
 def runner_settings(
@@ -114,6 +123,7 @@ async def open_runtime(
     clock: Clock | None = None,
 ) -> AsyncIterator[Runtime]:
     """Open the store and connect everything; arguments replace the real parts."""
+    policy = make_policy(settings.policy)
     store = await open_event_store(settings.database.path)
     usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
@@ -140,6 +150,7 @@ async def open_runtime(
             budget=budget,
             detector=detector,
             workspace=GitWorkspace(),
+            policy=policy,
         )
         operator = None
         if telegram is not None and settings.telegram.owner_id is not None:

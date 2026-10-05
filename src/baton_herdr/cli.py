@@ -28,6 +28,7 @@ from baton_herdr.core.projection import TaskView, project
 from baton_herdr.daemon import add_task, open_runtime, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, render
 from baton_herdr.ledger import open_event_store, open_usage_store
+from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.service import (
     BATON_UNIT,
@@ -43,6 +44,10 @@ task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
 app.add_typer(task_app)
 service_app = typer.Typer(name="service", help="Run batond as a systemd user service.")
 app.add_typer(service_app)
+policy_app = typer.Typer(
+    name="policy", help="Which agent commands run without asking you.", no_args_is_help=True
+)
+app.add_typer(policy_app)
 
 
 def _settings() -> BatonSettings:
@@ -174,6 +179,34 @@ def budget() -> None:
 
     for line in asyncio.run(read()):
         typer.echo(line)
+
+
+@policy_app.command("check")
+def policy_check(
+    command: Annotated[str, typer.Argument(help="A shell command, as an agent would ask.")],
+    agent: Annotated[
+        str, typer.Option(help="The agent asking: claude, codex or opencode.")
+    ] = "claude",
+) -> None:
+    """Say what the policy would do if AGENT asked to run COMMAND (ADR 0013)."""
+    settings = _settings()
+    try:
+        kind = AgentKind(agent)
+    except ValueError:
+        typer.echo(f"Unknown agent {agent!r}.", err=True)
+        raise typer.Exit(2) from None
+    if not settings.policy.enabled:
+        typer.echo("ask: the policy is off ([policy] enabled = false); a person decides.")
+        return
+    try:
+        policy = load_policy(settings.policy.path)
+    except PolicyError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(1) from None
+    verdict = policy.decide(kind, command)
+    typer.echo(f"{verdict.decision.value}: {verdict.reason}")
+    typer.echo(f"rule: {verdict.rule.label if verdict.rule else 'none'}")
+    typer.echo(f"policy: {policy.source}")
 
 
 @app.command()
