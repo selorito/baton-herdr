@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import statistics
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_bench.vtime import VirtualClock, VirtualTimeLoop
@@ -14,6 +17,7 @@ from baton_bench.world import WINDOW, Quota, World
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.core.config import BudgetSettings, SchedulerSettings
+from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.events import AttemptInterrupted, AttemptPrompted, TaskCreated
 from baton_herdr.core.fakes import InMemoryEventStore, InMemoryUsageStore, RecordingNotifier
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
@@ -30,6 +34,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.events import Event, StoredEvent
 
 START = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
+REPO = Path(__file__).parents[2]
 # A world that has not settled by then is cut off; its open tasks count as unfinished.
 HORIZON = timedelta(days=2)
 
@@ -79,6 +84,48 @@ class WorldResult:
     makespan_s: float
 
 
+def detector_path() -> str:
+    """baton-detect: BATON_DETECT_BIN, else the release or debug build here, else PATH."""
+    if explicit := os.environ.get("BATON_DETECT_BIN"):
+        return explicit
+    for build in ("release", "debug"):
+        if (path := REPO / "target" / build / "baton-detect").is_file():
+            return str(path)
+    return "baton-detect"
+
+
+class BlockingDetector:
+    """``baton-detect classify``, asked with blocking pipe I/O.
+
+    batond's ``ProcessDetector`` waits for answers on the event loop. On simulated time,
+    the loop would jump ahead while the real process answers, and time the answer out.
+    Asked here without the loop, an answer takes no simulated time at all.
+    """
+
+    def __init__(self, binary: str) -> None:
+        self._process = subprocess.Popen(  # noqa: S603 - the classifier, fixed arguments
+            [binary, "classify"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+        )
+
+    async def classify(self, request: DetectionRequest) -> DetectionResult:
+        stdin, stdout = self._process.stdin, self._process.stdout
+        if stdin is None or stdout is None:  # pragma: no cover - opened with PIPE
+            raise RuntimeError("no pipes to baton-detect")
+        stdin.write(request.model_dump_json() + "\n")
+        stdin.flush()
+        line = stdout.readline()
+        if not line:
+            raise RuntimeError(f"baton-detect exited ({self._process.wait()})")
+        return DetectionResult.model_validate_json(line)
+
+    async def aclose(self) -> None:
+        if self._process.stdin is not None:
+            self._process.stdin.close()
+        self._process.wait()
+        if self._process.stdout is not None:
+            self._process.stdout.close()
+
+
 def simulate(build: Callable[[random.Random], Setup], seed: str) -> WorldResult:
     """Build the world from ``seed`` and run it to the end, on simulated time."""
     rng = random.Random(seed)
@@ -107,7 +154,9 @@ async def _run(setup: Setup, rng: random.Random) -> WorldResult:
         claude_window_tokens=claude.cap if setup.budget.configured_window and claude else None,
     )
     notifier = RecordingNotifier()
+    detector = BlockingDetector(detector_path())
     runner = TaskRunner(
+        detector=detector,
         store=store,
         host=world,
         adapters=ADAPTERS,
@@ -132,7 +181,12 @@ async def _run(setup: Setup, rng: random.Random) -> WorldResult:
         ]
     )
     stop = asyncio.Event()
-    await asyncio.gather(serve(runtime, stop=stop), _until_settled(store, notifier, clock, stop))
+    try:
+        await asyncio.gather(
+            serve(runtime, stop=stop), _until_settled(store, notifier, clock, stop)
+        )
+    finally:
+        await detector.aclose()
     return _measure(await store.read(), notifier, world, clock.now())
 
 

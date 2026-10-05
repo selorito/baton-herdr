@@ -24,6 +24,7 @@ from baton_herdr.ledger import open_usage_store
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot
 
+from detector_binary import rust_detector
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
@@ -82,6 +83,7 @@ async def test_an_agent_short_of_budget_is_passed_over_and_the_log_says_why() ->
     usage = InMemoryUsageStore()
     await usage.record([codex_report(96)])
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=SimulatedAgents(CLOCK, scripts={AgentKind.CLAUDE: "claude-finish.toml"}),
         adapters=ADAPTERS,

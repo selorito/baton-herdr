@@ -1,8 +1,8 @@
 """What baton needs to know about each kind of agent.
 
-Implementations live in ``baton_herdr.adapters``, one module per agent. Everything
-agent-specific (commands, screen rules, how herdr's rule ids map to blocked
-kinds) belongs there and nowhere else.
+Implementations live in ``baton_herdr.adapters``, one module per agent: commands,
+resume, start-up answers and permission prompts. The agents' screen rules are
+baton-detect's (``crates/baton-detect/rules/``, ADR 0011).
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from baton_herdr.core.detection import DetectionRequest, DetectionResult
     from baton_herdr.core.model import AgentKind
 
 
@@ -26,10 +25,6 @@ class AgentAdapter(Protocol):
 
     def resume_command(self, session_ref: str) -> str:
         """Shell command that resumes ``session_ref`` directly, without a picker."""
-        ...
-
-    def classify(self, request: DetectionRequest) -> DetectionResult:
-        """Refine the host's view of a screen into baton's ``AgentState``."""
         ...
 
     def resume_failed(self, screen: str) -> bool:

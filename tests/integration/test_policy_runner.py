@@ -15,6 +15,7 @@ from baton_herdr.policy.load import Policy
 from baton_herdr.policy.rules import Rule
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
+from detector_binary import rust_detector
 from simulated_agents import SimulatedAgents
 
 NOW = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
@@ -60,6 +61,7 @@ async def run(
     )
     notifier = RecordingNotifier()
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=host,
         adapters=ADAPTERS,

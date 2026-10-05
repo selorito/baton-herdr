@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.detection import DetectionRequest
 from baton_herdr.core.model import AgentKind, AgentState
 
 import fake_agent
+from detector_binary import classify_one
 
 if TYPE_CHECKING:
     from baton_herdr.herdr.host import HerdrPaneHost
@@ -64,7 +64,7 @@ async def test_fake_claude_hits_its_limit_and_baton_sees_it(
     await until("You've hit your session limit", lambda: host.read_screen(pane_id, lines=40))
 
     observation = await host.observe(pane_id)
-    result = ADAPTERS[AgentKind.CLAUDE].classify(
+    result = classify_one(
         DetectionRequest(
             agent=AgentKind.CLAUDE,
             screen=await host.read_screen(pane_id, lines=40),

@@ -39,6 +39,7 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
 from baton_herdr.scheduler.runner import CONTINUE_NOTE, HANDOFF_NOTE, RunnerSettings, TaskRunner
 
+from detector_binary import rust_detector
 from simulated_agents import SimulatedAgents
 
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
@@ -88,7 +89,13 @@ async def setup(
     )
     notifier = RecordingNotifier()
     runner = TaskRunner(
-        store=store, host=host, adapters=ADAPTERS, notifier=notifier, clock=clock, settings=settings
+        detector=rust_detector(),
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=clock,
+        settings=settings,
     )
     return store, host, notifier, runner
 
@@ -173,6 +180,7 @@ async def test_with_every_agent_limited_the_attempt_waits_and_resumes_its_own_se
     store, host, notifier, _ = await setup()
     clock = FixedClock(NOW)
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=host,
         adapters=ADAPTERS,
@@ -226,6 +234,7 @@ async def test_a_crashed_agent_is_resumed_in_its_own_session() -> None:
 async def test_without_resumes_left_a_crash_goes_to_a_person() -> None:
     store, host, notifier, _ = await setup(crash_after_prompt=True)
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=host,
         adapters=ADAPTERS,
@@ -268,6 +277,7 @@ async def test_a_session_that_cannot_be_reopened_is_restarted_fresh_on_the_same_
         scripts={AgentKind.CLAUDE: "claude-finish.toml"},
     )
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=host,
         adapters=ADAPTERS,
@@ -296,6 +306,7 @@ def claude_runner(
     store: InMemoryEventStore, host: SimulatedAgents, notifier: RecordingNotifier
 ) -> TaskRunner:
     return TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=host,
         adapters=ADAPTERS,

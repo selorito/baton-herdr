@@ -1,5 +1,5 @@
-"""The Rust classifier inside batond: the process, the shadow and fallback modes, and a
-whole task run with both detectors answering every screen (ADR 0011, phase 2)."""
+"""The Rust classifier inside batond: the process, the fallback while it is down, and a
+whole task run on each (ADR 0011)."""
 
 from __future__ import annotations
 
@@ -8,22 +8,17 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
-import structlog
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.config import DetectorSettings
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
-from baton_herdr.core.detector import AdapterDetector
+from baton_herdr.core.detector import UNAVAILABLE_EVIDENCE, HostDetector
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
 from baton_herdr.core.model import AgentKind, AgentState, TaskId, TaskStatus
+from baton_herdr.core.notify import NoticeKind
 from baton_herdr.daemon import make_detector
-from baton_herdr.detector import (
-    DetectorUnavailableError,
-    FallbackDetector,
-    ProcessDetector,
-    ShadowDetector,
-)
+from baton_herdr.detector import DetectorUnavailableError, FallbackDetector, ProcessDetector
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
 from detector_binary import detector
@@ -31,6 +26,8 @@ from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from baton_herdr.core.detector import Detector
 
 NOW = datetime(2026, 10, 1, 11, 0, tzinfo=UTC)
 LIMIT = DetectionRequest(
@@ -107,31 +104,6 @@ async def test_a_missing_slow_or_garbled_binary_is_unavailable(tmp_path: Path) -
     await garbled.aclose()
 
 
-async def test_shadow_keeps_the_primary_answer_and_counts_differences() -> None:
-    other = EXPECTED.model_copy(update={"state": AgentState.IDLE})
-    primary = Scripted(EXPECTED, EXPECTED, EXPECTED)
-    shadow = Scripted(EXPECTED, other, DetectorUnavailableError("gone"))
-    clock = Clock()
-    detector_ = ShadowDetector(primary, shadow, retry_s=60, now=clock)
-
-    with structlog.testing.capture_logs() as logs:
-        for _ in range(3):
-            assert await detector_.classify(LIMIT) == EXPECTED
-        clock.t = 30
-        primary.answers.append(EXPECTED)
-        assert await detector_.classify(LIMIT) == EXPECTED  # shadow not asked while down
-
-    assert (detector_.compared, detector_.mismatches, shadow.asked) == (2, 1, 3)
-    events = [entry["event"] for entry in logs]
-    assert events == ["detector mismatch", "detector unavailable"]
-    mismatch = logs[0]
-    assert (mismatch["python"][0], mismatch["rust"][0]) == ("rate_limited", "idle")
-    assert "screen" not in mismatch
-    await detector_.aclose()
-    assert primary.closed
-    assert shadow.closed
-
-
 async def test_fallback_answers_while_the_primary_is_down_and_retries_later() -> None:
     fallback_answer = EXPECTED.model_copy(update={"evidence": "python"})
     primary = Scripted(DetectorUnavailableError("crashed"), EXPECTED)
@@ -147,16 +119,39 @@ async def test_fallback_answers_while_the_primary_is_down_and_retries_later() ->
     assert await detector_.classify(LIMIT) == EXPECTED
 
 
-@pytest.mark.parametrize(
-    ("engine", "kind"),
-    [("python", AdapterDetector), ("shadow", ShadowDetector), ("rust", FallbackDetector)],
-)
-def test_the_engine_setting_picks_the_detector(engine: str, kind: type) -> None:
-    assert isinstance(make_detector(DetectorSettings(engine=engine)), kind)  # type: ignore[arg-type]
+@pytest.mark.parametrize("engine", ["rust", "python", "shadow"])
+def test_every_engine_setting_is_baton_detect_with_herdr_behind_it(engine: str) -> None:
+    assert isinstance(make_detector(DetectorSettings(engine=engine)), FallbackDetector)  # type: ignore[arg-type]
 
 
-async def test_a_whole_task_run_gets_the_same_answers_from_both_detectors() -> None:
-    """Slice 0 (a limit, a hand-off, a finished turn) with Rust shadowing Python."""
+async def test_without_the_classifier_idle_means_nothing_and_the_rest_passes() -> None:
+    host = HostDetector()
+    idle = await host.classify(LIMIT)  # a limit on screen, herdr says idle
+    assert (idle.state, idle.evidence) == (AgentState.UNKNOWN, UNAVAILABLE_EVIDENCE)
+    working = LIMIT.model_copy(update={"host_state": AgentState.WORKING, "host_evidence": "h"})
+    assert (await host.classify(working)).state is AgentState.WORKING
+    blocked = LIMIT.model_copy(update={"host_state": AgentState.BLOCKED_OTHER})
+    assert (await host.classify(blocked)).state is AgentState.BLOCKED_OTHER
+    gone = LIMIT.model_copy(update={"agent_running": False, "host_state": AgentState.UNKNOWN})
+    assert (await host.classify(gone)).evidence == "host:no-agent"
+
+
+async def test_a_task_run_on_the_classifier_hands_off_on_a_limit() -> None:
+    """Slice 0 (a limit, a hand-off, a finished turn) on baton-detect."""
+    status, _ = await _run_task(ProcessDetector(str(detector())))
+    assert status is TaskStatus.COMPLETED
+
+
+async def test_while_the_classifier_is_down_a_limit_is_never_a_finished_task(
+    tmp_path: Path,
+) -> None:
+    down = FallbackDetector(ProcessDetector(str(tmp_path / "nowhere")), HostDetector())
+    status, notifier = await _run_task(down)
+    assert status is not TaskStatus.COMPLETED
+    assert NoticeKind.TASK_COMPLETED not in notifier.kinds
+
+
+async def _run_task(detector_: Detector) -> tuple[TaskStatus, RecordingNotifier]:
     store = InMemoryEventStore()
     task = TaskId("power")
     await store.append(
@@ -166,19 +161,17 @@ async def test_a_whole_task_run_gets_the_same_answers_from_both_detectors() -> N
             )
         ]
     )
-    shadow = ShadowDetector(AdapterDetector(ADAPTERS), ProcessDetector(str(detector())))
+    notifier = RecordingNotifier()
     runner = TaskRunner(
         store=store,
         host=SimulatedAgents(FixedClock(NOW)),
         adapters=ADAPTERS,
-        notifier=RecordingNotifier(),
+        notifier=notifier,
         clock=FixedClock(NOW),
-        settings=RunnerSettings(start_timeout_s=2, turn_timeout_s=2, poll_interval_s=0.05),
-        detector=shadow,
+        settings=RunnerSettings(start_timeout_s=1, turn_timeout_s=1, poll_interval_s=0.05),
+        detector=detector_,
     )
     try:
-        assert await runner.run(task) is TaskStatus.COMPLETED
+        return await runner.run(task), notifier
     finally:
-        await shadow.aclose()
-    assert shadow.compared > 0
-    assert shadow.mismatches == 0
+        await detector_.aclose()

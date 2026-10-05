@@ -212,15 +212,13 @@ class UsageSettings(_Section):
 
 
 class DetectorSettings(_Section):
-    """Which detector classifies screens (ADR 0011, phase 2).
+    """The screen classifier, ``baton-detect classify`` (ADR 0011).
 
-    ``python``: the adapters' rules. ``shadow``: Python decides, and the Rust classifier
-    (`baton-detect classify`) answers every screen too; differences are logged as
-    "detector mismatch". ``rust``: the Rust classifier decides, Python answers while it
-    is unavailable.
+    ``engine`` is always ``rust`` now. ``python`` and ``shadow`` were the switch-over's
+    modes; they are still accepted, so an older config still loads, and run as ``rust``.
     """
 
-    engine: Literal["python", "shadow", "rust"] = "python"
+    engine: Literal["rust", "python", "shadow"] = "rust"
     # A name on PATH or a path; the same program as [usage] binary.
     binary: str = "baton-detect"
     # How long one answer may take before the process is restarted.

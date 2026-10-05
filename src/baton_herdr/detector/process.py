@@ -5,14 +5,9 @@ wrong with it (missing binary, a crash, a late or unreadable answer) is a
 :class:`DetectorUnavailableError`; the process is then stopped and started again on the
 next request.
 
-The switch-over from the Python detector runs in two modes:
-
-- ``ShadowDetector``: the Python detector decides; the Rust one answers the same
-  request and every difference is logged ("detector mismatch").
-- ``FallbackDetector``: the Rust detector decides; while it is unavailable the Python
-  one answers, and that is logged once per outage.
-
-While the process keeps failing, neither mode tries it again before ``retry_s``.
+``FallbackDetector`` puts it in front of a fallback (batond's is herdr's own state,
+``HostDetector``): an outage is logged once, and while the process keeps failing it is
+not tried again before ``retry_s``.
 """
 
 from __future__ import annotations
@@ -145,55 +140,6 @@ class _Gate:
         self._down_since = None
 
 
-class ShadowDetector:
-    """``primary`` decides; ``shadow`` answers too, and differences are logged."""
-
-    def __init__(
-        self,
-        primary: Detector,
-        shadow: Detector,
-        *,
-        retry_s: float = 60,
-        now: Callable[[], float] = time.monotonic,
-    ) -> None:
-        self._primary = primary
-        self._shadow = shadow
-        self._gate = _Gate("shadow", retry_s, now)
-        self._log = get_logger("baton.detector")
-        self.compared = 0
-        self.mismatches = 0
-
-    async def classify(self, request: DetectionRequest) -> DetectionResult:
-        result = await self._primary.classify(request)
-        if not self._gate.open():
-            return result
-        try:
-            other = await self._shadow.classify(request)
-        except DetectorUnavailableError as err:
-            self._gate.failed(err)
-            return result
-        self._gate.succeeded()
-        self.compared += 1
-        if _answer(other) != _answer(result):
-            self.mismatches += 1
-            # The screen itself is not logged: it may hold anything the agent printed.
-            self._log.warning(
-                "detector mismatch",
-                agent=request.agent.value,
-                host_state=request.host_state.value,
-                host_evidence=request.host_evidence,
-                python=_answer(result),
-                rust=_answer(other),
-                mismatches=self.mismatches,
-                compared=self.compared,
-            )
-        return result
-
-    async def aclose(self) -> None:
-        await self._primary.aclose()
-        await self._shadow.aclose()
-
-
 class FallbackDetector:
     """``primary`` decides while it is available; ``fallback`` answers otherwise."""
 
@@ -223,8 +169,3 @@ class FallbackDetector:
     async def aclose(self) -> None:
         await self._primary.aclose()
         await self._fallback.aclose()
-
-
-def _answer(result: DetectionResult) -> tuple[str, str, str | None]:
-    resets = result.resets_at.timestamp() if result.resets_at is not None else None
-    return result.state.value, result.evidence, None if resets is None else f"{resets:.6f}"

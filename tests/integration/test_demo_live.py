@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from baton_herdr.core.config import BatonSettings, DatabaseSettings, SchedulerSettings
+from baton_herdr.core.config import (
+    BatonSettings,
+    DatabaseSettings,
+    DetectorSettings,
+    SchedulerSettings,
+)
 from baton_herdr.core.events import AttemptInterrupted
 from baton_herdr.core.fakes import RecordingNotifier
 from baton_herdr.core.model import AgentKind, InterruptReason, TaskStatus
@@ -25,6 +30,7 @@ from baton_herdr.core.projection import project
 from baton_herdr.daemon import add_task, open_runtime, run_pending
 
 import fake_agent
+from detector_binary import detector
 
 if TYPE_CHECKING:
     from baton_herdr.herdr.host import HerdrPaneHost
@@ -46,6 +52,7 @@ async def test_limited_claude_hands_off_to_codex_in_a_real_herdr(
     }
     settings = BatonSettings(
         database=DatabaseSettings(path=tmp_path / "baton.db"),
+        detector=DetectorSettings(binary=str(detector())),
         scheduler=SchedulerSettings(
             agents=("claude", "codex"),
             launch_commands=commands,  # type: ignore[arg-type]

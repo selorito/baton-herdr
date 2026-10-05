@@ -14,6 +14,7 @@ from baton_herdr.cli import app
 from baton_herdr.core.config import (
     BatonSettings,
     DatabaseSettings,
+    DetectorSettings,
     SchedulerSettings,
     UsageSettings,
 )
@@ -24,6 +25,7 @@ from baton_herdr.core.projection import project
 from baton_herdr.daemon import add_task, open_runtime, run_pending, runner_settings, serve
 from baton_herdr.ledger import open_event_store
 
+from detector_binary import detector
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
@@ -40,6 +42,7 @@ def settings_for(
 ) -> BatonSettings:
     return BatonSettings(
         database=DatabaseSettings(path=db),
+        detector=DetectorSettings(binary=str(detector())),
         # Never a real baton-detect here: it would read this machine's agent logs.
         usage=usage or UsageSettings(enabled=False),
         scheduler=SchedulerSettings.model_validate(

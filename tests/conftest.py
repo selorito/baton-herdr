@@ -16,8 +16,17 @@ from baton_herdr.core.panes import PaneHostUnavailableError
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
 
+from detector_binary import close_detectors
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+
+@pytest.fixture(autouse=True)
+async def _close_detectors() -> AsyncIterator[None]:
+    """Stop the baton-detect processes a test started for its runners."""
+    yield
+    await close_detectors()
 
 
 @pytest.fixture(autouse=True)

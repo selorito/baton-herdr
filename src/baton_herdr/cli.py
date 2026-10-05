@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+import subprocess
 import sys
 from datetime import timedelta
 from importlib.metadata import version as package_version
@@ -12,7 +13,6 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 import typer
-from pydantic import ValidationError
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.choice import choose_agent
@@ -20,8 +20,7 @@ from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BatonSettings, config_file
-from baton_herdr.core.detection import DetectionRequest
-from baton_herdr.core.detector import classify_with
+from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
@@ -71,19 +70,39 @@ def version() -> None:
 def detect() -> None:
     """Classify screens: one DetectionRequest JSON per stdin line, one result per stdout line.
 
-    This is the detector's NDJSON contract (schemas/detector-*.v1.json).
+    This is the detector's NDJSON contract (schemas/detector-*.v1.json), answered by
+    ``baton-detect classify`` ([detector] binary), as batond does.
     """
-    for number, line in enumerate(sys.stdin, start=1):
-        if not line.strip():
-            continue
-        try:
-            request = DetectionRequest.model_validate_json(line)
-        except ValidationError as err:
-            typer.echo(f"line {number}: invalid detection request: {err}", err=True)
-            raise typer.Exit(code=2) from err
-        result = classify_with(ADAPTERS, request)
-        sys.stdout.write(result.model_dump_json() + "\n")
-        sys.stdout.flush()
+    settings = _settings()
+    binary = detector_binary(settings.detector.binary)
+    if binary is None:
+        typer.echo(f"{settings.detector.binary} not found; see `baton doctor`.", err=True)
+        raise typer.Exit(code=2)
+    # One line at a time, so each answer comes as soon as its request is read.
+    with subprocess.Popen(  # noqa: S603 - the configured classifier, fixed arguments
+        [str(binary), "classify"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as process:
+        if process.stdin is None or process.stdout is None:  # pragma: no cover - PIPE
+            raise typer.Exit(code=2)
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            process.stdin.write(line if line.endswith("\n") else line + "\n")
+            process.stdin.flush()
+            answer = process.stdout.readline()
+            if not answer:
+                break
+            sys.stdout.write(answer)
+            sys.stdout.flush()
+        process.stdin.close()
+        code = process.wait()
+        if code and process.stderr is not None:
+            typer.echo(process.stderr.read().strip(), err=True)
+    raise typer.Exit(code=code)
 
 
 @task_app.command("add")

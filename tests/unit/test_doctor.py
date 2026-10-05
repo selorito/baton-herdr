@@ -183,26 +183,27 @@ async def test_baton_detect_is_checked_unless_usage_collection_is_off(
     assert "off" in off.detail
 
 
-async def test_the_detector_engine_is_checked_when_it_is_not_python(
+async def test_the_classifier_must_run_and_read_a_test_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    python = by_name(await diagnose(probes()))["detector"]
-    assert (python.level, python.detail) == (Level.OK, "python (the adapters' rules)")
+    rust = by_name(await diagnose(probes()))["detector"]
+    assert (rust.level, rust.detail) == (Level.OK, "/opt/baton-detect")
 
-    monkeypatch.setenv("BATON_DETECTOR__ENGINE", "shadow")
-    shadow = by_name(await diagnose(probes()))["detector"]
-    assert (shadow.level, shadow.detail) == (Level.OK, "shadow with /opt/baton-detect")
-
-    monkeypatch.setenv("BATON_DETECTOR__ENGINE", "rust")
     missing = by_name(await diagnose(probes(detector=None)))["detector"]
-    assert missing.level is Level.WARN
-    assert missing.detail.endswith("not found; Python answers instead")
+    assert missing.level is Level.FAIL
+    assert missing.detail.endswith("limits and prompt kinds go unrecognised")
     misread = '{"contract":1,"state":"idle","evidence":"host:no-evidence","resets_at":null}'
     wrong = by_name(await diagnose(probes(classified=misread)))["detector"]
-    assert wrong.level is Level.WARN
+    assert wrong.level is Level.FAIL
     assert "misreads a test screen (host:no-evidence)" in wrong.detail
     broken = by_name(await diagnose(probes(classified="Usage: baton-detect")))["detector"]
     assert "does not classify (ValidationError)" in broken.detail
+
+    # The switch-over's modes still load, run as rust, and are named for removal.
+    monkeypatch.setenv("BATON_DETECTOR__ENGINE", "shadow")
+    shadow = by_name(await diagnose(probes()))["detector"]
+    assert shadow.level is Level.WARN
+    assert 'engine = "shadow" runs as "rust"' in shadow.detail
 
 
 async def test_a_broken_policy_file_fails_before_batond_would(

@@ -22,13 +22,13 @@ from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BudgetSettings, DetectorSettings
-from baton_herdr.core.detector import AdapterDetector
+from baton_herdr.core.detector import HostDetector
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
 from baton_herdr.core.projection import project
-from baton_herdr.detector import FallbackDetector, ProcessDetector, ShadowDetector
+from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
@@ -59,14 +59,15 @@ if TYPE_CHECKING:
 
 
 def make_detector(settings: DetectorSettings) -> Detector:
-    """The detector batond classifies screens with ([detector] engine, ADR 0011)."""
-    python = AdapterDetector(ADAPTERS)
-    if settings.engine == "python":
-        return python
+    """The detector batond classifies screens with (ADR 0011): baton-detect, and herdr's own
+    state while it gives no answer."""
+    if settings.engine != "rust":
+        get_logger("baton.daemon").warning(
+            "the Python detector is gone; [detector] engine is treated as rust",
+            engine=settings.engine,
+        )
     rust = ProcessDetector(settings.binary, timeout_s=settings.timeout_seconds)
-    if settings.engine == "shadow":
-        return ShadowDetector(python, rust)
-    return FallbackDetector(rust, python)
+    return FallbackDetector(rust, HostDetector())
 
 
 def make_policy(settings: PolicySettings) -> Policy | None:

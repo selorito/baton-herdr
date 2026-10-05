@@ -39,7 +39,6 @@ from baton_herdr.core.contract import (
     parse_end,
 )
 from baton_herdr.core.detection import DetectionRequest
-from baton_herdr.core.detector import AdapterDetector
 from baton_herdr.core.events import (
     AgentChosen,
     AgentStateObserved,
@@ -180,8 +179,8 @@ class TaskRunner:
         notifier: Notifier,
         clock: Clock,
         settings: RunnerSettings | None = None,
+        detector: Detector,
         budget: BudgetReader | None = None,
-        detector: Detector | None = None,
         workspace: Workspace | None = None,
         policy: Policy | None = None,
     ) -> None:
@@ -193,8 +192,8 @@ class TaskRunner:
         self._settings = settings or RunnerSettings()
         # Tells what a task changed in its directory; without it, notices leave that out.
         self._workspace = workspace
-        # Classifies screens; the adapters' own rules unless batond chose another engine.
-        self._detector = detector or AdapterDetector(adapters)
+        # Classifies screens: baton-detect in batond (ADR 0011).
+        self._detector = detector
         # Decides permission prompts it can read (ADR 0013); without it, a person decides all.
         self._policy = policy
         # Without usage data the budget is folded from the event log alone.

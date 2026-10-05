@@ -17,6 +17,7 @@ from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot
 from baton_herdr.telegram.notifier import as_shown, button_data, format_notice
 
+from detector_binary import rust_detector
 from simulated_agents import SimulatedAgents
 
 NOW = datetime(2026, 10, 3, 9, 0, tzinfo=UTC)
@@ -54,7 +55,13 @@ async def setup(
     )
     notifier = RecordingNotifier()
     runner = TaskRunner(
-        store=store, host=host, adapters=ADAPTERS, notifier=notifier, clock=CLOCK, settings=SETTINGS
+        detector=rust_detector(),
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=CLOCK,
+        settings=SETTINGS,
     )
     return store, host, notifier, runner
 

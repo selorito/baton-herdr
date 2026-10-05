@@ -20,6 +20,7 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.usage import UsageRecord, UsageTokens
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
+from detector_binary import rust_detector
 from simulated_agents import SimulatedAgents
 
 NOW = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)
@@ -78,6 +79,7 @@ async def setup(
     workspace = FakeWorkspace()
     notifier = RecordingNotifier()
     runner = TaskRunner(
+        detector=rust_detector(),
         store=store,
         host=SimulatedAgents(
             clock,

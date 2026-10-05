@@ -6,6 +6,8 @@ from typer.testing import CliRunner
 
 from baton_herdr.cli import app
 
+from detector_binary import detector
+
 runner = CliRunner()
 
 
@@ -33,7 +35,8 @@ def test_detect_answers_each_ndjson_line_in_order() -> None:
         "",
         request("gemini", "anything\n", host="working"),  # no adapter in v1
     ]
-    result = runner.invoke(app, ["detect"], input="\n".join(lines) + "\n")
+    env = {"BATON_DETECTOR__BINARY": str(detector())}
+    result = runner.invoke(app, ["detect"], input="\n".join(lines) + "\n", env=env)
 
     assert result.exit_code == 0
     answers = [json.loads(line) for line in result.stdout.splitlines()]
@@ -49,7 +52,10 @@ def test_detect_answers_each_ndjson_line_in_order() -> None:
 
 
 def test_detect_rejects_an_invalid_line_with_its_number() -> None:
-    result = runner.invoke(app, ["detect"], input=request("claude", "x") + "\n{not json}\n")
+    env = {"BATON_DETECTOR__BINARY": str(detector())}
+    result = runner.invoke(
+        app, ["detect"], input=request("claude", "x") + "\n{not json}\n", env=env
+    )
 
     assert result.exit_code == 2
     assert "line 2: invalid detection request" in result.stderr

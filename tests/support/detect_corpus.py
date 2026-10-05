@@ -1,13 +1,13 @@
-"""The parity corpus for the screen classifier (ADR 0011, phase 2).
+"""The screen classifier's test corpus (ADR 0011).
 
-Cases cover every recorded capture under every host state, the limit messages the
-adapters read (across zones and daylight-saving changes), the fake agents' screens,
-and text that tests how lines and patterns behave at their edges. The Python detector
-answers each one; the Rust classifier must give the same answers
-(``tests/integration/test_detect_parity_binary.py``).
+Cases cover every recorded capture under every host state, the limit messages the rules
+read (across zones and daylight-saving changes), the fake agents' screens, and text that
+tests how lines and patterns behave at their edges. ``baton-detect classify`` must
+answer each as ``tests/golden/classify.jsonl`` says
+(``tests/integration/test_classify_golden.py``).
 
-The corpus is built when the test runs, so it always reflects the current fixtures and
-the current Python rules; nothing generated is committed.
+The cases are built from the fixtures when the test runs; only their answers are
+committed.
 """
 
 from __future__ import annotations
@@ -17,9 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from baton_herdr.adapters import ADAPTERS
-from baton_herdr.core.detection import DetectionRequest, DetectionResult
-from baton_herdr.core.detector import classify_with
+from baton_herdr.core.detection import DetectionRequest
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.herdr.state import derive_state
 
@@ -138,11 +136,6 @@ EDGES: dict[str, tuple[AgentKind, str]] = {
     "word-characters": (AgentKind.CLAUDE, "You've hit your naïve_ünïcode limit · resets 3pm"),
 }
 HOST_STATES = tuple(AgentState)
-
-
-def python_classify(request: DetectionRequest) -> DetectionResult:
-    """What ``baton detect`` answers."""
-    return classify_with(ADAPTERS, request)
 
 
 def _case(name: str, request: dict[str, Any], screen_file: str | None = None) -> dict[str, Any]:

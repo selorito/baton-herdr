@@ -49,7 +49,8 @@ demo:
 # The benchmark: baton's scheduler against simulated agents, on simulated time.
 # Writes bench/results/<date>.md; the same seed gives the same results.
 bench *ARGS:
-    PYTHONPATH=bench uv run python -m baton_bench {{ARGS}}
+    cargo build --release --locked -p baton-detect
+    BATON_DETECT_BIN=target/release/baton-detect PYTHONPATH=bench uv run python -m baton_bench {{ARGS}}
 
 # Regenerate the JSON Schemas in schemas/ after deliberately changing a contract model.
 schemas:

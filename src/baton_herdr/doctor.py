@@ -370,36 +370,38 @@ def _policy(settings: BatonSettings) -> Check:
 
 
 def _classifier(settings: BatonSettings, probes: Probes) -> Check:
-    """The screen classifier batond uses ([detector] engine, ADR 0011)."""
-    engine = settings.detector.engine
-    if engine == "python":
-        return Check("detector", Level.OK, "python (the adapters' rules)")
-    fallback = "differences are not compared" if engine == "shadow" else "Python answers instead"
+    """The screen classifier batond uses: baton-detect classify (ADR 0011)."""
+    install = "cargo install --path crates/baton-detect --locked, or set [detector] binary."
+    without = "batond falls back to herdr's state: limits and prompt kinds go unrecognised"
     binary = probes.detector(settings.detector.binary)
     if binary is None:
         return Check(
-            "detector",
-            Level.WARN,
-            f"{engine}: {settings.detector.binary} not found; {fallback}",
-            "cargo install --path crates/baton-detect --locked, or set [detector] binary.",
+            "detector", Level.FAIL, f"{settings.detector.binary} not found; {without}", install
         )
     try:
         answer = DetectionResult.model_validate_json(probes.classify(binary).strip())
     except (OSError, subprocess.SubprocessError, ValidationError) as err:
         return Check(
             "detector",
-            Level.WARN,
-            f"{engine}: {binary} does not classify ({type(err).__name__}); {fallback}",
+            Level.FAIL,
+            f"{binary} does not classify ({type(err).__name__}); {without}",
             "Install the matching version: cargo install --path crates/baton-detect --locked",
         )
     if answer.evidence != "baton:claude_usage_limit":
         return Check(
             "detector",
-            Level.WARN,
-            f"{engine}: {binary} misreads a test screen ({answer.evidence})",
+            Level.FAIL,
+            f"{binary} misreads a test screen ({answer.evidence})",
             "Install the matching version: cargo install --path crates/baton-detect --locked",
         )
-    return Check("detector", Level.OK, f"{engine} with {binary}")
+    if settings.detector.engine != "rust":
+        return Check(
+            "detector",
+            Level.WARN,
+            f'{binary}; [detector] engine = "{settings.detector.engine}" runs as "rust"',
+            "The Python detector was removed in 1.0 (ADR 0011); delete the engine setting.",
+        )
+    return Check("detector", Level.OK, f"{binary}")
 
 
 def _timezone(settings: BatonSettings, probes: Probes) -> Check:

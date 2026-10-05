@@ -1,6 +1,8 @@
-"""Adapters against every recorded capture, and against documented limit messages.
+"""Screens against every recorded capture and documented limit messages, and the adapters.
 
-Limit screens have not been captured yet (they cannot be produced on demand), so
+Screens are classified by baton-detect (its rules are crates/baton-detect/rules/), as in
+batond; these tests are skipped without the binary unless CI requires it. Limit screens
+have not been captured yet (they cannot be produced on demand), so
 those tests use the wording documented by the vendors and reported in issues;
 the sources are in docs/research/agents.md. Replace them with captures when real
 limit screens are recorded.
@@ -21,6 +23,8 @@ from baton_herdr.adapters.opencode import OpenCodeAdapter
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.herdr.state import derive_state
+
+from detector_binary import classify_one
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 NOW = datetime(2026, 10, 1, 11, 0, tzinfo=UTC)  # Thursday, 14:00 in Istanbul
@@ -43,7 +47,7 @@ def classify_capture(capture: str) -> DetectionResult:
         agent_running="error" not in explain,
         observed_at=NOW,
     )
-    return ADAPTERS[agent].classify(request)
+    return classify_one(request)
 
 
 IDLE, WORK = AgentState.IDLE, AgentState.WORKING
@@ -115,12 +119,12 @@ def claude(
     request = DetectionRequest(
         agent=AgentKind.CLAUDE, screen=text, host_state=host, observed_at=NOW, timezone=zone
     )
-    return ClaudeAdapter().classify(request)
+    return classify_one(request)
 
 
 def codex(text: str, zone: str = "Europe/Istanbul") -> DetectionResult:
     request = DetectionRequest(agent=AgentKind.CODEX, screen=text, observed_at=NOW, timezone=zone)
-    return CodexAdapter().classify(request)
+    return classify_one(request)
 
 
 @pytest.mark.parametrize(
@@ -221,7 +225,7 @@ def test_codex_work_is_recognised_from_the_footer_spinner() -> None:
 
 def opencode(text: str) -> DetectionResult:
     request = DetectionRequest(agent=AgentKind.OPENCODE, screen=text, observed_at=NOW)
-    return OpenCodeAdapter().classify(request)
+    return classify_one(request)
 
 
 @pytest.mark.parametrize(
@@ -254,7 +258,7 @@ def test_no_rule_applies_when_the_host_sees_no_agent() -> None:
         agent_running=False,
         observed_at=NOW,
     )
-    result = ClaudeAdapter().classify(request)
+    result = classify_one(request)
     assert (result.state, result.evidence) == (AgentState.UNKNOWN, "herdr:no-agent")
 
 

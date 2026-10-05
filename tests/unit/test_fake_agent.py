@@ -12,6 +12,7 @@ from baton_herdr.core.detection import DetectionRequest
 from baton_herdr.core.model import AgentKind, AgentState
 
 import fake_agent
+from detector_binary import classify_one
 
 SCRIPTS = Path(__file__).parents[2] / "tools" / "fake-agent" / "scripts"
 NOW = datetime(2026, 10, 1, 14, 15, tzinfo=UTC)
@@ -80,13 +81,11 @@ def test_baton_reads_the_fake_screens_as_intended(
     agent = AgentKind(script.agent)
     _, screens, _ = run(script_name, "task\n")
     states = [
-        ADAPTERS[agent]
-        .classify(
+        classify_one(
             DetectionRequest(
                 agent=agent, screen=screen, host_state=host, observed_at=NOW, timezone="UTC"
             )
-        )
-        .state
+        ).state
         for screen, host in zip(screens, host_states, strict=True)
     ]
     assert states == expected
@@ -101,9 +100,7 @@ def test_limit_screen_reset_time_is_read_back_by_the_adapter() -> None:
         observed_at=NOW,
         timezone="UTC",
     )
-    assert ADAPTERS[AgentKind.CLAUDE].classify(request).resets_at == datetime(
-        2026, 10, 1, 14, 45, tzinfo=UTC
-    )
+    assert classify_one(request).resets_at == datetime(2026, 10, 1, 14, 45, tzinfo=UTC)
 
 
 def test_a_permission_prompt_waits_for_esc_or_enter_and_branches() -> None:
