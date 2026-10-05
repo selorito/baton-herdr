@@ -139,7 +139,18 @@ fn outcome(state: AgentState, evidence: impl Into<String>) -> Outcome {
 /// # Errors
 /// The request names a time zone that does not exist, or the compiled-in rules are broken.
 pub fn classify(request: &Request) -> Result<Outcome, ClassifyError> {
-    let Some(rules) = rules::for_agent(request.agent)? else {
+    classify_using(request, rules::for_agent(request.agent)?)
+}
+
+/// Classify one screen with the given rules; `None` for an agent without any.
+///
+/// # Errors
+/// The request names a time zone that does not exist.
+pub fn classify_using(
+    request: &Request,
+    rules: Option<&RuleSet>,
+) -> Result<Outcome, ClassifyError> {
+    let Some(rules) = rules else {
         return Ok(outcome(request.host_state, "baton:no-adapter"));
     };
     let result = detect(request, rules)?;

@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use baton_detect::classify::{Request, classify};
+use baton_detect::classify::rules::RuleBook;
+use baton_detect::classify::{Request, classify, classify_using};
 use baton_detect::usage::collect::{Collector, Sources};
 use baton_detect::usage::parse_time;
 use clap::{Parser, Subcommand};
@@ -25,7 +26,15 @@ enum Command {
     Usage(UsageArgs),
     /// Classify screens: one detection request per stdin line, one result per stdout line
     /// (schemas/detector-*.v1.json). Each result is flushed as soon as it is written.
-    Classify,
+    Classify(ClassifyArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct ClassifyArgs {
+    /// Read the rules from DIR/<agent>.toml instead of the built-in ones, to try a change
+    /// to them without a rebuild.
+    #[arg(long, value_name = "DIR")]
+    rules: Option<PathBuf>,
 }
 
 #[derive(Debug, clap::Args)]
@@ -66,20 +75,41 @@ fn main() -> ExitCode {
     match cli.command {
         None => ExitCode::SUCCESS,
         Some(Command::Usage(args)) => usage(args),
-        Some(Command::Classify) => match classify_lines(io::stdin().lock(), io::stdout().lock()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("baton-detect: {error}");
-                ExitCode::from(2)
-            }
-        },
+        Some(Command::Classify(args)) => {
+            let book = match args.rules.as_deref().map(RuleBook::load).transpose() {
+                Ok(book) => book,
+                Err(error) => {
+                    eprintln!("baton-detect: --rules: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+            classified(classify_lines(
+                io::stdin().lock(),
+                io::stdout().lock(),
+                book.as_ref(),
+            ))
+        }
+    }
+}
+
+fn classified(result: io::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("baton-detect: {error}");
+            ExitCode::from(2)
+        }
     }
 }
 
 /// The detector's NDJSON contract, the same as `baton detect`: a request that cannot be
 /// read, or cannot be classified (an unknown time zone), stops with exit status 2.
-fn classify_lines(input: impl BufRead, mut output: impl Write) -> io::Result<()> {
+fn classify_lines(
+    input: impl BufRead,
+    mut output: impl Write,
+    book: Option<&RuleBook>,
+) -> io::Result<()> {
     for (number, line) in input.lines().enumerate() {
         let line = line?;
         if line.trim().is_empty() {
@@ -93,7 +123,11 @@ fn classify_lines(input: impl BufRead, mut output: impl Write) -> io::Result<()>
         };
         let request: Request = serde_json::from_str(&line)
             .map_err(|e| invalid(format!("invalid detection request: {e}")))?;
-        let result = classify(&request).map_err(|e| invalid(e.to_string()))?;
+        let result = match book {
+            Some(book) => classify_using(&request, book.for_agent(request.agent)),
+            None => classify(&request),
+        }
+        .map_err(|e| invalid(e.to_string()))?;
         serde_json::to_writer(&mut output, &result)?;
         output.write_all(b"\n")?;
         output.flush()?;

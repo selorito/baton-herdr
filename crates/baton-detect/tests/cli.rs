@@ -154,8 +154,13 @@ mod classify {
     use serde_json::{Value, json};
 
     fn run(input: &str) -> (i32, Vec<Value>, String) {
+        run_with(&[], input)
+    }
+
+    fn run_with(args: &[&str], input: &str) -> (i32, Vec<Value>, String) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_baton-detect"))
             .arg("classify")
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -219,5 +224,33 @@ mod classify {
             stderr.contains("line 1: invalid detection request"),
             "{stderr}"
         );
+    }
+
+    #[test]
+    fn rules_can_come_from_a_directory() {
+        let dir = std::env::temp_dir().join(format!("baton-rules-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("claude.toml"),
+            "agent = \"claude\"\n[[rules]]\nid = \"stop_word\"\nstate = \"crashed\"\n\
+             region = \"bottom_non_empty_trimmed(3)\"\nregex = 'STOP'\n",
+        )
+        .unwrap();
+        let request = json!({
+            "agent": "claude", "screen": "STOP\n", "observed_at": "2026-10-01T11:00:00Z",
+        });
+        let dir_arg = dir.to_str().unwrap();
+        let (code, lines, _) = run_with(&["--rules", dir_arg], &format!("{request}\n"));
+        assert_eq!(code, 0);
+        assert_eq!(lines[0]["evidence"], "baton:stop_word");
+        // Codex has no file there, so no rules: herdr's answer stands.
+        let codex = json!({"agent": "codex", "screen": "x", "observed_at": "2026-10-01T11:00:00Z"});
+        let (_, lines, _) = run_with(&["--rules", dir_arg], &format!("{codex}\n"));
+        assert_eq!(lines[0]["evidence"], "baton:no-adapter");
+        std::fs::write(dir.join("codex.toml"), "agent = 1").unwrap();
+        let (code, _, stderr) = run_with(&["--rules", dir_arg], "");
+        assert_eq!(code, 2);
+        assert!(stderr.contains("--rules"), "{stderr}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

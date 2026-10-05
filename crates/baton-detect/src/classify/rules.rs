@@ -269,6 +269,39 @@ pub fn for_agent(agent: AgentKind) -> Result<Option<&'static RuleSet>, ClassifyE
     }
 }
 
+/// Rules read from a directory at run time (`classify --rules DIR`): `DIR/<agent>.toml`,
+/// each in the format above. For trying out a change to the rules without a rebuild, and
+/// for the mutation tests; batond uses the compiled-in rules.
+#[derive(Debug, Default)]
+pub struct RuleBook {
+    sets: Vec<RuleSet>,
+}
+
+impl RuleBook {
+    /// Read every `<agent>.toml` in `dir`; an agent without a file has no rules.
+    ///
+    /// # Errors
+    /// The directory cannot be read, or a file is not a valid rules file.
+    pub fn load(dir: &std::path::Path) -> Result<Self, String> {
+        let mut sets = Vec::new();
+        for name in ["claude", "codex", "opencode"] {
+            let path = dir.join(format!("{name}.toml"));
+            let source = match std::fs::read_to_string(&path) {
+                Ok(source) => source,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("{}: {error}", path.display())),
+            };
+            sets.push(RuleSet::parse(&source).map_err(|e| format!("{}: {e}", path.display()))?);
+        }
+        Ok(Self { sets })
+    }
+
+    #[must_use]
+    pub fn for_agent(&self, agent: AgentKind) -> Option<&RuleSet> {
+        self.sets.iter().find(|set| set.agent == agent)
+    }
+}
+
 fn error(agent: AgentKind, message: String) -> ClassifyError {
     let agent = match agent {
         AgentKind::Claude => "claude",
