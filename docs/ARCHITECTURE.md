@@ -222,8 +222,10 @@ flowchart TD
   when the limit lifts, in local time.
 - **Wait**: the run ends. batond sleeps until `next_wake`, then the same `plan_recovery`
   resumes the session.
-- **A hang** has no screen of its own: the runner interrupts a turn that has not ended
-  within `turn_timeout_seconds` (1 h by default) as `stalled`.
+- **A hang** has no screen of its own. `_no_progress` (`scheduler/stall.py`) interrupts a
+  working agent as `stalled` when, for `stall_minutes` (15), its screen has not changed
+  (counters and spinners aside) and no tokens were recorded for its session
+  ([ADR 0014](adr/0014-stall-detection.md)). The turn timeout stays as the backstop.
 
 batond itself may restart at any point. On the next cycle, `_reattach` rebuilds the turn
 from the log (`turn_from_log`) and carries on where the events say it stood.
