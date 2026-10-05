@@ -149,12 +149,13 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     ]
     assert notifier.kinds == [
         NoticeKind.TASK_STARTED,
-        NoticeKind.AGENT_LIMITED,
         NoticeKind.TASK_HANDED_OFF,
         NoticeKind.TASK_COMPLETED,
     ]
-    assert notifier.notices[1].text == (
-        "claude hit its usage limit. Available again at 2026-10-02 09:30 UTC."
+    # The hand-off says why: the limit and when it lifts, then why Codex.
+    assert notifier.notices[1].details == (
+        "claude hit its usage limit; available again at 09:30 UTC.",
+        "Why: next in preference order (claude limited until 2026-10-02 09:30), budget unknown.",
     )
 
     board = project(await store.read())
@@ -184,7 +185,10 @@ async def test_with_every_agent_limited_the_attempt_waits_and_resumes_its_own_se
     attempt = project(await store.read()).tasks[TASK].live_attempt
     assert attempt is not None
     assert attempt.interrupt_reason is InterruptReason.RATE_LIMITED  # kept, not abandoned
-    assert notifier.kinds[-2:] == [NoticeKind.AGENT_LIMITED, NoticeKind.WAITING_FOR_AGENT]
+    assert notifier.kinds[-1] is NoticeKind.WAITING_FOR_AGENT
+    assert notifier.notices[-1].text == (
+        "Every agent is limited; claude resumes this session at 09:30 UTC."
+    )
 
     # Still limited: nothing happens.
     assert await runner.run(TASK) is TaskStatus.WAITING
@@ -394,5 +398,5 @@ async def test_notices_give_times_in_the_configured_zone() -> None:
 
     await runner.run(TASK)
 
-    limited = next(n for n in notifier.notices if n.kind is NoticeKind.AGENT_LIMITED)
-    assert limited.text == "claude hit its usage limit. Available again at 2026-10-03 09:30 +03."
+    moved = next(n for n in notifier.notices if n.kind is NoticeKind.TASK_HANDED_OFF)
+    assert moved.details[0] == "claude hit its usage limit; available again at Sat 09:30 +03."

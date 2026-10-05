@@ -48,6 +48,7 @@ from baton_herdr.core.events import (
     AttemptLocated,
     AttemptPrompted,
     AttemptResumed,
+    AttemptStarted,
     Event,
     StoredEvent,
 )
@@ -61,11 +62,11 @@ from baton_herdr.core.model import (
     ObservationSource,
     TaskStatus,
 )
-from baton_herdr.core.notify import Notice, NoticeKind
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
 from baton_herdr.core.projection import project
 from baton_herdr.core.targeting import resolve_target
 from baton_herdr.recovery.policy import Plan, plan_recovery
+from baton_herdr.scheduler import notices
 from baton_herdr.scheduler.operator import allowed_actions, find_blocker
 from baton_herdr.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
@@ -76,9 +77,9 @@ if TYPE_CHECKING:
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.model import AttemptId, TaskId
-    from baton_herdr.core.notify import Notifier
+    from baton_herdr.core.notify import Notice, Notifier
     from baton_herdr.core.panes import PaneHost, PaneObservation
-    from baton_herdr.core.ports import Clock, EventStore
+    from baton_herdr.core.ports import Clock, EventStore, Workspace
     from baton_herdr.core.projection import AttemptView, Board, TaskView
 
 CONTINUE_NOTE = (
@@ -96,16 +97,6 @@ type PromptKind = Literal["task", "handoff", "continue"]
 DENIED_NOTE = (
     "The permission was denied and the agent stopped. Reply with what it should do instead."
 )
-
-# How a notice says why an attempt stopped.
-_STOPPED = {
-    InterruptReason.RATE_LIMITED: "hit its usage limit",
-    InterruptReason.CONTEXT_FULL: "ran out of context",
-    InterruptReason.CRASHED: "crashed",
-    InterruptReason.STALLED: "stopped responding",
-    InterruptReason.OPERATOR: "was stopped by the operator",
-    InterruptReason.RESUME_FAILED: "could not reopen its session",
-}
 
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "baton:resume-failed"
@@ -126,6 +117,9 @@ class RunnerSettings:
     max_failure_resumes: int = 2
     # An agent with less budget left than this goes behind the others (ADR 0012).
     reserve_percent: float = 10
+    # Before a task's tokens are summed, time for the usage collector to store the
+    # agent's last response (it reads the logs every couple of seconds).
+    usage_grace_s: float = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +134,8 @@ class _Context:
     announce: bool = True
     # The agent's own words about why it stopped (its end mark), if any.
     detail: str = ""
+    # The screen the decision was made on, for notices.
+    screen: str = ""
 
 
 class _Outcome(StrEnum):
@@ -162,6 +158,7 @@ class TaskRunner:
         settings: RunnerSettings | None = None,
         budget: BudgetReader | None = None,
         detector: Detector | None = None,
+        workspace: Workspace | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -169,6 +166,8 @@ class TaskRunner:
         self._notifier = notifier
         self._clock = clock
         self._settings = settings or RunnerSettings()
+        # Tells what a task changed in its directory; without it, notices leave that out.
+        self._workspace = workspace
         # Classifies screens; the adapters' own rules unless batond chose another engine.
         self._detector = detector or AdapterDetector(adapters)
         # Without usage data the budget is folded from the event log alone.
@@ -192,16 +191,12 @@ class TaskRunner:
                 if task.status.is_terminal:
                     break
                 if live is None:
-                    agent = await self._choose_agent(task_id, tried)
+                    agent, reason = await self._choose_agent(task_id, tried)
                     if agent is None:
-                        await self._notify(
-                            NoticeKind.WAITING_FOR_AGENT,
-                            task_id,
-                            "No agent is available right now; the task waits.",
-                        )
+                        await self._deliver(notices.no_agent(task, reason))
                         break
                     tried.add(agent)
-                    outcome = await self._attempt(task_id, agent, previous)
+                    outcome = await self._attempt(task_id, agent, previous, reason)
                     previous = agent
                 elif live.status is AttemptStatus.INTERRUPTED:
                     outcome = await self._recover(task, live, tried)
@@ -250,21 +245,24 @@ class TaskRunner:
             )
             return _Outcome.HANDED_OFF if plan is Plan.HAND_OFF else _Outcome.RESTARTED
         if plan is Plan.WAIT:
-            until = availability.limited_until.get(attempt.agent)
-            when = f" after {self._local(until)}" if until else " later"
-            await self._notify(
-                NoticeKind.WAITING_FOR_AGENT,
-                task.task_id,
-                f"Every agent is limited; {attempt.agent.value} resumes this session{when}.",
-                attempt.attempt_id,
+            await self._deliver(
+                notices.waiting_for_reset(
+                    task,
+                    attempt.agent,
+                    availability.limited_until.get(attempt.agent),
+                    now=now,
+                    zone=self._zone,
+                    attempt_id=attempt.attempt_id,
+                )
             )
             return _Outcome.STOPPED
-        await self._notify(
-            NoticeKind.NEEDS_HUMAN,
-            task.task_id,
-            f"{attempt.agent.value} {_STOPPED[reason]} and will not be resumed "
-            "automatically. A person needs to look at it.",
-            attempt.attempt_id,
+        await self._deliver(
+            notices.needs_human(
+                task,
+                f"{attempt.agent.value} {notices.STOPPED[reason]} and will not be resumed "
+                "automatically. A person needs to look at it.",
+                attempt_id=attempt.attempt_id,
+            )
         )
         return _Outcome.STOPPED
 
@@ -287,12 +285,7 @@ class TaskRunner:
             )
             await self._host.send_text(pane_id, adapter.resume_command(session_ref))
             await self._host.send_keys(pane_id, ["Enter"])
-            await self._notify(
-                NoticeKind.TASK_RESUMED,
-                task.task_id,
-                f"Resuming the {attempt.agent.value} session.",
-                attempt.attempt_id,
-            )
+            await self._deliver(notices.resumed(task, attempt.agent, attempt.attempt_id))
             return await self._supervise(
                 task.task_id,
                 attempt.attempt_id,
@@ -309,11 +302,12 @@ class TaskRunner:
         """
         with log_context(attempt_id=str(attempt.attempt_id)):
             if attempt.agent not in self._adapters:
-                await self._notify(
-                    NoticeKind.NEEDS_HUMAN,
-                    task.task_id,
-                    f"No adapter for {attempt.agent.value}; this attempt cannot be supervised.",
-                    attempt.attempt_id,
+                await self._deliver(
+                    notices.needs_human(
+                        task,
+                        f"No adapter for {attempt.agent.value}; this attempt cannot be supervised.",
+                        attempt_id=attempt.attempt_id,
+                    )
                 )
                 return _Outcome.STOPPED
             await self._locate(task.task_id, attempt.attempt_id)  # follows a moved session
@@ -364,7 +358,9 @@ class TaskRunner:
         available = availability.available(candidates, self._clock.now())
         return available[0] if available else None
 
-    async def _choose_agent(self, task_id: TaskId, tried: set[AgentKind]) -> AgentKind | None:
+    async def _choose_agent(
+        self, task_id: TaskId, tried: set[AgentKind]
+    ) -> tuple[AgentKind | None, str]:
         """Pick the agent for the task's next attempt and record why (ADR 0012)."""
         events = await self._store.read()
         now = self._clock.now()
@@ -387,13 +383,17 @@ class TaskRunner:
                 budgets=choice.notes,
             )
         )
-        return choice.agent
+        return choice.agent, choice.reason
 
     async def _attempt(
-        self, task_id: TaskId, agent: AgentKind, previous: AgentKind | None
+        self, task_id: TaskId, agent: AgentKind, previous: AgentKind | None, reason: str
     ) -> _Outcome:
-        task = (await self._board()).tasks[task_id]
-        started = start_attempt(task, agent, at=self._clock.now())
+        events = await self._store.read()
+        task = project(events).tasks[task_id]
+        # Why the previous attempt stopped, for a hand-off notice; its view forgets once ended.
+        before = _last_interruption(events, task.attempts[-1].attempt_id) if task.attempts else None
+        head = await self._workspace.head(task.workdir) if self._workspace else None
+        started = start_attempt(task, agent, at=self._clock.now(), workdir_head=head)
         await self._append(started)
         attempt_id = started.attempt_id
         with log_context(attempt_id=str(attempt_id)):
@@ -412,23 +412,22 @@ class TaskRunner:
             await self._host.send_text(pane_id, command)
             await self._host.send_keys(pane_id, ["Enter"])
             if previous is None:
-                await self._notify(
-                    NoticeKind.TASK_STARTED, task_id, f"Started on {agent.value}.", attempt_id
-                )
+                notice = notices.started(task, agent, reason, attempt_id)
             elif previous is agent:
-                await self._notify(
-                    NoticeKind.TASK_RESTARTED,
-                    task_id,
-                    f"Restarted on {agent.value} in a fresh session.",
-                    attempt_id,
-                )
+                notice = notices.restarted(task, agent, reason, attempt_id)
             else:
-                await self._notify(
-                    NoticeKind.TASK_HANDED_OFF,
-                    task_id,
-                    f"Moved from {previous.value} to {agent.value}.",
-                    attempt_id,
+                notice = notices.handed_off(
+                    task,
+                    previous,
+                    agent,
+                    stopped=before.reason if before else None,
+                    available_at=before.resume_not_before if before else None,
+                    reason=reason,
+                    now=self._clock.now(),
+                    zone=self._zone,
+                    attempt_id=attempt_id,
                 )
+            await self._deliver(notice)
             kind: PromptKind = "task" if previous is None else "handoff"
             return await self._supervise(
                 task_id, attempt_id, agent, pane_id, (_prompt(task, kind), kind)
@@ -461,12 +460,17 @@ class TaskRunner:
         last_state = last_seen.state if last_seen else None
         reported = (last_seen.state, last_seen.evidence) if last_seen else None
         saw_agent = last_seen is not None
+        screen = ""
         try:
             while True:
                 if loop.time() > deadline:
                     phase = "work" if turn.prompt_sent else "start"
                     return await self._interrupt(
-                        task_id, attempt_id, InterruptReason.STALLED, f"No progress during {phase}."
+                        task_id,
+                        attempt_id,
+                        InterruptReason.STALLED,
+                        f"No progress during {phase}.",
+                        screen=screen,
                     )
                 try:
                     observation = await feed.next()
@@ -505,6 +509,7 @@ class TaskRunner:
                         pane_for_input,
                         announce=(state, evidence) != reported,
                         detail=detail,
+                        screen=screen,
                     ),
                     state=state,
                     evidence=evidence,
@@ -543,7 +548,7 @@ class TaskRunner:
             await self._host.send_keys(ctx.pane_id, step.keys)
             return None
         if step.action is Action.FINISH:
-            await self._finish(ctx.task_id)
+            await self._finish(ctx.task_id, ctx.agent, ctx.attempt_id)
             return _Outcome.FINISHED
         if step.action is Action.ASK_HUMAN:
             if ctx.announce:
@@ -555,14 +560,15 @@ class TaskRunner:
                     text = f"{ctx.agent.value} asks for permission: {ctx.detail}"
                 else:
                     text = f"{ctx.agent.value} is waiting for a decision: {ctx.detail}"
-                blocker = find_blocker(await self._store.read(), ctx.task_id)
+                events = await self._store.read()
+                blocker = find_blocker(events, ctx.task_id)
                 actions = allowed_actions(blocker, self._adapters[ctx.agent]) if blocker else ()
                 await self._deliver(
-                    Notice(
-                        NoticeKind.NEEDS_HUMAN,
-                        ctx.task_id,
+                    notices.needs_human(
+                        project(events).tasks[ctx.task_id],
                         text,
-                        ctx.attempt_id,
+                        screen=ctx.screen,
+                        attempt_id=ctx.attempt_id,
                         blocker_seq=blocker.seq if blocker else None,
                         actions=actions,
                     )
@@ -575,11 +581,7 @@ class TaskRunner:
                 InterruptReason.RESUME_FAILED if evidence == RESUME_FAILED_EVIDENCE else step.reason
             )
             return await self._interrupt(
-                ctx.task_id,
-                ctx.attempt_id,
-                reason,
-                f"{ctx.agent.value} {_STOPPED[reason]}.",
-                resets_at=resets_at,
+                ctx.task_id, ctx.attempt_id, reason, resets_at=resets_at, screen=ctx.screen
             )
         return await self._interrupt(
             ctx.task_id,
@@ -652,16 +654,21 @@ class TaskRunner:
             )
         )
 
-    async def _interrupt(
+    async def _interrupt(  # noqa: PLR0913 - the attempt, why it stopped, and what showed it
         self,
         task_id: TaskId,
         attempt_id: AttemptId,
         reason: InterruptReason,
-        text: str,
+        detail: str = "",
         *,
         resets_at: datetime | None = None,
+        screen: str = "",
     ) -> _Outcome:
-        """Record the interruption; what happens next is ``plan_recovery``'s call."""
+        """Record the interruption; what happens next is ``plan_recovery``'s call.
+
+        A usage limit is not announced here: the notice of what follows (a hand-off,
+        a wait for the reset) says it, with the reset time.
+        """
         await self._append(
             AttemptInterrupted(
                 occurred_at=self._clock.now(),
@@ -671,36 +678,59 @@ class TaskRunner:
                 resume_not_before=resets_at,
             )
         )
-        kind = (
-            NoticeKind.AGENT_LIMITED
-            if reason is InterruptReason.RATE_LIMITED
-            else NoticeKind.TASK_STOPPED
-        )
-        until = f" Available again at {self._local(resets_at)}." if resets_at else ""
-        await self._notify(kind, task_id, text + until, attempt_id)
+        if reason is not InterruptReason.RATE_LIMITED:
+            task = (await self._board()).tasks[task_id]
+            attempt = next(a for a in task.attempts if a.attempt_id == attempt_id)
+            await self._deliver(
+                notices.stopped(
+                    task, attempt.agent, reason, detail=detail, screen=screen, attempt_id=attempt_id
+                )
+            )
         return _Outcome.INTERRUPTED
 
-    async def _finish(self, task_id: TaskId) -> None:
+    async def _finish(self, task_id: TaskId, agent: AgentKind, attempt_id: AttemptId) -> None:
+        now = self._clock.now()
         task = (await self._board()).tasks[task_id]
-        await self._append(*complete_task(task, at=self._clock.now()))
-        await self._notify(NoticeKind.TASK_COMPLETED, task_id, f"Done: {task.title}")
-
-    async def _notify(
-        self,
-        kind: NoticeKind,
-        task_id: TaskId,
-        text: str,
-        attempt_id: AttemptId | None = None,
-    ) -> None:
-        await self._deliver(Notice(kind, task_id, text, attempt_id))
+        await self._append(*complete_task(task, at=now))
+        events = await self._store.read()
+        starts = [
+            e.event
+            for e in events
+            if isinstance(e.event, AttemptStarted) and e.event.task_id == task_id
+        ]
+        attempt_start = next(e.occurred_at for e in starts if e.attempt_id == attempt_id)
+        session = next(a.session_ref for a in task.attempts if a.attempt_id == attempt_id)
+        spent = budget = changes = None
+        try:
+            if self._budget.usage is not None and self._settings.usage_grace_s > 0:
+                await asyncio.sleep(self._settings.usage_grace_s)
+            spent = await self._budget.spent(agent, start=attempt_start, end=now, session=session)
+            if self._budget.usage is not None:
+                budget = (await self._budget.read([agent], events, now)).get(agent)
+        except Exception as err:  # noqa: BLE001 - a notice without figures is still a notice
+            self._log.warning("usage for the done notice failed", error=repr(err))
+        if self._workspace is not None:
+            changes = await self._workspace.changes(task.workdir, since=starts[0].workdir_head)
+        await self._deliver(
+            notices.completed(
+                task,
+                agent,
+                took=now - starts[0].occurred_at,
+                attempts=len(starts),
+                spent=spent,
+                budget=budget,
+                changes=changes,
+                attempt_id=attempt_id,
+            )
+        )
 
     async def _deliver(self, notice: Notice) -> None:
         self._log.info("notice", kind=notice.kind.value, text=notice.plain)
         await self._notifier.notify(notice)
 
-    def _local(self, at: datetime) -> str:
-        """``at`` in the configured zone, for notices: ``2026-10-03 17:00 +03``."""
-        return f"{at.astimezone(ZoneInfo(self._settings.timezone)):%Y-%m-%d %H:%M %Z}"
+    @property
+    def _zone(self) -> ZoneInfo:
+        return ZoneInfo(self._settings.timezone)
 
     async def _append(self, *events: Event) -> None:
         await self._store.append(events)
@@ -814,6 +844,16 @@ def _prompt_kind(
     if resumed:
         return "continue"
     return "task" if len(task.attempts) == 1 else "handoff"
+
+
+def _last_interruption(
+    events: Iterable[StoredEvent], attempt_id: AttemptId
+) -> AttemptInterrupted | None:
+    last = None
+    for stored in events:
+        if isinstance(stored.event, AttemptInterrupted) and stored.event.attempt_id == attempt_id:
+            last = stored.event
+    return last
 
 
 def _last_observation(

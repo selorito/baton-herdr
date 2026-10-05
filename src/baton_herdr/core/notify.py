@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 class NoticeKind(StrEnum):
     TASK_STARTED = "task_started"
-    AGENT_LIMITED = "agent_limited"
     TASK_HANDED_OFF = "task_handed_off"
     TASK_RESUMED = "task_resumed"
     TASK_RESTARTED = "task_restarted"

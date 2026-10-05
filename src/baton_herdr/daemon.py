@@ -39,6 +39,7 @@ from baton_herdr.scheduler.queue import (
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import BotSettings, OperatorBot, run_bot
 from baton_herdr.telegram.notifier import telegram_notifier
+from baton_herdr.workdir import GitWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -65,7 +66,10 @@ def make_detector(settings: DetectorSettings) -> Detector:
 
 
 def runner_settings(
-    settings: SchedulerSettings, budget: BudgetSettings | None = None
+    settings: SchedulerSettings,
+    budget: BudgetSettings | None = None,
+    *,
+    collecting_usage: bool = False,
 ) -> RunnerSettings:
     budget = budget or BudgetSettings()
     return RunnerSettings(
@@ -78,6 +82,8 @@ def runner_settings(
         launch_commands={AgentKind(a): cmd for a, cmd in settings.launch_commands.items()},
         max_failure_resumes=settings.max_failure_resumes,
         reserve_percent=budget.reserve_percent,
+        # Without the collector there is no last response to wait for.
+        usage_grace_s=3 if collecting_usage else 0,
     )
 
 
@@ -112,7 +118,9 @@ async def open_runtime(
     usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
     clock = clock or SystemClock()
-    scheduling = runner_settings(settings.scheduler, settings.budget)
+    scheduling = runner_settings(
+        settings.scheduler, settings.budget, collecting_usage=settings.usage.enabled
+    )
     host = host or connect(settings.herdr)
     wake = asyncio.Event()
     budget = BudgetReader(
@@ -131,6 +139,7 @@ async def open_runtime(
             settings=scheduling,
             budget=budget,
             detector=detector,
+            workspace=GitWorkspace(),
         )
         operator = None
         if telegram is not None and settings.telegram.owner_id is not None:

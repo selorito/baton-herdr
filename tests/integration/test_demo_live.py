@@ -100,7 +100,6 @@ async def test_limited_claude_hands_off_to_codex_in_a_real_herdr(
     )
     assert notifier.kinds == [
         NoticeKind.TASK_STARTED,
-        NoticeKind.AGENT_LIMITED,
         NoticeKind.TASK_HANDED_OFF,
         NoticeKind.TASK_COMPLETED,
     ]

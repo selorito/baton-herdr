@@ -66,7 +66,7 @@ async def test_pending_tasks_run_in_order_and_the_result_is_persisted(tmp_path: 
 
     # The first task limits Claude and moves to Codex; the second goes straight to Codex.
     assert results == {first: TaskStatus.COMPLETED, second: TaskStatus.COMPLETED}
-    assert notifier.kinds.count(NoticeKind.AGENT_LIMITED) == 1
+    assert notifier.kinds.count(NoticeKind.TASK_HANDED_OFF) == 1
     reopened = await open_event_store(db)
     try:
         board = project(await reopened.read())

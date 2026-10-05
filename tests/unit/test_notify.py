@@ -22,7 +22,7 @@ from baton_herdr.telegram.notifier import (
     telegram_notifier,
 )
 
-NOTICE = Notice(NoticeKind.AGENT_LIMITED, TaskId("t1"), "Claude hit its limit; moved to Codex.")
+NOTICE = Notice(NoticeKind.TASK_HANDED_OFF, TaskId("t1"), "Claude hit its limit; moved to Codex.")
 
 
 async def test_telegram_notifier_sends_to_the_configured_chat_only() -> None:
@@ -137,6 +137,6 @@ async def test_telegram_notifier_is_built_from_settings_without_network() -> Non
 async def test_recording_and_logging_notifiers(caplog: pytest.LogCaptureFixture) -> None:
     recorder = RecordingNotifier()
     await recorder.notify(NOTICE)
-    assert recorder.kinds == [NoticeKind.AGENT_LIMITED]
+    assert recorder.kinds == [NoticeKind.TASK_HANDED_OFF]
     with caplog.at_level(logging.INFO):
         await LoggingNotifier().notify(NOTICE)
