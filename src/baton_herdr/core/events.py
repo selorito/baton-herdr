@@ -100,6 +100,9 @@ class _AttemptEvent(_Event):
 class AttemptStarted(_AttemptEvent):
     type: Literal["attempt.started"] = "attempt.started"
     agent: AgentKind
+    # The commit checked out in the task's directory when the attempt started, if any;
+    # what the task changed is measured from its first attempt's commit.
+    workdir_head: str | None = None
 
 
 class AttemptLocated(_AttemptEvent):

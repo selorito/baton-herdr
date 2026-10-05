@@ -117,7 +117,7 @@ forbidden_modules = [
   "baton_herdr.herdr", "baton_herdr.adapters", "baton_herdr.ledger",
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
-  "baton_herdr.collector", "baton_herdr.detector",
+  "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
 ]
 
 [[tool.importlinter.contracts]]
@@ -129,7 +129,7 @@ exhaustive = true
 layers = [
   "api : telegram : cli : daemon : doctor : service",
   "recovery : budget : scheduler",
-  "herdr | adapters | ledger | collector | detector",
+  "herdr | adapters | ledger | collector | detector | workdir",
   "core",
 ]
 
@@ -147,7 +147,7 @@ source_modules = [
   "baton_herdr.core", "baton_herdr.herdr", "baton_herdr.adapters",
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
-  "baton_herdr.collector", "baton_herdr.detector",
+  "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
 # Using baton_herdr.ledger is the point; importing the libraries directly is what is forbidden.

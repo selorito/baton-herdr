@@ -39,6 +39,7 @@ def start_attempt(
     *,
     at: datetime,
     new_id: Callable[[], AttemptId] = new_attempt_id,
+    workdir_head: str | None = None,
 ) -> AttemptStarted:
     """Begin a new attempt with an identity baton generates.
 
@@ -51,7 +52,13 @@ def start_attempt(
     if task.live_attempt is not None:
         msg = f"task {task.task_id} already has a live attempt"
         raise CommandRejectedError(msg)
-    return AttemptStarted(occurred_at=at, task_id=task.task_id, attempt_id=new_id(), agent=agent)
+    return AttemptStarted(
+        occurred_at=at,
+        task_id=task.task_id,
+        attempt_id=new_id(),
+        agent=agent,
+        workdir_head=workdir_head,
+    )
 
 
 def complete_task(task: TaskView, *, at: datetime) -> list[Event]:

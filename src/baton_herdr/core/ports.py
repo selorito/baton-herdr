@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
 
+    from baton_herdr.core.changes import Changes
     from baton_herdr.core.events import Event, StoredEvent
     from baton_herdr.core.model import TaskId
     from baton_herdr.core.usage import RateLimitObservation, UsageEvent, UsageRecord
@@ -83,4 +84,17 @@ class UsageStore(Protocol):
 
     async def rate_limits(self, *, since: datetime | None = None) -> Sequence[RateLimitObservation]:
         """Rate-limit observations at or after ``since``, oldest first."""
+        ...
+
+
+class Workspace(Protocol):
+    """The task's working directory, as version control sees it."""
+
+    async def head(self, workdir: str) -> str | None:
+        """The commit checked out now, or ``None`` outside a repository."""
+        ...
+
+    async def changes(self, workdir: str, since: str | None) -> Changes | None:
+        """Files changed since commit ``since`` (``None``: since the last commit),
+        committed or not, new files included; ``None`` when it cannot be told."""
         ...
