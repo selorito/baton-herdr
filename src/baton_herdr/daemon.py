@@ -19,12 +19,14 @@ from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
-from baton_herdr.core.config import BudgetSettings
+from baton_herdr.core.config import BudgetSettings, DetectorSettings
+from baton_herdr.core.detector import AdapterDetector
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
 from baton_herdr.core.projection import project
+from baton_herdr.detector import FallbackDetector, ProcessDetector, ShadowDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.scheduler.queue import (
@@ -44,10 +46,22 @@ if TYPE_CHECKING:
     from aiogram import Bot
 
     from baton_herdr.core.config import BatonSettings, SchedulerSettings
+    from baton_herdr.core.detector import Detector
     from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, UsageStore
+
+
+def make_detector(settings: DetectorSettings) -> Detector:
+    """The detector batond classifies screens with ([detector] engine, ADR 0011)."""
+    python = AdapterDetector(ADAPTERS)
+    if settings.engine == "python":
+        return python
+    rust = ProcessDetector(settings.binary, timeout_s=settings.timeout_seconds)
+    if settings.engine == "shadow":
+        return ShadowDetector(python, rust)
+    return FallbackDetector(rust, python)
 
 
 def runner_settings(
@@ -106,6 +120,7 @@ async def open_runtime(
         cooldown=scheduling.limit_cooldown,
         claude_window_tokens=settings.budget.claude_window_tokens,
     )
+    detector = make_detector(settings.detector)
     try:
         runner = TaskRunner(
             store=store,
@@ -115,6 +130,7 @@ async def open_runtime(
             clock=clock,
             settings=scheduling,
             budget=budget,
+            detector=detector,
         )
         operator = None
         if telegram is not None and settings.telegram.owner_id is not None:
@@ -151,6 +167,7 @@ async def open_runtime(
             budget=budget,
         )
     finally:
+        await detector.aclose()
         if telegram is not None:
             await telegram.aclose()
         await usage.close()

@@ -13,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from importlib.metadata import version
 from pathlib import Path
@@ -29,8 +30,9 @@ from baton_herdr.core.config import (
     config_file,
     resolve_herdr_socket_path,
 )
+from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
-from baton_herdr.core.model import AgentKind
+from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.service import installed_session
 
 if TYPE_CHECKING:
@@ -91,6 +93,27 @@ def _run(command: Sequence[str]) -> str:
     return result.stdout
 
 
+# A screen every classifier must read the same way: Claude's session limit.
+_PROBE_REQUEST = DetectionRequest(
+    agent=AgentKind.CLAUDE,
+    screen="You've hit your session limit · resets 3:45pm\n",
+    host_state=AgentState.IDLE,
+    observed_at=datetime(2026, 10, 1, 11, 0, tzinfo=UTC),
+)
+
+
+def _classify_probe(binary: Path) -> str:
+    result = subprocess.run(  # noqa: S603 - the configured binary, fixed arguments
+        [str(binary), "classify"],
+        input=_PROBE_REQUEST.model_dump_json() + "\n",
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    return result.stdout
+
+
 def _local_timezone() -> str | None:
     link = Path("/etc/localtime")
     if link.is_symlink():
@@ -110,6 +133,7 @@ class Probes:
     local_timezone: Callable[[], str | None] = _local_timezone
     installed_session: Callable[[], str | None] = installed_session
     detector: Callable[[str], Path | None] = detector_binary
+    classify: Callable[[Path], str] = _classify_probe
     package_version: Callable[[], str] = lambda: version("baton-herdr")
     environ: Callable[[], Mapping[str, str]] = os.environ.copy
 
@@ -145,6 +169,7 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     checks.extend(await _herdr(settings, probes))
     checks.extend(_agents(settings, probes))
     checks.append(_detector(settings, probes))
+    checks.append(_classifier(settings, probes))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
     return checks
@@ -314,6 +339,39 @@ def _detector(settings: BatonSettings, probes: Probes) -> Check:
             "Install the matching version: cargo install --path crates/baton-detect --locked",
         )
     return Check("baton-detect", Level.OK, f"{reported} at {binary}")
+
+
+def _classifier(settings: BatonSettings, probes: Probes) -> Check:
+    """The screen classifier batond uses ([detector] engine, ADR 0011)."""
+    engine = settings.detector.engine
+    if engine == "python":
+        return Check("detector", Level.OK, "python (the adapters' rules)")
+    fallback = "differences are not compared" if engine == "shadow" else "Python answers instead"
+    binary = probes.detector(settings.detector.binary)
+    if binary is None:
+        return Check(
+            "detector",
+            Level.WARN,
+            f"{engine}: {settings.detector.binary} not found; {fallback}",
+            "cargo install --path crates/baton-detect --locked, or set [detector] binary.",
+        )
+    try:
+        answer = DetectionResult.model_validate_json(probes.classify(binary).strip())
+    except (OSError, subprocess.SubprocessError, ValidationError) as err:
+        return Check(
+            "detector",
+            Level.WARN,
+            f"{engine}: {binary} does not classify ({type(err).__name__}); {fallback}",
+            "Install the matching version: cargo install --path crates/baton-detect --locked",
+        )
+    if answer.evidence != "baton:claude_usage_limit":
+        return Check(
+            "detector",
+            Level.WARN,
+            f"{engine}: {binary} misreads a test screen ({answer.evidence})",
+            "Install the matching version: cargo install --path crates/baton-detect --locked",
+        )
+    return Check("detector", Level.OK, f"{engine} with {binary}")
 
 
 def _timezone(settings: BatonSettings, probes: Probes) -> Check:

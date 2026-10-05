@@ -64,7 +64,7 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseS
 
 [tool.ruff.lint.isort]
 # tools/capture/capture.py is imported by its tests as a local module.
-known-local-folder = ["capture", "fake_agent", "simulated_agents"]
+known-local-folder = ["capture", "detect_corpus", "detector_binary", "fake_agent", "simulated_agents"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -117,7 +117,7 @@ forbidden_modules = [
   "baton_herdr.herdr", "baton_herdr.adapters", "baton_herdr.ledger",
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
-  "baton_herdr.collector",
+  "baton_herdr.collector", "baton_herdr.detector",
 ]
 
 [[tool.importlinter.contracts]]
@@ -129,7 +129,7 @@ exhaustive = true
 layers = [
   "api : telegram : cli : daemon : doctor : service",
   "recovery : budget : scheduler",
-  "herdr | adapters | ledger | collector",
+  "herdr | adapters | ledger | collector | detector",
   "core",
 ]
 
@@ -147,7 +147,7 @@ source_modules = [
   "baton_herdr.core", "baton_herdr.herdr", "baton_herdr.adapters",
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
-  "baton_herdr.collector",
+  "baton_herdr.collector", "baton_herdr.detector",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
 # Using baton_herdr.ledger is the point; importing the libraries directly is what is forbidden.

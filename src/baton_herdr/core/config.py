@@ -205,6 +205,22 @@ class UsageSettings(_Section):
         return value.expanduser() if value else None
 
 
+class DetectorSettings(_Section):
+    """Which detector classifies screens (ADR 0011, phase 2).
+
+    ``python``: the adapters' rules. ``shadow``: Python decides, and the Rust classifier
+    (`baton-detect classify`) answers every screen too; differences are logged as
+    "detector mismatch". ``rust``: the Rust classifier decides, Python answers while it
+    is unavailable.
+    """
+
+    engine: Literal["python", "shadow", "rust"] = "python"
+    # A name on PATH or a path; the same program as [usage] binary.
+    binary: str = "baton-detect"
+    # How long one answer may take before the process is restarted.
+    timeout_seconds: float = Field(default=5, gt=0)
+
+
 class BudgetSettings(_Section):
     """Remaining budget per agent and how it steers agent choice (ADR 0012)."""
 
@@ -242,6 +258,7 @@ class BatonSettings(BaseSettings):
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
+    detector: DetectorSettings = Field(default_factory=DetectorSettings)
 
     @classmethod
     def settings_customise_sources(

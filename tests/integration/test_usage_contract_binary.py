@@ -12,16 +12,15 @@ without one, unless BATON_REQUIRE_DETECT is set (the CI parity job sets it).
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sqlite3
 import subprocess
 from contextlib import closing
 from pathlib import Path
 
-import pytest
-
 from baton_herdr.core.usage import USAGE_EVENT
+
+from detector_binary import detector
 
 REPO = Path(__file__).parents[2]
 GOLDEN = REPO / "crates" / "baton-detect" / "tests" / "golden"
@@ -38,20 +37,6 @@ CREATE TABLE message (
     id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
     time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);
 """
-
-
-def detector() -> Path:
-    candidates = [
-        os.environ.get("BATON_DETECT_BIN"),
-        str(REPO / "target" / "debug" / "baton-detect"),
-        shutil.which("baton-detect"),
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return Path(candidate)
-    if os.environ.get("BATON_REQUIRE_DETECT"):
-        pytest.fail("baton-detect is required but was not found")
-    pytest.skip("baton-detect is not built")
 
 
 def opencode_db(path: Path) -> None:

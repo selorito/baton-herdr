@@ -20,7 +20,8 @@ from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BatonSettings, config_file
-from baton_herdr.core.detection import DetectionRequest, DetectionResult
+from baton_herdr.core.detection import DetectionRequest
+from baton_herdr.core.detector import classify_with
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
@@ -75,12 +76,7 @@ def detect() -> None:
         except ValidationError as err:
             typer.echo(f"line {number}: invalid detection request: {err}", err=True)
             raise typer.Exit(code=2) from err
-        adapter = ADAPTERS.get(request.agent)
-        result = (
-            adapter.classify(request)
-            if adapter is not None
-            else DetectionResult(state=request.host_state, evidence="baton:no-adapter")
-        )
+        result = classify_with(ADAPTERS, request)
         sys.stdout.write(result.model_dump_json() + "\n")
         sys.stdout.flush()
 

@@ -35,6 +35,10 @@ def probes(
     herdr_up: bool = True,
     on_path: Sequence[str] = ("herdr", "claude"),
     detector: str | None = "baton-detect 0.1.0",
+    classified: str = (
+        '{"contract":1,"state":"rate_limited","evidence":"baton:claude_usage_limit",'
+        '"resets_at":"2026-10-01T12:45:00Z"}'
+    ),
 ) -> Probes:
     async def ping(_: HerdrSettings) -> str:
         if not herdr_up:
@@ -64,6 +68,7 @@ def probes(
         installed_session=lambda: None,  # never this machine's units
         environ=dict,
         detector=lambda name: Path(f"/opt/{name}") if detector else None,
+        classify=lambda _: classified,
         package_version=lambda: "0.1.0",
     )
 
@@ -175,3 +180,25 @@ async def test_baton_detect_is_checked_unless_usage_collection_is_off(
     off = by_name(await diagnose(probes(detector=None)))["baton-detect"]
     assert off.level is Level.OK
     assert "off" in off.detail
+
+
+async def test_the_detector_engine_is_checked_when_it_is_not_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    python = by_name(await diagnose(probes()))["detector"]
+    assert (python.level, python.detail) == (Level.OK, "python (the adapters' rules)")
+
+    monkeypatch.setenv("BATON_DETECTOR__ENGINE", "shadow")
+    shadow = by_name(await diagnose(probes()))["detector"]
+    assert (shadow.level, shadow.detail) == (Level.OK, "shadow with /opt/baton-detect")
+
+    monkeypatch.setenv("BATON_DETECTOR__ENGINE", "rust")
+    missing = by_name(await diagnose(probes(detector=None)))["detector"]
+    assert missing.level is Level.WARN
+    assert missing.detail.endswith("not found; Python answers instead")
+    misread = '{"contract":1,"state":"idle","evidence":"host:no-evidence","resets_at":null}'
+    wrong = by_name(await diagnose(probes(classified=misread)))["detector"]
+    assert wrong.level is Level.WARN
+    assert "misreads a test screen (host:no-evidence)" in wrong.detail
+    broken = by_name(await diagnose(probes(classified="Usage: baton-detect")))["detector"]
+    assert "does not classify (ValidationError)" in broken.detail

@@ -39,6 +39,7 @@ from baton_herdr.core.contract import (
     parse_end,
 )
 from baton_herdr.core.detection import DetectionRequest
+from baton_herdr.core.detector import AdapterDetector
 from baton_herdr.core.events import (
     AgentChosen,
     AgentStateObserved,
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from baton_herdr.core.agents import AgentAdapter
+    from baton_herdr.core.detector import Detector
     from baton_herdr.core.model import AttemptId, TaskId
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost, PaneObservation
@@ -159,6 +161,7 @@ class TaskRunner:
         clock: Clock,
         settings: RunnerSettings | None = None,
         budget: BudgetReader | None = None,
+        detector: Detector | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -166,6 +169,8 @@ class TaskRunner:
         self._notifier = notifier
         self._clock = clock
         self._settings = settings or RunnerSettings()
+        # Classifies screens; the adapters' own rules unless batond chose another engine.
+        self._detector = detector or AdapterDetector(adapters)
         # Without usage data the budget is folded from the event log alone.
         self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
         self._log = get_logger("baton.scheduler")
@@ -605,7 +610,7 @@ class TaskRunner:
             screen = await self._host.read_screen(pane_id, lines=self._settings.screen_lines)
         except PaneNotFoundError:
             return AgentState.CRASHED, "baton:pane-gone", None, ""
-        result = adapter.classify(
+        result = await self._detector.classify(
             DetectionRequest(
                 agent=adapter.kind,
                 screen=screen,
