@@ -6,6 +6,6 @@
 
 - [ ] `just check` passes
 - [ ] Tests cover the change
-- [ ] Detection rules changed on both sides (Python adapters and `crates/baton-detect/rules/`), with a recorded screen as evidence
+- [ ] Detection rule changes come with a recorded screen as evidence, and `tests/golden/classify.jsonl` is regenerated if answers change
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` for user-visible changes
 - [ ] An ADR for a new decision, if any

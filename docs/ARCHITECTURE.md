@@ -146,22 +146,21 @@ agent and session. A pane that now runs something else never receives input.
   appear under an unchanged status. `herdr/state.py`, `derive_state`, turns herdr's status
   into baton's states, and treats herdr's "no rule matched, so idle" fallback as `unknown`.
 - **Classification.** `_classify` reads the bottom of the screen and asks the detector.
-  The detector applies the agent's adapter rules (`adapters/claude.py`, `codex.py`,
-  `opencode.py`; the engine is `core/detection.py`). These rules recognise what herdr does
-  not: usage limits with their reset time, a full context, permission prompts versus
-  questions.
-- **The detector engine** is chosen by `[detector] engine` (`daemon.make_detector`,
-  [ADR 0011](adr/0011-baton-detect-in-rust.md)):
-
-  | Engine | Who decides | What else happens |
-  |---|---|---|
-  | `python` (default) | `core/detector.py`, `AdapterDetector` | |
-  | `shadow` | Python | `detector/process.py`, `ShadowDetector`, also sends every screen to `baton-detect classify` (Rust, `crates/baton-detect/src/classify/`) and logs any difference as "detector mismatch" |
-  | `rust` | Rust | `FallbackDetector` uses Python while the Rust process is down |
-
-  This is a strangler migration. The Rust rules (`crates/baton-detect/rules/*.toml`) are
-  data in herdr's own field names. A parity test runs 1,949 recorded and generated
-  screens through both engines and requires identical answers.
+  The detector applies the agent's rules (`crates/baton-detect/rules/claude.toml`,
+  `codex.toml`, `opencode.toml`). These rules recognise what herdr does not: usage limits
+  with their reset time, a full context, permission prompts versus questions.
+- **The detector** is `baton-detect classify` (Rust, `crates/baton-detect/src/classify/`),
+  one long-running child process (`detector/process.py`, `ProcessDetector`;
+  [ADR 0011](adr/0011-baton-detect-in-rust.md)). Its rules
+  (`crates/baton-detect/rules/*.toml`) are data in herdr's own field names. While it
+  gives no answer, `FallbackDetector` uses `core/detector.py`, `HostDetector`: herdr's
+  working and blocked pass, idle reads as unknown, so nothing finishes or moves without
+  the rules.
+  - It got there by a strangler migration. A Python copy of the rules decided first, then
+    both ran side by side in `shadow` mode on real work, with no difference. Then the
+    Python copy was removed.
+  - The answers on 1,949 recorded and generated screens are pinned in
+    `tests/golden/classify.jsonl`.
 - **Deciding.** `scheduler/turn.py`, `next_step`, is a pure function of the turn so far
   and the current state. It returns one of: wait, send the prompt, answer a known start-up
   dialog, finish, ask a person, interrupt. `recovery/policy.py`, `assess`, supplies the
@@ -264,4 +263,4 @@ The bot accepts commands from one owner only (`/status`, `/budget`, replies, but
 | How a run is replayed or inspected | `core/projection.py`, `baton status` |
 | What baton may automate at all | [ADR 0005](adr/0005-automation-boundaries.md) |
 | How it behaves under limits, crashes and hangs, measured | [bench/](../bench/README.md), `just bench` |
-| How the Rust side is tested against Python | `tests/integration/test_detect_parity_binary.py` |
+| How the classifier is tested | `tests/integration/test_classify_golden.py`, `tests/golden/classify.jsonl` |

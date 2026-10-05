@@ -22,13 +22,15 @@ just install-hooks   # once: git push then runs just check first, and stops if i
 just check           # lint, format, types, import contracts, Python and Rust tests, fixture audit
 ```
 
-- `just check` must pass; CI runs the same, plus the Rust/Python parity job.
+- `just check` must pass; CI runs the same.
 - Keep commits small, in [Conventional Commits](https://www.conventionalcommits.org/)
   style (`feat(scheduler): …`, `fix(detect): …`).
 - New behaviour comes with tests. Decisions are pure functions tested as tables;
   `core/` imports nothing else from baton.
-- Detection rules change in both `src/baton_herdr/adapters/` and
-  `crates/baton-detect/rules/`. The parity test keeps them equal.
+- Detection rules live in `crates/baton-detect/rules/`. A change that alters answers
+  regenerates `tests/golden/classify.jsonl`
+  (`UPDATE_GOLDEN=1 uv run pytest tests/integration/test_classify_golden.py`); the diff
+  shows what changed.
 - User-visible changes get a line under `[Unreleased]` in `CHANGELOG.md`.
 
 Contributions are licensed under Apache-2.0, as the project is.

@@ -1,5 +1,5 @@
 # Codex CLI screen rules. Evidence: fixtures/codex/, docs/research/agents.md.
-# Same rules as baton_herdr/adapters/codex.py; the parity tests hold them together.
+# Answers on the test corpus are pinned in tests/golden/classify.jsonl.
 #
 # Codex marks the composer and the selected dialog option with U+203A (›); numbered lines
 # after it are dialog options, not the composer. While a turn runs, the footer ends with a

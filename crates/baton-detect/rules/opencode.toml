@@ -1,5 +1,5 @@
 # OpenCode screen rules. Evidence: fixtures/opencode/, docs/research/agents.md.
-# Same rules as baton_herdr/adapters/opencode.py; the parity tests hold them together.
+# Answers on the test corpus are pinned in tests/golden/classify.jsonl.
 #
 # OpenCode is a full-screen interface: dialogs open in the middle of the screen, so most
 # rules look at the whole recent screen (200 lines) rather than the bottom.

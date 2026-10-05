@@ -11,11 +11,11 @@ what is next, and ADR 0008 for the scope of v1.
 
 - **batond** (`src/baton_herdr/`): one Python 3.12 process. Pydantic v2, SQLAlchemy 2 async +
   aiosqlite, Alembic, structlog; aiogram 3 for the Telegram bot, which runs inside batond.
-- **Detector**: moving to Rust, `crates/baton-detect` (ADR 0011), behind NDJSON contracts
-  defined by JSON Schema in `schemas/`. The usage collector (`baton-detect usage`) is Rust.
-  Screen classification exists twice: the Python rules in `adapters/` (the default) and
-  `baton-detect classify` with `crates/baton-detect/rules/*.toml`, held equal by
-  `tests/integration/test_detect_parity_binary.py`. Change a rule in both places.
+- **Detector**: Rust, `crates/baton-detect` (ADR 0011), behind NDJSON contracts defined by
+  JSON Schema in `schemas/`: the usage collector (`baton-detect usage`) and the screen
+  classifier (`baton-detect classify`, rules in `crates/baton-detect/rules/*.toml`). Its
+  answers are pinned in `tests/golden/classify.jsonl`; a deliberate rule change
+  regenerates them with `UPDATE_GOLDEN=1`, reviewed in the diff.
 - **Not in v1** (ADR 0008): web panel, REST API, Gemini CLI. `baton_herdr.api` is an empty
   placeholder.
 - herdr is used only through its socket API / CLI and its plugin system. herdr is never forked

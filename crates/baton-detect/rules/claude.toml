@@ -1,5 +1,5 @@
 # Claude Code screen rules. Evidence: fixtures/claude/, docs/research/agents.md.
-# Same rules as baton_herdr/adapters/claude.py; the parity tests hold them together.
+# Answers on the test corpus are pinned in tests/golden/classify.jsonl.
 agent = "claude"
 
 # herdr rule ids (fixtures/herdr/agent-detection/claude-*.toml) → the kind of blocked.

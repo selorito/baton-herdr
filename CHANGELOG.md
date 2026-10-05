@@ -26,6 +26,9 @@ across Claude Code, Codex CLI and OpenCode in herdr.
   while no `policy.yaml` exists and states what the defaults approve (ADR 0013).
 - **A hang is caught after 15 minutes** of a still screen and no recorded tokens, not
   after the one-hour turn timeout (ADR 0014). Tune with `[scheduler] stall_minutes`.
+- **baton-detect is required.** 0.1's `[detector] engine = "python"` (the default) and
+  `"shadow"` still load but run as `"rust"`; remove the setting (`baton doctor` warns).
+  While baton-detect gives no answer, batond finishes and hands off nothing.
 
 ### Added
 
@@ -71,8 +74,10 @@ across Claude Code, Codex CLI and OpenCode in herdr.
   shell commands by rule. Defaults: read-only commands are allowed; tests and builds only
   in `trusted_dirs`; risky commands ask. Each decision is logged. `baton policy check`
   (ADR 0013).
-- **Screen classifier in Rust** (`baton-detect classify`), equal to the Python one on 1,949
-  parity cases. `[detector] engine = "python" | "shadow" | "rust"`.
+- **Screen classifier in Rust** (`baton-detect classify`), the only one batond uses. It
+  replaced the Python rules after matching them on 1,949 cases and on real tasks in
+  `shadow` mode (ADR 0011). Its answers are pinned in `tests/golden/classify.jsonl`.
+  `classify --rules DIR` tries changed rules without a rebuild.
 - **`baton doctor`**: config, database, herdr and its integrations, agents, baton-detect,
   detector, policy, time zone, Telegram.
 - **Benchmark**: `just bench` runs baton's own loop against simulated agents on simulated

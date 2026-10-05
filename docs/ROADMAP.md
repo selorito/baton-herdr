@@ -113,8 +113,9 @@ test keeps passing throughout.
 - ✅ Phase 1: the usage collector (`baton-detect usage`).
 - ✅ Phase 2: the screen classifier (`baton-detect classify`), equal to the Python detector on
   1,949 parity cases; `[detector] engine = "shadow" | "rust"` in batond.
-- Next: run `shadow` on real work; with no mismatch, make `rust` the default and remove the
-  Python rules (ADR 0011, step 4).
+- ✅ Step 4 (2026-10-05): seven real tasks under `shadow`, no mismatch; the Python rules are
+  removed and baton-detect is the only classifier. Answers pinned in
+  `tests/golden/classify.jsonl`.
 
 ### Step 1 progress
 

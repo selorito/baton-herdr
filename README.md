@@ -197,8 +197,12 @@ OpenCode prompts still come to you.
 - **Hangs** take 15 minutes to catch (30 without usage collection): long enough not to
   mistake a slow response for one.
 - **Claude's budget** is an estimate. Codex's is its own figure.
-- **The Rust classifier** has passed the parity tests but has not yet replaced the Python
-  one in daily use (`[detector] engine = "shadow"` to compare on your own work).
+- **baton-detect must run.** Without it, batond keeps herdr's working and blocked states but
+  finishes and hands off nothing until it is back. `baton doctor` checks it.
+- **Codex's update chooser** (Codex ≥ 0.156) is not recognised by herdr 0.9.1
+  ([herdr#4811](https://github.com/herdrdev/herdr/issues/4811)). baton can then type the
+  task into it, which picks "Update now" and runs Codex's own update. Set
+  `check_for_update_on_startup = false` in `~/.codex/config.toml` for unattended use.
 - **Telegram** has been tested through the same code paths the CLI uses, but not yet live
   with a phone.
 
@@ -212,10 +216,8 @@ governed by its vendor's terms; read them before you let baton run unattended:
 
 ## Roadmap
 
-- **Now:**
-  - run the Rust classifier in `shadow` on real work;
-  - with no mismatch, make it the default and remove the Python rules (ADR 0011, step 4).
 - **Next:**
+  - recognise Codex's update chooser in baton-detect, so a prompt never lands in it;
   - read Codex's command approvals for the policy, once one is recorded;
   - Claude's status-line limits instead of an estimate.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
@@ -233,18 +235,26 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
   are functions over data, tested as tables (`scheduler/turn.py`, `recovery/policy.py`,
   `budget/choice.py`, `policy/rules.py`). Import contracts keep `core/` free of I/O
   ([pyproject.toml](pyproject.toml), `lint-imports` in CI).
-- **Strangler migration to Rust.** The screen classifier was rewritten in Rust behind the
-  same JSON contract (`schemas/`). batond can run it in `shadow` mode next to Python,
-  logging any disagreement, before letting it decide
-  ([ADR 0011](docs/adr/0011-baton-detect-in-rust.md)). Look-around rules run with a
-  backtracking limit, and a test feeds them hostile screens.
-- **Parity and mutation tests.**
-  - [`test_detect_parity_binary.py`](tests/integration/test_detect_parity_binary.py)
-    sends 1,949 screens through both classifiers and requires identical answers: every
-    recorded capture under every host state, reset times around DST changes in seven
-    zones, and edge cases.
-  - The same file deletes or loosens each Python rule in turn (19 mutants). Each one must
-    make parity fail, so no rule can drift on one side unnoticed.
+- **Strangler migration to Rust**
+  ([ADR 0011](docs/adr/0011-baton-detect-in-rust.md)). The screen classifier was
+  rewritten in Rust behind the same JSON contract (`schemas/`).
+  - A parity test held it equal to the Python one on 1,949 screens.
+  - Then batond ran both in `shadow` mode on real tasks with Claude Code and Codex,
+    logging any disagreement. There was none.
+  - Then the Python rules were removed.
+  - Look-around rules run with a backtracking limit, and a test feeds them hostile
+    screens.
+- **Golden and mutation tests.**
+  - [`test_classify_golden.py`](tests/integration/test_classify_golden.py) checks the
+    binary's answers on 1,949 screens against
+    [`tests/golden/classify.jsonl`](tests/golden/classify.jsonl). The screens are:
+    - every recorded capture under every host state;
+    - reset times around DST changes in seven zones;
+    - edge cases.
+
+    The answers were pinned while the Python and Rust classifiers agreed on all of them.
+  - The same file deletes or loosens each rule in turn (19 mutants, loaded with
+    `classify --rules`). Each one must change some answer, so no rule goes untested.
 - **Evidence before rules.** Every detection rule cites a recorded screen in
   [fixtures/](fixtures/), captured with a masking tool and audited for paths, emails and
   keys in CI.
@@ -317,10 +327,8 @@ It says how to fix what is missing.
   - `journalctl --user -u baton -f` shows batond's log;
   - `baton status` shows the board.
 - **Data:** the event log is at `~/.local/share/baton/baton.db` (`[database] path`).
-- **Screen classifier:** `[detector] engine` is one of:
-  - `"python"` (the default);
-  - `"shadow"`: both run, and differences are logged as "detector mismatch";
-  - `"rust"`: Rust decides, and Python answers if the Rust process is down.
+- **Screen classifier:** `baton-detect classify` (`[detector] binary`). If it stops
+  answering, batond logs "detector unavailable" and retries every minute.
 - **Upgrade:** `git pull && uv tool install --force . && cargo install --path
   crates/baton-detect --locked && systemctl --user restart baton`.
 - **Stop:** `systemctl --user stop baton baton-herdr`.

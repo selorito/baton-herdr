@@ -43,10 +43,9 @@ timezone = "UTC"
 # opencode_db = "~/.local/share/opencode/opencode.db"
 
 [detector]
-# Which screen classifier batond uses (ADR 0011): "python" (the default), "shadow" (Python
-# decides; baton-detect classify answers too and differences are logged as "detector
-# mismatch"), or "rust" (baton-detect decides, Python answers while it is unavailable).
-# engine = "python"
+# The screen classifier, baton-detect classify (ADR 0011). While it gives no answer,
+# batond keeps herdr's working and blocked but makes nothing of idle, so no task finishes
+# or moves without it; `baton doctor` checks it runs.
 # binary = "baton-detect"
 
 [budget]

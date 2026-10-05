@@ -80,7 +80,7 @@ line and writes one `DetectionResult` (`schemas/detector-*.v1.json`), the same c
     answer changing. A region of more than ~100,000 characters could make
     `opencode_idle_composer` give up where Python would answer; herdr screens are a few
     thousand characters.
-  - The Python detector has no such limit. It goes in step 4.
+  - The Python detector had no such limit. It went in step 4.
 - **Parity** (`tests/integration/test_detect_parity_binary.py`): every recorded capture
   under every host state, limit messages at moments around daylight-saving changes in seven
   zones, the fake agents' screens and edge cases go through the binary in one run. In
@@ -94,8 +94,35 @@ line and writes one `DetectionResult` (`schemas/detector-*.v1.json`), the same c
 
   The process is one long-running child. A crash, a late answer or an unreadable answer
   restarts it, and it is not retried for a minute.
-- **Step 4**, removing the Python rules, waits until `shadow` has run on real work without
-  a mismatch. Until then the parity test keeps the two copies from drifting.
+- **Step 4** removed the Python rules once `shadow` had run on real work without a mismatch.
+
+**Step 4, done (2026-10-05).**
+
+- **The evidence.** Seven small tasks ran in a sandbox repository under `shadow`, with
+  Claude Code 2.1 and Codex CLI 0.160. Every screen batond read went through both
+  classifiers, about 13 minutes of supervision, and none differed. The same week, the
+  parity test had matched on 1,949 cases.
+- **What changed.** `baton-detect classify` is the only classifier. The Python rules,
+  their engine (`ScreenRule`, `detect`) and their clock parsing are gone, as are the
+  `python` and `shadow` modes.
+  - `[detector] engine` still accepts those values, so an older config loads. They run
+    as `rust`, and `baton doctor` asks for the setting to be removed.
+- **While the process gives no answer**, batond uses `HostDetector`:
+  - herdr's working and blocked pass through;
+  - herdr's idle reads as unknown, because only the rules can tell a finished turn from
+    a usage limit or a question.
+
+  Without the classifier, no task finishes, hands off or starts; it waits, and its
+  timeouts bring in a person. Before step 4, Python answered instead.
+- **How the rules stay tested.**
+  - The parity test became a golden test. The 1,949 answers, as both classifiers gave
+    them, are pinned in `tests/golden/classify.jsonl` and checked against the binary.
+  - A deliberate rule change regenerates them (`UPDATE_GOLDEN=1`) and shows up in review.
+  - The mutation test moved to the Rust rules. `classify --rules DIR` loads rules from
+    files, so each rule is deleted or loosened in turn without a rebuild, and some
+    answer must change.
+  - The Python tests that classified screens now ask the binary. CI's Python job builds
+    it and fails without it.
 
 **Usage data is kept apart from the task event log.** Task events change state: projections
 fold them into the board, and every one of them belongs to a task. Usage records are
@@ -111,5 +138,5 @@ task event model and its invariants do not change.
 - Good: a path to sharing detection rules with herdr.
 - Bad: two toolchains in the product, not only in the repository; installing baton now also
   means building `baton-detect` (`cargo install`).
-- Bad: during the migration, detection logic exists twice; the parity tests keep the copies
+- Bad (until step 4): during the migration, detection logic existed twice; the parity tests kept the copies
   from drifting.

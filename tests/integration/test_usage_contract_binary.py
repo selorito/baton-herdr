@@ -6,7 +6,7 @@ the contract models (and so against schemas/usage-event.v1.json), and its output
 equal the golden files the Rust tests use.
 
 Needs the binary: BATON_DETECT_BIN, else target/debug/baton-detect, else PATH. Skipped
-without one, unless BATON_REQUIRE_DETECT is set (the CI parity job sets it).
+without one, unless BATON_REQUIRE_DETECT is set (CI sets it).
 """
 
 from __future__ import annotations
