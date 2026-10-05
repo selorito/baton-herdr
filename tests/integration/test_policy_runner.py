@@ -95,7 +95,7 @@ async def test_an_allowed_command_is_approved_without_a_person() -> None:
 
 
 async def test_tests_outside_trusted_dirs_go_to_a_person() -> None:
-    store, host, notifier, status = await run(TESTS, Policy())
+    store, host, _, status = await run(TESTS, Policy())
 
     assert status is TaskStatus.NEEDS_HUMAN
     assert host.permission_answers == []

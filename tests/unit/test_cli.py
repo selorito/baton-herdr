@@ -59,10 +59,10 @@ def test_policy_check_says_what_would_happen_and_why() -> None:
     allowed = runner.invoke(app, ["policy", "check", "ls && git status"])
     assert allowed.exit_code == 0
     assert allowed.stdout.splitlines()[0] == "allow: ls: reads only; git status: reads only"
-    tests = runner.invoke(app, ["policy", "check", "pytest -q", "--dir", "/tmp/calc"])
+    tests = runner.invoke(app, ["policy", "check", "pytest -q", "--dir", "/srv/calc"])
     assert tests.stdout.splitlines()[0] == (
         "ask: pytest -q: runs the project's own code (tests, builds), so it is allowed only "
-        "in trusted_dirs, and /tmp/calc is not one"
+        "in trusted_dirs, and /srv/calc is not one"
     )
     asked = runner.invoke(app, ["policy", "check", "git push --force", "--agent", "codex"])
     assert asked.stdout.splitlines()[:2] == [
