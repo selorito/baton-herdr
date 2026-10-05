@@ -122,7 +122,11 @@ Each notice starts with the task's title and ends with its id:
 - **Done**: how long the task took, the tokens its attempt used, the files it changed (at
   most five), and the agent's budget left.
 
-Permission prompts carry Approve / Deny buttons. To answer a question, reply to it.
+Permission prompts carry Approve / Deny buttons. To answer a question, reply to it; a
+message that is not a reply reaches no agent, and the bot says so.
+
+Only what needs you makes a sound: permission prompts, questions, and every agent being
+limited. The other notices arrive silently.
 `/status` lists open tasks and agents, and `/budget` shows what each agent has left.
 
 Two safeguards:
@@ -206,8 +210,9 @@ OpenCode prompts still come to you.
   ([herdr#4811](https://github.com/herdrdev/herdr/issues/4811)). baton can then type the
   task into it, which picks "Update now" and runs Codex's own update. Set
   `check_for_update_on_startup = false` in `~/.codex/config.toml` for unattended use.
-- **Telegram** has been tested through the same code paths the CLI uses, but not yet live
-  with a phone.
+- **Telegram** was tested live with a phone (2026-10-06) against fake agents: buttons,
+  replies, hand-off, stall, `/status`, `/budget`, sounds, and updates from anyone but
+  `owner_id` ignored. Real agents' screens were not part of that run.
 
 baton drives the official, unmodified agent CLIs in a terminal, and never touches their
 credentials ([ADR 0005](docs/adr/0005-automation-boundaries.md)). It does not rotate
