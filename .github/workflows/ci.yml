@@ -13,15 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The Python tests classify screens with baton-detect, as batond does (ADR 0011), so
+  # this job builds it first and fails rather than skips without it.
   python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
       - uses: extractions/setup-just@v4
+      - run: cargo build --locked -p baton-detect
       - run: just check-py fixtures-audit
+        env:
+          BATON_REQUIRE_DETECT: "1"
 
   rust:
     runs-on: ubuntu-latest
@@ -33,23 +40,3 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v4
       - run: just check-rs
-
-  # baton-detect from the Python side (ADR 0011): the usage contract, and the screen
-  # classifier against the Python detector.
-  parity:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          enable-cache: true
-      - run: cargo build --locked -p baton-detect
-      - run: >-
-          uv run --locked pytest
-          tests/integration/test_usage_contract_binary.py
-          tests/integration/test_detect_parity_binary.py
-          tests/integration/test_detector_engines.py
-        env:
-          BATON_REQUIRE_DETECT: "1"
