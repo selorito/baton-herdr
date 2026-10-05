@@ -126,6 +126,11 @@ async def open_runtime(
 ) -> AsyncIterator[Runtime]:
     """Open the store and connect everything; arguments replace the real parts."""
     policy = make_policy(settings.policy)
+    get_logger("baton.daemon").info(
+        "permission policy",
+        policy=policy.summary() if policy else "off: every permission prompt goes to a person",
+        source=policy.source if policy else None,
+    )
     store = await open_event_store(settings.database.path)
     usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None

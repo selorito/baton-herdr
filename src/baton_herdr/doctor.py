@@ -356,10 +356,17 @@ def _policy(settings: BatonSettings) -> Check:
             str(err),
             "Fix the file (format: docs/adr/0013-permission-policy.md); batond will not start.",
         )
-    own = sum(1 for rule in policy.rules if rule.origin != "defaults")
-    rules = "rule" if own == 1 else "rules"
-    where = f"{own} {rules} from {policy.source}, then" if own else "no policy.yaml; only"
-    return Check("policy", Level.OK, f"{where} the defaults")
+    if not settings.policy.path.is_file():
+        return Check(
+            "policy",
+            Level.WARN,
+            f"defaults, no {settings.policy.path}: {policy.summary()}",
+            "New in 1.0 (ADR 0013): batond answers agents' permission prompts for read-only "
+            f"commands itself. Copy policy.example.yaml to {settings.policy.path} to set "
+            "trusted_dirs and your own rules, or set [policy] enabled = false to be asked "
+            "about every command.",
+        )
+    return Check("policy", Level.OK, f"{policy.source}: {policy.summary()}")
 
 
 def _classifier(settings: BatonSettings, probes: Probes) -> Check:

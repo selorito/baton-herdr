@@ -94,7 +94,8 @@ async def test_a_healthy_setup_with_one_outdated_integration(
     checks = by_name(await diagnose(probes(on_path=("herdr", "claude", "codex"))))
 
     assert {name: c.level for name, c in checks.items() if c.level is not Level.OK} == {
-        "codex integration": Level.FAIL
+        "codex integration": Level.FAIL,
+        "policy": Level.WARN,  # no policy.yaml: the defaults, said out loud
     }
     assert "herdr integration install codex" in checks["codex integration"].hint
     assert checks["telegram"].detail == "@baton_bot, actions from user 7"
@@ -210,7 +211,9 @@ async def test_a_broken_policy_file_fails_before_batond_would(
     monkeypatch.setenv("BATON_CONFIG", str(tmp_path / "missing.toml"))
     monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
     checks = by_name(await diagnose(probes()))
-    assert checks["policy"].detail == "no policy.yaml; only the defaults"
+    assert checks["policy"].level is Level.WARN
+    assert "read-only commands approved without asking" in checks["policy"].detail
+    assert "New in 1.0" in checks["policy"].hint
 
     policy = tmp_path / "policy.yaml"
     policy.write_text("rules: [{decision: allow}]\n", encoding="utf-8")
@@ -221,4 +224,8 @@ async def test_a_broken_policy_file_fails_before_batond_would(
 
     policy.write_text('rules: [{decision: deny, command: "terraform *"}]\n', encoding="utf-8")
     checks = by_name(await diagnose(probes()))
-    assert checks["policy"].detail == f"1 rule from {policy}, then the defaults"
+    assert checks["policy"].level is Level.OK
+    assert checks["policy"].detail == (
+        f"{policy}: read-only commands approved without asking; tests and builds always "
+        "asked (no trusted_dirs); 1 own rule first"
+    )
