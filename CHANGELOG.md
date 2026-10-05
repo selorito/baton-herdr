@@ -49,6 +49,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
     and resumes the same session;
   - crashes and stalls resume the agent's own session, up to `max_failure_resumes`;
   - a session that cannot be reopened restarts fresh.
+- **CLI commands wake batond at once** (`task add`, `approve`, `deny`, `answer`), through
+  a FIFO next to the event log, instead of waiting for its next cycle (up to 30 s).
 - **End-of-turn contract.** `[[BATON:END status=done|question|blocked]]`, so a question
   is never taken for a finished task.
 - **Operator actions** from Telegram and the CLI: approve, deny, answer. Each is bound to

@@ -72,8 +72,8 @@ sequenceDiagram
 ### 1. A task is added
 
 `baton task add` (`cli.py`, `task_add`) calls `daemon.add_task`, which appends one event,
-`task.created`, with the title, the instructions and the working directory. Nothing else
-happens yet: the CLI only writes to the log.
+`task.created`, with the title, the instructions and the working directory. Then it
+wakes batond (`daemon.poke`); the CLI never runs the task itself.
 
 - Events: `core/events.py`. Each event has a stable `type` string (`task.created`,
   `attempt.started`, …) and is validated by pydantic on the way in and out.
@@ -90,8 +90,9 @@ cycle:
    `select_tasks`, which tasks may make progress now. A task is run again only when
    something it depends on changed: its own events, or which agents are available.
 2. Tasks run one at a time, oldest first, through `TaskRunner.run`.
-3. Between cycles batond sleeps 30 s, or until the next limit resets (`next_wake`), or
-   until the Telegram bot wakes it after an operator action.
+3. Between cycles batond sleeps 30 s, or until the next limit resets (`next_wake`). It
+   wakes at once when the Telegram bot acts, or when a CLI command (`task add`,
+   `approve`, …) writes to the FIFO next to the event log (`daemon.poke`, `listening`).
 
 `daemon.open_runtime` is the composition root. It is the only place that knows which real
 implementation stands behind each port (event store, pane host, notifier, detector,
