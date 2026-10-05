@@ -24,6 +24,7 @@ from baton_herdr.core.events import (
     AttemptResumed,
     AttemptStarted,
     OperatorActed,
+    PermissionDecided,
     StoredEvent,
     TaskCancelled,
     TaskCompleted,
@@ -162,6 +163,7 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             AttemptLocated()
             | AttemptPrompted()
             | OperatorActed()
+            | PermissionDecided()
             | AgentStateObserved()
             | AttemptInterrupted()
             | AttemptResumed()
@@ -194,7 +196,7 @@ def _apply_to_attempt(attempt: AttemptView, stored: StoredEvent) -> AttemptView:
             )
         case AgentStateObserved():
             return replace(attempt, agent_state=event.state)
-        case AttemptPrompted() | OperatorActed():
+        case AttemptPrompted() | OperatorActed() | PermissionDecided():
             return attempt
         case AttemptInterrupted():
             if attempt.status is not AttemptStatus.ACTIVE:

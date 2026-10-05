@@ -33,6 +33,7 @@ from baton_herdr.core.model import (
     InterruptReason,
     ObservationSource,
     OperatorAction,
+    PermissionDecision,
     TaskId,
 )
 
@@ -175,6 +176,25 @@ class OperatorActed(_AttemptEvent):
     chars: int = Field(default=0, ge=0)
 
 
+class PermissionDecided(_AttemptEvent):
+    """baton's policy decided an agent's permission prompt (ADR 0013).
+
+    ``blocker_seq`` is the ``attempt.state_observed`` event of the prompt; ``prompt`` the
+    prompt in one line. ``command`` is what the agent asked to run, or ``None`` for a
+    prompt that is not a shell command baton can read. Both are as read from the screen,
+    with secrets masked. ``rule`` names the rule that decided, if one did; ``reason`` says
+    why in words.
+    """
+
+    type: Literal["attempt.permission_decided"] = "attempt.permission_decided"
+    blocker_seq: PositiveInt
+    decision: PermissionDecision
+    prompt: str | None = Field(default=None, max_length=1000)
+    command: str | None = Field(default=None, max_length=1000)
+    rule: str | None = None
+    reason: str = Field(min_length=1)
+
+
 type Event = Annotated[
     TaskCreated
     | TaskCompleted
@@ -186,6 +206,7 @@ type Event = Annotated[
     | AgentStateObserved
     | AttemptPrompted
     | OperatorActed
+    | PermissionDecided
     | AttemptInterrupted
     | AttemptResumed
     | AttemptEnded,

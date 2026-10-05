@@ -91,6 +91,14 @@ class TaskStatus(StrEnum):
         return self in {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}
 
 
+class PermissionDecision(StrEnum):
+    """What baton's policy does with an agent's request to run a command (ADR 0013)."""
+
+    ALLOW = "allow"  # approved without a person
+    ASK = "ask"  # a person decides, as without a policy
+    DENY = "deny"  # refused without a person; the agent is told no
+
+
 class OperatorAction(StrEnum):
     """What the operator may do to a waiting attempt from outside the terminal (ADR 0009)."""
 

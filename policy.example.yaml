@@ -1,0 +1,19 @@
+# Copy to ~/.config/baton/policy.yaml. Rules here are tried first, then baton's defaults
+# (reading and running tests allowed; deleting, pushing, forcing, migrations, sudo and
+# downloads ask). The first matching rule decides; no match asks. A command made of
+# several (a && b, a | b) is decided part by part, and the strictest answer wins.
+# Try it: baton policy check "make lint && git push" --agent codex
+rules:
+  # Your own safe commands.
+  - decision: allow
+    command: "make lint*"
+    reason: our linter, reads only
+  # Never, without asking you first or at all.
+  - decision: deny
+    regex: '^terraform\s+(apply|destroy)'
+    reason: infrastructure changes are made by hand
+  # Only for one agent.
+  - decision: allow
+    command: "git push origin feature/*"
+    agents: [codex]
+    reason: feature branches may be pushed

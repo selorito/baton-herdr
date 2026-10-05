@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.20.0",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
     "sqlalchemy[asyncio]>=2.1.1",
     "structlog>=26.1.0",
     "typer>=0.27.2",
@@ -37,6 +38,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.8",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.ruff]
@@ -120,6 +122,7 @@ forbidden_modules = [
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
   "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
+  "baton_herdr.policy",
 ]
 
 [[tool.importlinter.contracts]]
@@ -130,7 +133,7 @@ containers = ["baton_herdr"]
 exhaustive = true
 layers = [
   "api : telegram : cli : daemon : doctor : service",
-  "recovery : budget : scheduler",
+  "recovery : budget : scheduler : policy",
   "herdr | adapters | ledger | collector | detector | workdir",
   "core",
 ]
@@ -150,6 +153,7 @@ source_modules = [
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
   "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
+  "baton_herdr.policy",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
 # Using baton_herdr.ledger is the point; importing the libraries directly is what is forbidden.
