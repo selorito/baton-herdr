@@ -1,10 +1,17 @@
 name: Release
 
 # A tag v<version> builds baton-detect for Linux x86_64 and aarch64 and the Python wheel,
-# and publishes them as a GitHub release with that version's CHANGELOG section.
+# and publishes them as a GitHub release with that version's CHANGELOG section. Run by hand
+# (workflow_dispatch), it builds and checks everything for the version in pyproject.toml
+# and publishes nothing: a rehearsal before tagging.
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+
+env:
+  # The version being released: the tag's, or pyproject's in a rehearsal.
+  VERSION_FROM_TAG: ${{ github.ref_type == 'tag' }}
 
 permissions:
   contents: read
@@ -15,13 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Tag, pyproject.toml and Cargo.toml name the same version
+        id: version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
           python_version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
           rust_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          echo "tag $tag, pyproject $python_version, Cargo $rust_version"
+          tag="$python_version"
+          if [ "$VERSION_FROM_TAG" = true ]; then tag="${GITHUB_REF_NAME#v}"; fi
+          echo "version $tag, pyproject $python_version, Cargo $rust_version"
           test "$tag" = "$python_version" && test "$tag" = "$rust_version"
           grep -q "^## \[$tag\]" CHANGELOG.md
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
   baton-detect:
     needs: check
@@ -38,7 +50,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release --locked -p baton-detect
       - name: The binary runs and reports the tag's version
-        run: ./target/release/baton-detect --version | grep -q " ${GITHUB_REF_NAME#v}$"
+        run: ./target/release/baton-detect --version | grep -qx "baton-detect ${{ needs.check.outputs.version }}"
       - run: |
           mkdir dist
           cp target/release/baton-detect "dist/baton-detect-${{ matrix.target }}"
@@ -57,14 +69,14 @@ jobs:
       - name: The wheel installs and reports the tag's version
         run: |
           uv venv /tmp/try && uv pip install --python /tmp/try dist/*.whl
-          /tmp/try/bin/baton version | grep -q "${GITHUB_REF_NAME#v}"
+          /tmp/try/bin/baton version | grep -qx "baton ${{ needs.check.outputs.version }}"
       - uses: actions/upload-artifact@v4
         with:
           name: python
           path: dist/
 
   publish:
-    needs: [baton-detect, wheel]
+    needs: [check, baton-detect, wheel]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -78,7 +90,7 @@ jobs:
         run: cd dist && sha256sum * > SHA256SUMS
       - name: This version's notes from CHANGELOG.md
         run: |
-          awk -v v="${GITHUB_REF_NAME#v}" '
+          awk -v v="${{ needs.check.outputs.version }}" '
             $0 ~ "^## \\[" v "\\]" { on = 1; next }
             on && /^## \[/ { exit }
             on && /^\[[^]]+\]: / { exit }
@@ -86,6 +98,7 @@ jobs:
           ' CHANGELOG.md > notes.md
           test -s notes.md
       - name: Create the release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
