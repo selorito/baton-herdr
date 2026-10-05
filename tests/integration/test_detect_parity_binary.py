@@ -12,6 +12,8 @@ without one, unless BATON_REQUIRE_DETECT is set (the CI parity job sets it).
 
 from __future__ import annotations
 
+import dataclasses
+import importlib
 import subprocess
 
 import pytest
@@ -68,6 +70,42 @@ def test_the_corpus_reaches_every_rule_and_state() -> None:
         assert not missing, missing
     assert {r.state for r in results} == set(type(results[0].state))
     assert any(r.resets_at for r in results)
+
+
+def _mutants() -> list[tuple[str, str, tuple[object, ...]]]:
+    """Each rule deleted, and each rule's host-state restriction dropped."""
+    mutants = []
+    for module in ("claude", "codex", "opencode"):
+        rules = importlib.import_module(f"baton_herdr.adapters.{module}").RULES
+        for n, rule in enumerate(rules):
+            mutants.append((module, f"without {rule.rule_id}", rules[:n] + rules[n + 1 :]))
+            if rule.applies_when is not None:
+                loose = dataclasses.replace(rule, applies_when=None)
+                name = f"{rule.rule_id} in every host state"
+                mutants.append((module, name, (*rules[:n], loose, *rules[n + 1 :])))
+    return mutants
+
+
+def test_the_corpus_tells_every_rule_mutant_from_rust(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mutation check: with any one Python rule broken, parity fails.
+
+    So every rule is pinned by at least one case that only it decides, and a rule
+    changed on one side alone cannot slip through the parity test.
+    """
+    cases = detect_corpus.cases()
+    requests = [detect_corpus.request_of(case) for case in cases]
+    rust = [DetectionResult.model_validate_json(line) for line in run(requests)]
+    survivors = []
+    for module, name, rules in _mutants():
+        with monkeypatch.context() as patch:
+            patch.setattr(f"baton_herdr.adapters.{module}.RULES", rules)
+            killed = any(
+                (r.state, r.evidence, r.resets_at) != (p.state, p.evidence, p.resets_at)
+                for r, p in zip(rust, map(detect_corpus.python_classify, requests), strict=True)
+            )
+        if not killed:
+            survivors.append(f"{module}: {name}")
+    assert not survivors, survivors
 
 
 @pytest.mark.parametrize(
