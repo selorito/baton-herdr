@@ -108,6 +108,14 @@ test keeps passing throughout.
 | 5. Benchmark | A replay harness (not started) | Replay fixtures at realistic and stressed pane counts; this is the gate for reconsidering Rust (ADR 0007). |
 | 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
 
+### baton-detect in Rust (ADR 0011)
+
+- ✅ Phase 1: the usage collector (`baton-detect usage`).
+- ✅ Phase 2: the screen classifier (`baton-detect classify`), equal to the Python detector on
+  1,949 parity cases; `[detector] engine = "shadow" | "rust"` in batond.
+- Next: run `shadow` on real work; with no mismatch, make `rust` the default and remove the
+  Python rules (ADR 0011, step 4).
+
 ### Step 1 progress
 
 - ✅ OpenCode adapter; all recorded captures of the three v1 agents are classified in tests.

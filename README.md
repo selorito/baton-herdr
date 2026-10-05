@@ -180,7 +180,13 @@ from another chat, are ignored. Without `owner_id` the bot only sends notices.
 
 - Data: the event log at `~/.local/share/baton/baton.db` (`[database] path`). Every state
   change is in it; `baton status` is a view of it.
-- Upgrade: `git pull && uv tool install --force . && systemctl --user restart baton`.
+- Upgrade: `git pull && uv tool install --force . && cargo install --path crates/baton-detect
+  --locked && systemctl --user restart baton`.
+- Screen classifier: the Python rules by default. `[detector] engine = "shadow"` also runs
+  the Rust classifier (`baton-detect classify`, [ADR 0011](docs/adr/0011-baton-detect-in-rust.md))
+  on every screen and logs where the two differ:
+  `journalctl --user -u baton | grep "detector mismatch"`. `engine = "rust"` lets the Rust
+  one decide, with Python as the fallback.
 - Stop: `systemctl --user stop baton baton-herdr` (agents in the baton session stop with
   their herdr server).
 

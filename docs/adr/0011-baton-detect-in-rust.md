@@ -41,7 +41,8 @@ risky switch-over?
 
 1. Rust implements the same NDJSON contracts (`schemas/`).
 2. Python and Rust run over the same fixtures and their outputs are compared (parity tests).
-3. Once they match, a setting (`detector = "python" | "rust"`) switches batond to Rust.
+3. Once they match, a setting (`[detector] engine = "python" | "shadow" | "rust"`)
+   switches batond to Rust; `shadow` first runs both and logs every difference.
 4. Then the Python detector is removed.
 
 **Phase 1: the usage collector.** `baton-detect usage` follows Claude Code and Codex JSONL
@@ -49,6 +50,36 @@ logs and OpenCode's SQLite database and writes one NDJSON line per usage record 
 rate-limit observation (`schemas/usage-event.v1.json`). There is no Python usage reader, so
 its parity test checks the binary's output against the schema and the golden files instead.
 The screen classifier is phase 2.
+
+**Phase 2: the screen classifier.** `baton-detect classify` reads one `DetectionRequest` per
+line and writes one `DetectionResult` (`schemas/detector-*.v1.json`), the same contract as
+`baton detect`.
+
+- **Rules are data.** `crates/baton-detect/rules/<agent>.toml` is compiled into the binary.
+  Each rule is one pattern over one region. The field names follow herdr's manifests (`id`,
+  `state`, `region`, `regex`), and herdr rule ids still map to blocked kinds.
+- **The region** is `bottom_non_empty_trimmed(N)`: the last N non-blank lines,
+  right-trimmed. That is the Python detector's view. It is deliberately not called herdr's
+  `bottom_non_empty_lines`, which keeps blank lines.
+- **Patterns are the Python ones, verbatim** (`fancy-regex`, so the two lookaheads stay as
+  they are). The only change is `\Z`, which Rust writes `\z`. Lines are split and trimmed
+  the way Python does it, and local times resolve the way Python's `zoneinfo` resolves them
+  (`jiff`).
+- **Parity** (`tests/integration/test_detect_parity_binary.py`): every recorded capture
+  under every host state, limit messages at moments around daylight-saving changes in seven
+  zones, the fake agents' screens and edge cases go through the binary in one run. In
+  total, 1,949 cases. Each answer must equal Python's. The corpus is built from the current
+  fixtures and rules when the test runs, so nothing generated is committed.
+- **In batond**, `[detector] engine` picks the detector:
+  - `python` (the default): the adapters' rules.
+  - `shadow`: Python decides, the Rust classifier answers every screen too, and each
+    difference is logged as "detector mismatch" (states and evidence, never the screen).
+  - `rust`: Rust decides, and Python answers while the process is unavailable.
+
+  The process is one long-running child. A crash, a late answer or an unreadable answer
+  restarts it, and it is not retried for a minute.
+- **Step 4**, removing the Python rules, waits until `shadow` has run on real work without
+  a mismatch. Until then the parity test keeps the two copies from drifting.
 
 **Usage data is kept apart from the task event log.** Task events change state: projections
 fold them into the board, and every one of them belongs to a task. Usage records are
