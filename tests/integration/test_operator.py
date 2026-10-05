@@ -14,7 +14,7 @@ from baton_herdr.core.model import AgentKind, OperatorAction, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
-from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot
+from baton_herdr.telegram.bot import HELP, NOT_A_REPLY, BotSettings, OperatorBot
 from baton_herdr.telegram.notifier import as_shown, button_data, format_notice
 
 from detector_binary import rust_detector
@@ -182,6 +182,7 @@ async def test_status_lists_open_tasks_with_their_blocker_and_the_agents() -> No
     store, host, _, runner = await setup(end_mark=QUESTION)
     bot = operator_bot(store, host, [])
     assert await bot.command("/help") == HELP
+    assert await bot.command("/unknown") == HELP
     assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
 
     status = await bot.command("/status@baton_bot")
@@ -189,6 +190,17 @@ async def test_status_lists_open_tasks_with_their_blocker_and_the_agents() -> No
     assert first.startswith(f"{TASK}  needs_human  claude  power function  (#")
     assert first.endswith("blocked_question)")
     assert status.endswith("claude: available\ncodex: available")
+
+
+async def test_text_that_is_not_a_reply_is_answered_with_where_answers_go() -> None:
+    store, host, _, runner = await setup(end_mark=QUESTION)
+    woken: list[bool] = []
+    bot = operator_bot(store, host, woken)
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
+
+    assert await bot.command("raise it") == f"{NOT_A_REPLY}\n\n{HELP}"
+    assert not woken
+    assert not [s for s in await store.read() if isinstance(s.event, OperatorActed)]
 
 
 async def test_a_reply_answers_the_question_and_wakes_the_daemon() -> None:

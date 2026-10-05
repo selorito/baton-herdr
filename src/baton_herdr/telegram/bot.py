@@ -41,6 +41,8 @@ HELP = (
     "/budget: what each agent has left; Claude's figure is an estimate.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
+# Said to a message that is neither a command nor a reply: it reached no agent.
+NOT_A_REPLY = "That message went to no agent. To answer a question, reply to its message."
 _DONE = {
     OperatorAction.APPROVE: "Approved.",
     OperatorAction.DENY: "Denied.",
@@ -93,6 +95,8 @@ class OperatorBot:
             return await self.status()
         if name == "/budget":
             return await self.budget()
+        if not name.startswith("/"):
+            return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
 
     async def budget(self) -> str:
@@ -194,6 +198,12 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             return
         result = await operator.reply(replied.text or "", message.text or "")
         await message.reply(result or "That message is not a question I can pass on.")
+
+    @router.message()
+    async def on_other(message: Message) -> None:
+        # Plain text or an unknown command: say where answers go instead of dropping it.
+        if operator.authorized(message.chat.id, sender(message)):
+            await message.answer(await operator.command(message.text or ""))
 
     @router.callback_query()
     async def on_button(query: CallbackQuery) -> None:
