@@ -13,19 +13,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-import shutil
 from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.usage import USAGE_EVENT
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from baton_herdr.core.config import UsageSettings
     from baton_herdr.core.ports import UsageStore
     from baton_herdr.core.usage import UsageEvent
@@ -41,15 +41,6 @@ class Backoff:
     max_s: float = 60
     # A run this long counts as healthy: the next failure starts from first_s again.
     healthy_s: float = 60
-
-
-def detector_binary(name: str) -> Path | None:
-    """``name`` as a path to an executable, or found on PATH."""
-    if os.sep in name:
-        path = Path(name).expanduser()
-        return path if path.is_file() and os.access(path, os.X_OK) else None
-    found = shutil.which(name)
-    return Path(found) if found else None
 
 
 class UsageCollector:

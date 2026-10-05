@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.collector import detector_binary
 from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME
+from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind
 
 if TYPE_CHECKING:

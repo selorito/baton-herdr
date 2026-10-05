@@ -22,7 +22,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import ValidationError
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.collector import detector_binary
 from baton_herdr.core.config import (
     HERDR_SOCKET_PATH_ENV_VAR,
     BatonSettings,
@@ -30,6 +29,7 @@ from baton_herdr.core.config import (
     config_file,
     resolve_herdr_socket_path,
 )
+from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind
 from baton_herdr.service import installed_session
 
