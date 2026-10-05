@@ -1,0 +1,31 @@
+name: Bug
+description: baton did something wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: The shortest sequence that shows it.
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `baton version` and `baton doctor`; herdr and agent versions.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >-
+        The relevant lines of `journalctl --user -u baton`. Remove tokens, keys and
+        private paths first.
+      render: text
