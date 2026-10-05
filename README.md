@@ -171,10 +171,23 @@ the terminal.
    chat they are the same number).
 3. Set both under `[telegram]` and restart: `systemctl --user restart baton`.
 
-Notices then arrive in that chat. Permission prompts carry Approve / Deny buttons; reply to a
-question to answer it; `/status` lists open tasks and agents, `/budget` what each agent has
-left. Messages from anyone else, or
-from another chat, are ignored. Without `owner_id` the bot only sends notices.
+Notices then arrive in that chat, each headed by the task's title and ending with its id:
+
+- **Started:** the agent, and why the scheduler chose it.
+- **Moved:** from which agent to which, and why. For a usage limit, also when it lifts, in
+  your `[scheduler] timezone`.
+- **Needs you, or stopped:** what is asked or what went wrong, with the last lines of the
+  agent's screen.
+- **Done:** how long the task took, the tokens its last attempt used, the files it changed
+  (like `git diff --stat`, at most five), and that agent's budget left. An estimate is marked
+  as one.
+
+Known secret shapes (API keys, tokens, private keys, `password=…`) are masked before
+anything is sent.
+
+Permission prompts carry Approve / Deny buttons. Reply to a question to answer it. `/status`
+lists open tasks and agents, and `/budget` what each agent has left. Messages from anyone
+else, or from another chat, are ignored. Without `owner_id` the bot only sends notices.
 
 ### Operate
 
