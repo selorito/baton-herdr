@@ -64,12 +64,12 @@ Work items, each behind a protocol with a fake and tests first (✅ = done):
 - an integration test drives the whole loop with `FakePaneHost`, the in-memory store and the
   fake notifier, and asserts the event log: attempt on Claude interrupted as `rate_limited`,
   attempt on Codex succeeded, task completed, two notifications;
-- `just demo` runs the same loop against a real herdr in a throwaway session with
+- `just demo-test` runs the same loop against a real herdr in a throwaway session with
   `fake-agent` in the panes (a `live` test, not in CI);
 - no real agent is started and no quota is spent.
 
 **Status (2026-10-02): done.** `tests/integration/test_slice0.py` drives the loop with fakes;
-`just demo` runs it against a real herdr in a throwaway session (about 10 s). Limits the slice
+`just demo-test` runs it against a real herdr in a throwaway session (about 10 s). Limits the slice
 accepts on purpose, each picked up by a later step:
 
 - A task is one prompt: the first finished turn completes it (step 3 decides what "done" is).

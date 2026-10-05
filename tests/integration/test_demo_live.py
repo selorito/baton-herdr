@@ -1,4 +1,4 @@
-"""Roadmap slice 0 against a real herdr: ``just demo``.
+"""Roadmap slice 0 against a real herdr: ``just demo-test``.
 
 Everything is real except the agents: a throwaway herdr session, the SQLite
 event log, the herdr client, the adapters and the runner. The agents are

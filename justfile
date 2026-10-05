@@ -43,8 +43,12 @@ smoke:
     uv run pytest -m live -v
 
 # Slice 0 end to end against a real herdr, in a throwaway session, with fake agents. Spends no quota.
-demo:
+demo-test:
     uv run pytest -m live tests/integration/test_demo_live.py -v
+
+# Record the same flow as docs/assets/demo.gif: herdr's client, fake agents, a real batond.
+demo *ARGS:
+    tools/demo/demo.sh {{ARGS}}
 
 # The benchmark: baton's scheduler against simulated agents, on simulated time.
 # Writes bench/results/<date>.md; the same seed gives the same results.
