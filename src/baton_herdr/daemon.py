@@ -87,6 +87,8 @@ def runner_settings(
         start_timeout_s=settings.start_timeout_seconds,
         turn_timeout_s=settings.turn_timeout_seconds,
         poll_interval_s=settings.poll_interval_seconds,
+        stall_after=timedelta(minutes=settings.stall_minutes),
+        stall_after_without_usage=timedelta(minutes=settings.stall_minutes_without_usage),
         timezone=settings.timezone,
         launch_commands={AgentKind(a): cmd for a, cmd in settings.launch_commands.items()},
         max_failure_resumes=settings.max_failure_resumes,

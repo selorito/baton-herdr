@@ -79,6 +79,7 @@ from baton_herdr.scheduler.operator import (
     answered,
     find_blocker,
 )
+from baton_herdr.scheduler.stall import ProgressWatch
 from baton_herdr.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
 if TYPE_CHECKING:
@@ -129,6 +130,9 @@ class RunnerSettings:
     start_timeout_s: float = 120
     turn_timeout_s: float = 3600
     poll_interval_s: float = 2
+    # No change on screen and no tokens for this long while working: stalled (ADR 0014).
+    stall_after: timedelta = field(default_factory=lambda: timedelta(minutes=15))
+    stall_after_without_usage: timedelta = field(default_factory=lambda: timedelta(minutes=30))
     timezone: str = "UTC"
     screen_lines: int = 80
     # Overrides of the adapters' launch commands, per agent.
@@ -484,6 +488,7 @@ class TaskRunner:
         reported = (last_seen.state, last_seen.evidence) if last_seen else None
         saw_agent = last_seen is not None
         screen = ""
+        progress = ProgressWatch()
         try:
             while True:
                 if loop.time() > deadline:
@@ -511,6 +516,13 @@ class TaskRunner:
                 if state is not last_state:
                     await self._observed(task_id, attempt_id, state, evidence)
                     last_state = state
+                stuck = await self._no_progress(
+                    progress, state, turn, screen, task_id=task_id, agent=agent
+                )
+                if stuck:
+                    return await self._interrupt(
+                        task_id, attempt_id, InterruptReason.STALLED, stuck, screen=screen
+                    )
                 pane_for_input = await self._locate(task_id, attempt_id)
                 startup_keys = (
                     adapter.startup_answer(evidence) if state is AgentState.BLOCKED_OTHER else None
@@ -626,6 +638,58 @@ class TaskRunner:
             InterruptReason.STALLED,
             "The pane no longer hosts this attempt's agent.",
         )
+
+    async def _no_progress(  # noqa: PLR0913 - the watch, what is seen, and whose tokens
+        self,
+        watch: ProgressWatch,
+        state: AgentState,
+        turn: TurnState,
+        screen: str,
+        *,
+        task_id: TaskId,
+        agent: AgentKind,
+    ) -> str:
+        """Why a working agent counts as stuck, or "" while it makes progress (ADR 0014)."""
+        now = self._clock.now()
+        if state is not AgentState.WORKING or not turn.prompt_sent:
+            watch.pause()
+            return ""
+        watch.working(screen, now)
+        collecting = self._budget.usage is not None
+        limit = (
+            self._settings.stall_after if collecting else self._settings.stall_after_without_usage
+        )
+        if not watch.quiet(now, limit):
+            return ""
+        if collecting:
+            latest = await self._latest_tokens(task_id, agent, since=now - limit)
+            if latest is not None:
+                watch.tokens(latest)
+            if not watch.quiet(now, limit):
+                return ""
+        minutes = int((watch.quiet_for(now) or limit).total_seconds() // 60)
+        if collecting:
+            return (
+                f"Working for {minutes} min with no change on screen and no tokens recorded "
+                "for its session."
+            )
+        return f"Working for {minutes} min with no change on screen (usage is not collected)."
+
+    async def _latest_tokens(
+        self, task_id: TaskId, agent: AgentKind, *, since: datetime
+    ) -> datetime | None:
+        """When the attempt's session last had tokens recorded, from ``since`` on.
+
+        Records without the session's id count for the agent as a whole, as in ``spent``.
+        """
+        if self._budget.usage is None:
+            return None
+        attempt = (await self._board()).tasks[task_id].live_attempt
+        session = attempt.session_ref if attempt else None
+        records = [r for r in await self._budget.usage.usage(since=since) if r.agent == agent.value]
+        if session is not None and any(r.session_id == session for r in records):
+            records = [r for r in records if r.session_id == session]
+        return max((r.at for r in records), default=None)
 
     async def _apply_policy(
         self,
@@ -807,6 +871,7 @@ class TaskRunner:
                 attempt_id=attempt_id,
                 reason=reason,
                 resume_not_before=resets_at,
+                detail=detail[:500] or None,
             )
         )
         if reason is not InterruptReason.RATE_LIMITED:

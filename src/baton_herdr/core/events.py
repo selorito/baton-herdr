@@ -148,9 +148,13 @@ class AttemptPrompted(_AttemptEvent):
 
 
 class AttemptInterrupted(_AttemptEvent):
+    """The attempt stopped. ``detail`` says what showed it, in words, when there is more
+    to say than the reason (for a stall: how long nothing moved, and by which signals)."""
+
     type: Literal["attempt.interrupted"] = "attempt.interrupted"
     reason: InterruptReason
     resume_not_before: AwareDatetime | None = None
+    detail: str | None = Field(default=None, max_length=500)
 
 
 class AttemptResumed(_AttemptEvent):

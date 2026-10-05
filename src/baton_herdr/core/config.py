@@ -176,6 +176,12 @@ class SchedulerSettings(_Section):
     start_timeout_seconds: float = Field(default=120, gt=0)
     turn_timeout_seconds: float = Field(default=3600, gt=0)
     poll_interval_seconds: float = Field(default=2, gt=0)
+    # A working agent is stuck when, for this long, its screen has not changed and no
+    # tokens were recorded for its session (ADR 0014). Longer than the agents' own request
+    # timeouts (Claude Code 10 min, Codex 5 min), so a slow response is not a stall.
+    stall_minutes: float = Field(default=15, gt=0)
+    # The same with [usage] off, from the screen alone: longer, as one signal is weaker.
+    stall_minutes_without_usage: float = Field(default=30, gt=0)
     # IANA zone for reading clock times that agents print, e.g. "resets 3:45pm".
     timezone: str = "UTC"
     # Replace an agent's launch command, e.g. {"claude": "claude --permission-mode default"}.

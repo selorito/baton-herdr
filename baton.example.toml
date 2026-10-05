@@ -25,6 +25,11 @@ level = "info"
 agents = ["claude", "codex"]
 # Used when an agent hits a limit without printing when it resets.
 limit_cooldown_minutes = 60
+# A working agent whose screen has not changed and whose session recorded no tokens for
+# this long is taken to be stuck and resumed (ADR 0014). Without [usage], the screen alone
+# decides, after the longer wait.
+# stall_minutes = 15
+# stall_minutes_without_usage = 30
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 
