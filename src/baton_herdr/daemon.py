@@ -8,8 +8,10 @@ depends on the protocols in ``baton_herdr.core``.
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
 import uuid
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -43,7 +45,8 @@ from baton_herdr.telegram.notifier import telegram_notifier
 from baton_herdr.workdir import GitWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncIterator, Iterator, Sequence
+    from pathlib import Path
 
     from aiogram import Bot
 
@@ -114,6 +117,8 @@ class Runtime:
     collector: UsageCollector | None = None
     # Remaining budget per agent (ADR 0012), as the scheduler sees it.
     budget: BudgetReader | None = None
+    # The FIFO CLI commands write to, to wake batond at once (``poke``); None: not listened to.
+    wake_fifo: Path | None = None
 
 
 @asynccontextmanager
@@ -192,6 +197,7 @@ async def open_runtime(
                 else None
             ),
             budget=budget,
+            wake_fifo=wake_path(settings.database.path),
         )
     finally:
         await detector.aclose()
@@ -199,6 +205,70 @@ async def open_runtime(
             await telegram.aclose()
         await usage.close()
         await store.close()
+
+
+def wake_path(db_path: Path) -> Path:
+    """The FIFO next to the event log: the CLI and batond find it through the same setting."""
+    return db_path.with_name(db_path.name + ".wake")
+
+
+def poke(db_path: Path) -> bool:
+    """Wake a running batond now, so it does not wait out its idle sleep.
+
+    Writes one byte to the FIFO without blocking. False when no batond listens (no FIFO,
+    or nothing reading it); the change is picked up on batond's next cycle anyway.
+    """
+    try:
+        fd = os.open(wake_path(db_path), os.O_WRONLY | os.O_NONBLOCK)
+    except OSError:  # FileNotFoundError, or ENXIO: no reader
+        return False
+    try:
+        os.write(fd, b"!")
+    except BlockingIOError:
+        pass  # the pipe is full: a wake-up is already pending
+    finally:
+        os.close(fd)
+    return True
+
+
+@contextmanager
+def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
+    """Set ``wake`` whenever something is written to ``fifo``, while in the block.
+
+    The FIFO is created owner-only. It is opened read-write, so it never reads as
+    closed when a writer goes away. A path that exists and is not a FIFO is left alone,
+    and batond falls back to its idle sleep.
+    """
+    log = get_logger("baton.daemon")
+    try:
+        fifo.parent.mkdir(parents=True, exist_ok=True)
+        with suppress(FileExistsError):
+            os.mkfifo(fifo, 0o600)
+        if not stat.S_ISFIFO(fifo.stat().st_mode):
+            log.warning(
+                "wake path is not a fifo; CLI commands wait for the next cycle", path=str(fifo)
+            )
+            yield
+            return
+        fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as err:
+        log.warning("cannot listen for wake-ups", path=str(fifo), error=repr(err))
+        yield
+        return
+    loop = asyncio.get_running_loop()
+
+    def drain() -> None:
+        with suppress(BlockingIOError):
+            while os.read(fd, 512):
+                pass
+        wake.set()
+
+    loop.add_reader(fd, drain)
+    try:
+        yield
+    finally:
+        loop.remove_reader(fd)
+        os.close(fd)
 
 
 async def add_task(
@@ -272,8 +342,10 @@ async def serve(
     collecting = (
         asyncio.create_task(runtime.collector.run(stop)) if runtime.collector is not None else None
     )
+    listen = listening(runtime.wake_fifo, runtime.wake) if runtime.wake_fifo else nullcontext()
     try:
-        await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
+        with listen:
+            await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
     finally:
         if bot_task is not None:
             bot_task.cancel()

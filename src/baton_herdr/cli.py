@@ -25,7 +25,7 @@ from baton_herdr.core.detector import classify_with
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
-from baton_herdr.daemon import add_task, open_runtime, run_pending, serve
+from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, render
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import PolicyError, load_policy
@@ -116,6 +116,7 @@ def task_add(
             await store.close()
 
     typer.echo(asyncio.run(add()))
+    poke(settings.database.path)  # a running batond picks it up now
 
 
 @app.command()
@@ -254,6 +255,7 @@ def _act(task_id: str, action: OperatorAction, text: str = "") -> None:
             return f"{task_id}: {action.value} sent ({blocker.state.value} #{blocker.seq})"
 
     typer.echo(asyncio.run(carry_out()))
+    poke(settings.database.path)  # batond carries the attempt on at once
 
 
 @app.command()

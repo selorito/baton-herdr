@@ -226,3 +226,29 @@ async def test_batond_collects_usage_while_it_serves(tmp_path: Path) -> None:
         stop.set()
         await asyncio.wait_for(serving, 10)
         assert [r.record_id for r in await runtime.usage.usage()] == ["codex:c:1"]
+
+
+async def test_a_task_added_from_the_cli_starts_without_waiting_for_the_idle_time(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
+    db = tmp_path / "cli.db"
+    clock = FixedClock(NOW)
+    stop = asyncio.Event()
+    async with open_runtime(
+        settings_for(db), host=SimulatedAgents(clock), notifier=RecordingNotifier(), clock=clock
+    ) as runtime:
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=60))
+        await asyncio.sleep(0.05)  # first cycle done; now asleep for a minute
+        # The CLI runs its own event loop, as it does from a shell.
+        added = await asyncio.to_thread(
+            cli.invoke, app, ["task", "add", "late", "-i", "do it", "-C", str(tmp_path)], env=env
+        )
+        assert added.exit_code == 0, added.output
+        task_id = TaskId(added.stdout.strip())
+        for _ in range(100):
+            if project(await runtime.store.read()).tasks[task_id].attempts:
+                break
+            await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(serving, timeout=5)
+        assert project(await runtime.store.read()).tasks[task_id].attempts
