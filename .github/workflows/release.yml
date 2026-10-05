@@ -1,0 +1,93 @@
+name: Release
+
+# A tag v<version> builds baton-detect for Linux x86_64 and aarch64 and the Python wheel,
+# and publishes them as a GitHub release with that version's CHANGELOG section.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag, pyproject.toml and Cargo.toml name the same version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          python_version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+          rust_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "tag $tag, pyproject $python_version, Cargo $rust_version"
+          test "$tag" = "$python_version" && test "$tag" = "$rust_version"
+          grep -q "^## \[$tag\]" CHANGELOG.md
+
+  baton-detect:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked -p baton-detect
+      - name: The binary runs and reports the tag's version
+        run: ./target/release/baton-detect --version | grep -q " ${GITHUB_REF_NAME#v}$"
+      - run: |
+          mkdir dist
+          cp target/release/baton-detect "dist/baton-detect-${{ matrix.target }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baton-detect-${{ matrix.target }}
+          path: dist/
+
+  wheel:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv build --out-dir dist
+      - name: The wheel installs and reports the tag's version
+        run: |
+          uv venv /tmp/try && uv pip install --python /tmp/try dist/*.whl
+          /tmp/try/bin/baton version | grep -q "${GITHUB_REF_NAME#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python
+          path: dist/
+
+  publish:
+    needs: [baton-detect, wheel]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+      - name: This version's notes from CHANGELOG.md
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^\[[^]]+\]: / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --title "baton $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
