@@ -209,7 +209,10 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
                 chat_id=query.message.chat.id, message_id=query.message.message_id
             )
             await bot.send_message(
-                query.message.chat.id, result, reply_to_message_id=query.message.message_id
+                query.message.chat.id,
+                result,
+                reply_to_message_id=query.message.message_id,
+                disable_notification=True,  # the operator just pressed the button
             )
 
     dispatcher = Dispatcher()

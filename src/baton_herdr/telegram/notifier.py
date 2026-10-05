@@ -28,7 +28,8 @@ if TYPE_CHECKING:
 
 # (label, callback data) pairs, shown as one row of buttons.
 type Buttons = Sequence[tuple[str, str]]
-type SendMessage = Callable[[int, str, Buttons], Awaitable[object]]
+# (chat id, HTML text, buttons, silent): a silent message arrives without a sound.
+type SendMessage = Callable[[int, str, Buttons, bool], Awaitable[object]]
 
 MAX_MESSAGE_LENGTH = 4096  # Telegram's limit for one text message, counted without markup
 ANSWER_HINT = "Reply to this message to answer."
@@ -128,6 +129,7 @@ class TelegramNotifier:
                 self._chat_id,
                 format_notice(notice, secrets=self._secrets),
                 notice_buttons(notice),
+                not notice.urgent,
             )
         except Exception as err:  # noqa: BLE001 - delivery must never break a task
             self._log.warning(
@@ -152,7 +154,7 @@ def telegram_notifier(settings: TelegramSettings) -> TelegramNotifier | None:
 
     bot = Bot(token=settings.bot_token.get_secret_value())
 
-    async def send(chat_id: int, text: str, buttons: Buttons) -> object:
+    async def send(chat_id: int, text: str, buttons: Buttons, silent: bool) -> object:  # noqa: FBT001 - matches SendMessage
         markup = (
             InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -165,7 +167,13 @@ def telegram_notifier(settings: TelegramSettings) -> TelegramNotifier | None:
             if buttons
             else None
         )
-        return await bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+        return await bot.send_message(
+            chat_id,
+            text,
+            reply_markup=markup,
+            parse_mode="HTML",
+            disable_notification=silent,
+        )
 
     token = settings.bot_token.get_secret_value()
     return TelegramNotifier(send, settings.chat_id, bot=bot, secrets=(token,))

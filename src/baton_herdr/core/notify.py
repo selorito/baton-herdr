@@ -23,6 +23,11 @@ class NoticeKind(StrEnum):
     TASK_STOPPED = "task_stopped"
 
 
+# The notices that need the operator: a decision or answer, or no agent left to work.
+# The rest report progress and arrive without a sound.
+URGENT = frozenset({NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT})
+
+
 @dataclass(frozen=True, slots=True)
 class Notice:
     """What happened to a task, in parts a channel can lay out.
@@ -44,6 +49,11 @@ class Notice:
     title: str = ""
     details: tuple[str, ...] = ()
     blocks: tuple[str, ...] = ()
+
+    @property
+    def urgent(self) -> bool:
+        """Whether the operator should be alerted, not just told."""
+        return self.kind in URGENT
 
     @property
     def plain(self) -> str:

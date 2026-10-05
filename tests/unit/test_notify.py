@@ -26,15 +26,28 @@ NOTICE = Notice(NoticeKind.TASK_HANDED_OFF, TaskId("t1"), "Claude hit its limit;
 
 
 async def test_telegram_notifier_sends_to_the_configured_chat_only() -> None:
-    sent: list[tuple[int, str, Buttons]] = []
+    sent: list[tuple[int, str, Buttons, bool]] = []
 
-    async def send(chat_id: int, text: str, buttons: Buttons) -> None:
-        sent.append((chat_id, text, buttons))
+    async def send(chat_id: int, text: str, buttons: Buttons, silent: bool) -> None:
+        sent.append((chat_id, text, buttons, silent))
 
     notifier: Notifier = TelegramNotifier(send, chat_id=42)
     await notifier.notify(NOTICE)
 
-    assert sent == [(42, "Claude hit its limit; moved to Codex.\n\n<code>t1</code>", [])]
+    assert sent == [(42, "Claude hit its limit; moved to Codex.\n\n<code>t1</code>", [], True)]
+
+
+@pytest.mark.parametrize("kind", list(NoticeKind))
+async def test_only_decisions_and_a_lack_of_agents_make_a_sound(kind: NoticeKind) -> None:
+    silent: list[bool] = []
+
+    async def send(_chat_id: int, _text: str, _buttons: Buttons, quiet: bool) -> None:
+        silent.append(quiet)
+
+    await TelegramNotifier(send, chat_id=42).notify(replace(NOTICE, kind=kind))
+
+    loud = {NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT}
+    assert silent == [kind not in loud]
 
 
 def test_a_decision_names_its_blocker_and_offers_only_the_actions_that_fit() -> None:
@@ -79,7 +92,7 @@ def test_a_reply_finds_the_blocker_in_the_notice_it_answers(
 
 
 async def test_a_failed_delivery_does_not_raise() -> None:
-    async def broken(_chat_id: int, _text: str, _buttons: Buttons) -> None:
+    async def broken(_chat_id: int, _text: str, _buttons: Buttons, _silent: bool) -> None:
         raise ConnectionError
 
     await TelegramNotifier(broken, chat_id=42).notify(NOTICE)
