@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
+import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -68,3 +70,21 @@ def test_migrations_produce_exactly_the_declared_schema(tmp_path: Path) -> None:
     engine.dispose()
 
     assert differences == []
+
+
+def test_processes_opening_a_new_database_together_all_get_the_schema(tmp_path: Path) -> None:
+    """batond and the CLI may create the database at the same moment (seen in `just demo`)."""
+    db = tmp_path / "new" / "baton.db"
+    code = (
+        "import sys; from pathlib import Path; "
+        "from baton_herdr.ledger.migrate import upgrade; upgrade(Path(sys.argv[1]))"
+    )
+    runs = [
+        subprocess.Popen(  # noqa: S603 - this interpreter, a fixed script
+            [sys.executable, "-c", code, str(db)], stderr=subprocess.PIPE, text=True
+        )
+        for _ in range(6)
+    ]
+    errors = [run.communicate(timeout=60)[1] for run in runs]
+    failures = [e[-300:] for run, e in zip(runs, errors, strict=True) if run.returncode != 0]
+    assert not failures, failures
