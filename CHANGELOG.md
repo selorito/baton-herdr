@@ -11,7 +11,7 @@ is:
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-05
+## [1.0.0] - Unreleased
 
 The first release: baton runs a queue of coding tasks unattended on one Linux machine,
 across Claude Code, Codex CLI and OpenCode in herdr.
