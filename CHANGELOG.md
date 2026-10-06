@@ -11,6 +11,8 @@ is:
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-06
+
 ### Added
 
 - **Labels on Telegram notices that need you**: 🔐 Needs approval, ❓ Needs answer,
@@ -112,5 +114,6 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/selorito/baton-herdr/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/selorito/baton-herdr/releases/tag/v1.0.0
