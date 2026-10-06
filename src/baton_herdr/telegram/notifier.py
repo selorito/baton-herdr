@@ -2,10 +2,11 @@
 
 Messages go to the single configured chat; failures are logged and swallowed,
 because a task must not fail when Telegram is unreachable. Notices are Telegram
-HTML: the task's name in bold, what happened, details, monospace blocks, and the
-task id at the end. A notice that asks for a decision ends with its blocker
-(``t-1a2b3c4d #42``), which is how a reply finds it, and, where an action fits,
-carries buttons bound to that blocker (ADR 0009). Secrets are masked first.
+HTML: a label on those that need attention, the task's name in bold, what happened,
+details, monospace blocks, and the task id at the end. A notice that asks for a
+decision ends with its blocker (``t-1a2b3c4d #42``), which is how a reply finds it,
+and, where an action fits, carries buttons bound to that blocker (ADR 0009).
+Secrets are masked first.
 """
 
 from __future__ import annotations
@@ -52,7 +53,8 @@ def format_notice(notice: Notice, *, secrets: Iterable[str] = ()) -> str:
         return html.escape(redact(text, known), quote=False)
 
     reference = f"{notice.task_id} #{notice.blocker_seq}" if notice.blocker_seq else notice.task_id
-    head = [f"<b>{clean(notice.title)}</b>"] if notice.title else []
+    head = [clean(notice.label)] if notice.label else []
+    head += [f"<b>{clean(notice.title)}</b>"] if notice.title else []
     head += [clean(notice.text), *(clean(line) for line in notice.details)]
     tail = []
     if OperatorAction.ANSWER in notice.actions and notice.blocker_seq:

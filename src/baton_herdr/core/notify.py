@@ -35,7 +35,8 @@ class Notice:
     ``title`` is the task's name; ``text`` says what happened in one sentence;
     ``details`` add facts, one per line (the agent chosen and why, tokens spent);
     ``blocks`` are shown as they are, in a monospace font (the end of the screen,
-    the files changed). Every part is plain text; channels escape it.
+    the files changed); ``label`` tags a notice that needs attention. Every part is
+    plain text; channels escape it.
     """
 
     kind: NoticeKind
@@ -48,6 +49,9 @@ class Notice:
     actions: tuple[OperatorAction, ...] = ()
     title: str = ""
     details: tuple[str, ...] = ()
+    # What kind of attention it needs, at a glance, for notices that need some
+    # ("🔐 Needs approval", "⏸ Stalled"); channels show it first.
+    label: str = ""
     blocks: tuple[str, ...] = ()
 
     @property

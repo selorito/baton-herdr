@@ -19,6 +19,7 @@ import pytest
 from baton_herdr.budget.quota import AgentBudget, BudgetSource
 from baton_herdr.core.changes import Changes, FileChange
 from baton_herdr.core.model import AgentKind, InterruptReason, OperatorAction, TaskId
+from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import TaskView
 from baton_herdr.core.usage import UsageTokens
 from baton_herdr.scheduler import notices
@@ -159,4 +160,15 @@ def test_no_notice_carries_a_secret(name: str) -> None:
 def test_a_decision_ends_with_the_reference_a_reply_needs() -> None:
     shown = as_shown(format_notice(CASES["question"]))
     assert shown.splitlines()[-1] == "t-90f0f859 #43"
-    assert shown.splitlines()[0] == "power function"
+    assert shown.splitlines()[:2] == ["❓ Needs answer", "power function"]
+
+
+def test_only_notices_that_need_attention_carry_a_label() -> None:
+    labelled = {name for name, notice in CASES.items() if notice.label}
+    needing = {
+        name
+        for name, notice in CASES.items()
+        if notice.kind
+        in {NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT, NoticeKind.TASK_STOPPED}
+    }
+    assert labelled == needing

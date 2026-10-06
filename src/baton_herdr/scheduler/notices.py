@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from baton_herdr.budget.report import tokens, when
-from baton_herdr.core.model import InterruptReason
+from baton_herdr.core.model import InterruptReason, OperatorAction
 from baton_herdr.core.notify import Notice, NoticeKind
 from baton_herdr.scheduler.text import screen_tail
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from baton_herdr.budget.quota import AgentBudget
     from baton_herdr.core.changes import Changes
-    from baton_herdr.core.model import AgentKind, AttemptId, OperatorAction
+    from baton_herdr.core.model import AgentKind, AttemptId
     from baton_herdr.core.projection import TaskView
     from baton_herdr.core.usage import UsageTokens
 
@@ -37,6 +37,16 @@ STOPPED = {
     InterruptReason.OPERATOR: "was stopped by the operator",
     InterruptReason.RESUME_FAILED: "could not reopen its session",
 }
+
+
+# Labels for the notices that need attention, shown first.
+NEEDS_APPROVAL = "🔐 Needs approval"
+NEEDS_ANSWER = "❓ Needs answer"
+NEEDS_YOU = "❗ Needs you"
+STALLED = "⏸ Stalled"
+STOPPED_LABEL = "⚠ Stopped"
+ALL_LIMITED = "⛔ All agents limited"
+NO_AGENT = "⛔ No agent available"
 
 
 def local_time(at: datetime, now: datetime, zone: tzinfo) -> str:
@@ -123,6 +133,7 @@ def no_agent(task: TaskView, reason: str) -> Notice:
         task.task_id,
         "No agent can take the task right now; it waits.",
         title=task.title,
+        label=NO_AGENT,
         details=(reason,) if reason else (),
     )
 
@@ -147,6 +158,7 @@ def waiting_for_reset(  # noqa: PLR0913 - the attempt and when it may go on
         f"Every agent is limited; {goes_on}{when_text}.",
         attempt_id,
         title=task.title,
+        label=ALL_LIMITED,
     )
 
 
@@ -162,6 +174,12 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
 ) -> Notice:
     """``policy`` is what baton's policy said, when it left the decision to a person."""
     tail = screen_tail(screen)
+    if OperatorAction.APPROVE in actions:
+        label = NEEDS_APPROVAL
+    elif OperatorAction.ANSWER in actions:
+        label = NEEDS_ANSWER
+    else:
+        label = NEEDS_YOU  # nothing to press or reply to: a look at the terminal
     return Notice(
         NoticeKind.NEEDS_HUMAN,
         task.task_id,
@@ -171,6 +189,7 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
         actions=actions,
         title=task.title,
         details=(policy,) if policy else (),
+        label=label,
         blocks=(tail,) if tail else (),
     )
 
@@ -192,6 +211,7 @@ def stopped(  # noqa: PLR0913 - the attempt, why it stopped, and what was on scr
         f"{agent.value} {STOPPED[reason]}.",
         attempt_id,
         title=task.title,
+        label=STALLED if reason is InterruptReason.STALLED else STOPPED_LABEL,
         details=(detail,) if detail else (),
         blocks=(tail,) if tail else (),
     )
