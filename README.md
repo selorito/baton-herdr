@@ -112,7 +112,10 @@ These are baton's mechanics under a stated model, not measurements of real agent
    - `message.from.id` is your `owner_id`.
 3. Set both under `[telegram]`, then run `systemctl --user restart baton`.
 
-Each notice starts with the task's title and ends with its id:
+Each notice starts with the task's title and ends with its id. One that needs you starts
+with a label above the title: 🔐 Needs approval, ❓ Needs answer, ❗ Needs you, ⏸ Stalled,
+⚠ Stopped, ⛔ All agents limited.
+
 
 - **Started**: the agent, and why the scheduler chose it.
 - **Moved**: from which agent to which, and why. For a usage limit, also when it lifts, in
