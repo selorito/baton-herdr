@@ -5,6 +5,7 @@ Its screen rules are baton-detect's (crates/baton-detect/rules/claude.toml).
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from typing import TYPE_CHECKING
@@ -14,6 +15,7 @@ from baton_herdr.core.model import AgentKind
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
 # herdr manifest rule ids (fixtures/herdr/agent-detection/claude-*.toml) → blocked kind.
 # The tool permission prompt opens on "1. Yes"; "Esc to cancel" denies
@@ -23,6 +25,15 @@ PERMISSION_EVIDENCE = frozenset(
 )
 APPROVE_KEYS = ("Enter",)
 DENY_KEYS = ("Escape",)
+
+
+def status_line_args(binary: Path, log: Path) -> str:
+    """``--settings`` for the Claude sessions baton starts: ``baton-detect statusline`` as
+    their status line, logging Claude's rate limits to ``log`` (ADR 0015). Only these
+    sessions get it; the user's own settings are not touched."""
+    command = f"{shlex.quote(str(binary))} statusline --log {shlex.quote(str(log))}"
+    settings = {"statusLine": {"type": "command", "command": command}}
+    return f"--settings {shlex.quote(json.dumps(settings, separators=(',', ':')))}"
 
 
 class ClaudeAdapter:

@@ -41,7 +41,7 @@ LOOKBACK = timedelta(hours=24)
 
 
 class BudgetSource(StrEnum):
-    REPORTED = "reported"  # the agent's own figures (Codex rate_limits)
+    REPORTED = "reported"  # the agent's own figures (Codex rate_limits, Claude's status line)
     CONFIGURED = "configured"  # estimate against [budget] claude_window_tokens
     LEARNED = "learned"  # estimate against the tokens spent before the last limit
     UNKNOWN = "unknown"
@@ -109,7 +109,10 @@ def fold_budgets(  # noqa: PLR0913 - the facts and the two settings they are rea
         if agent is AgentKind.CODEX:
             budget = _reported(agent, rate_limits, now)
         elif agent is AgentKind.CLAUDE:
-            budget = _claude(own, events, now, claude_window_tokens)
+            # Claude's own figures, from its status line (ADR 0015); else the estimate.
+            budget = _reported(agent, rate_limits, now)
+            if budget.source is BudgetSource.UNKNOWN:
+                budget = _claude(own, events, now, claude_window_tokens)
         else:
             budget = AgentBudget(agent, BudgetSource.UNKNOWN, None)
         until = availability.limited_until.get(agent)

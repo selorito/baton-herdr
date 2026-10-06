@@ -222,8 +222,11 @@ def _command_target(
     for agent, adapter in ADAPTERS.items():
         if agent not in fresh_scripts:
             continue
-        if command == adapter.launch_command():
-            return agent, fresh_scripts[agent]
-        if command == adapter.resume_command(f"{agent.value}-session"):
+        # Either may be followed by baton's own arguments (RunnerSettings.launch_args).
+        resume = adapter.resume_command(f"{agent.value}-session")
+        if command == resume or command.startswith(f"{resume} "):
             return agent, RESUMED_SCRIPT_FILES[agent]
+        launch = adapter.launch_command()
+        if command == launch or command.startswith(f"{launch} "):
+            return agent, fresh_scripts[agent]
     return None, None

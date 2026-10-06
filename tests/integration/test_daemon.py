@@ -22,7 +22,14 @@ from baton_herdr.core.fakes import FixedClock, RecordingNotifier
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
-from baton_herdr.daemon import add_task, open_runtime, run_pending, runner_settings, serve
+from baton_herdr.daemon import (
+    add_task,
+    claude_status_line,
+    open_runtime,
+    run_pending,
+    runner_settings,
+    serve,
+)
 from baton_herdr.ledger import open_event_store
 
 from detector_binary import detector
@@ -88,6 +95,20 @@ def test_runner_settings_come_from_the_scheduler_section() -> None:
     assert converted.agents == (AgentKind.CODEX,)
     assert converted.limit_cooldown.total_seconds() == 300
     assert converted.launch_commands == {AgentKind.CODEX: "/opt/bin/codex --profile ci"}
+
+
+def test_claudes_status_line_is_set_only_while_usage_is_collected(tmp_path: Path) -> None:
+    binary = tmp_path / "baton-detect"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    log = tmp_path / "claude-status.jsonl"
+    on = UsageSettings(binary=str(binary), claude_status_log=log)
+    (args,) = claude_status_line(on).values()
+    assert args.startswith("--settings ")
+    assert str(log) in args
+    assert claude_status_line(on.model_copy(update={"enabled": False})) == {}
+    missing = on.model_copy(update={"binary": str(tmp_path / "nowhere")})
+    assert claude_status_line(missing) == {}  # nothing to run: Claude's footer stays as it is
 
 
 @pytest.fixture

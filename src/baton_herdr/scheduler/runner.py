@@ -137,6 +137,9 @@ class RunnerSettings:
     screen_lines: int = 80
     # Overrides of the adapters' launch commands, per agent.
     launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
+    # Appended to an agent's own launch and resume commands, not to an override: the
+    # status line that reports Claude's rate limits (ADR 0015).
+    launch_args: Mapping[AgentKind, str] = field(default_factory=dict)
     # Automatic resumes after crashes and stalls, per task (ADR 0005).
     max_failure_resumes: int = 2
     # An agent with less budget left than this goes behind the others (ADR 0012).
@@ -295,6 +298,10 @@ class TaskRunner:
         )
         return _Outcome.STOPPED
 
+    def _with_args(self, agent: AgentKind, command: str) -> str:
+        args = self._settings.launch_args.get(agent)
+        return f"{command} {args}" if args else command
+
     def _free_first(
         self, availability: Availability, own: AgentKind
     ) -> tuple[AgentKind, datetime | None]:
@@ -327,7 +334,9 @@ class TaskRunner:
                     pane_id=pane_id,
                 ),
             )
-            await self._host.send_text(pane_id, adapter.resume_command(session_ref))
+            await self._host.send_text(
+                pane_id, self._with_args(attempt.agent, adapter.resume_command(session_ref))
+            )
             await self._host.send_keys(pane_id, ["Enter"])
             await self._deliver(notices.resumed(task, attempt.agent, attempt.attempt_id))
             return await self._supervise(
@@ -450,8 +459,8 @@ class TaskRunner:
                     pane_id=pane_id,
                 )
             )
-            command = (
-                self._settings.launch_commands.get(agent) or self._adapters[agent].launch_command()
+            command = self._settings.launch_commands.get(agent) or self._with_args(
+                agent, self._adapters[agent].launch_command()
             )
             await self._host.send_text(pane_id, command)
             await self._host.send_keys(pane_id, ["Enter"])

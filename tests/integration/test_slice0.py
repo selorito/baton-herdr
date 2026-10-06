@@ -282,6 +282,21 @@ async def test_a_crashed_agent_is_resumed_in_its_own_session() -> None:
     ]
 
 
+async def test_baton_arguments_follow_the_agents_own_commands_but_not_an_override() -> None:
+    settings = replace(SETTINGS, launch_args={AgentKind.CLAUDE: "--settings x"})
+    _, host, _, runner = await setup(crash_after_prompt=True, settings=settings)
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert host.launched == [
+        "claude --settings x",
+        "claude --resume claude-session --settings x",
+    ]
+
+    overridden = replace(settings, launch_commands={AgentKind.CLAUDE: "claude"})
+    _, host, _, runner = await setup(settings=overridden)
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert host.launched[0] == "claude"  # the user's own command, as given
+
+
 async def test_without_resumes_left_a_crash_goes_to_a_person() -> None:
     store, host, notifier, _ = await setup(crash_after_prompt=True)
     runner = TaskRunner(

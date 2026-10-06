@@ -201,11 +201,18 @@ class UsageSettings(_Section):
     claude_dir: Path | None = None
     codex_dir: Path | None = None
     opencode_db: Path | None = None
+    # Where the Claude sessions baton starts log Claude's rate limits, through a status
+    # line (`baton-detect statusline`, ADR 0015); the collector reads it back.
+    claude_status_log: Path = Field(
+        default_factory=lambda: (
+            _xdg_dir("XDG_STATE_HOME", ".local/state") / "baton" / "claude-status.jsonl"
+        )
+    )
     # How far before the newest stored record reading starts again after a restart.
     # Repeats are dropped by the database, so this only needs to be generous.
     reread_minutes: int = Field(default=60, ge=0)
 
-    @field_validator("claude_dir", "codex_dir", "opencode_db")
+    @field_validator("claude_dir", "codex_dir", "opencode_db", "claude_status_log")
     @classmethod
     def _expand_user(cls, value: Path | None) -> Path | None:
         return value.expanduser() if value else None

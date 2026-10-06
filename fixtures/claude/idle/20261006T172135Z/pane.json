@@ -1,0 +1,25 @@
+{
+  "agent": "claude",
+  "agent_session": {
+    "agent": "claude",
+    "kind": "id",
+    "source": "herdr:claude",
+    "value": "2d4f7140-357b-410d-82d6-35c616552553"
+  },
+  "agent_status": "idle",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": true,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p1",
+  "revision": 7,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 40
+  },
+  "tab_id": "w1:t1",
+  "terminal_id": "term_65d2f361034ab1",
+  "terminal_title": "✳ Reply with ok",
+  "terminal_title_stripped": "Reply with ok",
+  "workspace_id": "w1"
+}

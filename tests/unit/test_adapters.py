@@ -11,13 +11,14 @@ limit screens are recorded.
 from __future__ import annotations
 
 import json
+import shlex
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.adapters.claude import ClaudeAdapter
+from baton_herdr.adapters.claude import ClaudeAdapter, status_line_args
 from baton_herdr.adapters.codex import CodexAdapter
 from baton_herdr.adapters.opencode import OpenCodeAdapter
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
@@ -62,6 +63,7 @@ EXPECTED = {
     "claude/idle/20260930T071250Z": IDLE,
     "claude/idle/20260930T074402Z": IDLE,
     "claude/idle/20260930T075346Z": IDLE,
+    "claude/idle/20261006T172135Z": IDLE,  # with baton's status line (ADR 0015)
     "claude/working/20260930T072147Z": WORK,
     "claude/blocked_permission/20260930T072344Z": PERM,
     "claude/blocked_question/20260930T072744Z": QUESTION,
@@ -370,3 +372,18 @@ def test_codex_command_approvals_are_read_only_when_the_command_fits_on_one_line
     )
     assert codex.permission_command(prompt.format("  -la")) is None  # a second line
     assert codex.permission_command(prompt.format("")) == "ls"
+
+
+def test_claudes_status_line_is_passed_as_settings_that_survive_the_shell(tmp_path: Path) -> None:
+    binary = tmp_path / "bin dir" / "baton-detect"
+    log = tmp_path / "it's" / "claude-status.jsonl"
+    args = shlex.split(status_line_args(binary, log))
+    assert args[0] == "--settings"
+    settings = json.loads(args[1])
+    assert settings["statusLine"]["type"] == "command"
+    assert shlex.split(settings["statusLine"]["command"]) == [
+        str(binary),
+        "statusline",
+        "--log",
+        str(log),
+    ]

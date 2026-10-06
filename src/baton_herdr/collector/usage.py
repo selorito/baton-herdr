@@ -95,6 +95,7 @@ class UsageCollector:
             ("--claude-dir", self._settings.claude_dir),
             ("--codex-dir", self._settings.codex_dir),
             ("--opencode-db", self._settings.opencode_db),
+            ("--claude-status", self._settings.claude_status_log),
         ):
             if path is not None:
                 arguments += [option, str(path)]

@@ -120,6 +120,32 @@ def test_codex_figures_are_its_own_and_a_window_that_reset_is_unused() -> None:
     ]
 
 
+def test_claudes_own_figures_from_its_status_line_replace_the_estimate() -> None:
+    reported = RateLimitObservation(
+        agent="claude",
+        session_id="s",
+        at=NOW - H,
+        windows=(
+            RateLimitWindow(
+                name="five_hour", window_minutes=300, used_percent=23, resets_at=NOW + H
+            ),
+            RateLimitWindow(
+                name="seven_day", window_minutes=10080, used_percent=41, resets_at=NOW + 72 * H
+            ),
+        ),
+    )
+    usage = [record("claude", NOW - H, 1000)]
+    claude = budgets(usage=usage, limits=[reported], configured=10_000)[AgentKind.CLAUDE]
+    assert claude.source is BudgetSource.REPORTED
+    assert not claude.estimate
+    assert claude.remaining_percent == 59
+    assert [w.name for w in claude.windows] == ["5h", "weekly"]
+
+    # Without a report, the estimate as before.
+    estimated = budgets(usage=usage, configured=10_000)[AgentKind.CLAUDE]
+    assert estimated.source is BudgetSource.CONFIGURED
+
+
 def test_without_reports_or_a_cap_the_budget_is_unknown() -> None:
     result = budgets(usage=[record("claude", NOW - H, 1000), record("opencode", NOW - H, 50)])
     claude, codex, opencode = result.values()

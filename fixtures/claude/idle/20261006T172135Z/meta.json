@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "claude",
+  "agent_cli": {
+    "version": "2.1.291 (Claude Code)",
+    "error": null
+  },
+  "scenario": "idle",
+  "captured_at": "2026-10-06T17:21:35.715292+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "claude",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "idle after a turn, with baton's status line (baton-detect statusline, ADR 0015): no '? for shortcuts' hint",
+  "explain_error": null
+}

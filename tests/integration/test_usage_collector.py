@@ -97,7 +97,12 @@ async def test_lines_are_stored_once_and_off_contract_lines_skipped(
         lines=[line("claude:old"), line("claude:a", 1), '{"kind":"nonsense"}', line("claude:b", 2)],
         then="sleep",
     )
-    settings = UsageSettings(binary=str(binary), claude_dir=tmp_path / "c", reread_minutes=30)
+    settings = UsageSettings(
+        binary=str(binary),
+        claude_dir=tmp_path / "c",
+        claude_status_log=tmp_path / "s.jsonl",
+        reread_minutes=30,
+    )
     collector = UsageCollector(store=store, settings=settings, backoff=QUICK)
     stop = asyncio.Event()
     running = asyncio.create_task(collector.run(stop))
@@ -110,7 +115,10 @@ async def test_lines_are_stored_once_and_off_contract_lines_skipped(
     assert collector.stored == 2
     # Started from 30 minutes before the newest stored record, with the configured path.
     (arguments,) = calls(tmp_path)
-    assert arguments == f"usage --since 2026-10-01T09:30:00+00:00 --claude-dir {tmp_path / 'c'}"
+    assert arguments == (
+        f"usage --since 2026-10-01T09:30:00+00:00 --claude-dir {tmp_path / 'c'}"
+        f" --claude-status {tmp_path / 's.jsonl'}"
+    )
     output = logged(capsys)
     assert "line off contract" in output
     assert "something to say" in output

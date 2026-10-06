@@ -17,6 +17,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
+from baton_herdr.adapters.claude import status_line_args
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
@@ -24,6 +25,7 @@ from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BudgetSettings, DetectorSettings
 from baton_herdr.core.detector import HostDetector
 from baton_herdr.core.events import TaskCreated
+from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
@@ -45,12 +47,17 @@ from baton_herdr.telegram.notifier import telegram_notifier
 from baton_herdr.workdir import GitWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator, Sequence
+    from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
     from pathlib import Path
 
     from aiogram import Bot
 
-    from baton_herdr.core.config import BatonSettings, PolicySettings, SchedulerSettings
+    from baton_herdr.core.config import (
+        BatonSettings,
+        PolicySettings,
+        SchedulerSettings,
+        UsageSettings,
+    )
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notifier
@@ -78,11 +85,21 @@ def make_policy(settings: PolicySettings) -> Policy | None:
     return load_policy(settings.path) if settings.enabled else None
 
 
+def claude_status_line(usage: UsageSettings) -> dict[AgentKind, str]:
+    """Claude's status line in the sessions baton starts, while usage is collected and
+    baton-detect is there to run it (ADR 0015)."""
+    binary = detector_binary(usage.binary) if usage.enabled else None
+    if binary is None:
+        return {}
+    return {AgentKind.CLAUDE: status_line_args(binary, usage.claude_status_log)}
+
+
 def runner_settings(
     settings: SchedulerSettings,
     budget: BudgetSettings | None = None,
     *,
     collecting_usage: bool = False,
+    launch_args: Mapping[AgentKind, str] | None = None,
 ) -> RunnerSettings:
     budget = budget or BudgetSettings()
     return RunnerSettings(
@@ -99,6 +116,7 @@ def runner_settings(
         reserve_percent=budget.reserve_percent,
         # Without the collector there is no last response to wait for.
         usage_grace_s=3 if collecting_usage else 0,
+        launch_args=launch_args or {},
     )
 
 
@@ -142,7 +160,10 @@ async def open_runtime(
     telegram = telegram_notifier(settings.telegram) if notifier is None else None
     clock = clock or SystemClock()
     scheduling = runner_settings(
-        settings.scheduler, settings.budget, collecting_usage=settings.usage.enabled
+        settings.scheduler,
+        settings.budget,
+        collecting_usage=settings.usage.enabled,
+        launch_args=claude_status_line(settings.usage),
     )
     host = host or connect(settings.herdr)
     wake = asyncio.Event()
