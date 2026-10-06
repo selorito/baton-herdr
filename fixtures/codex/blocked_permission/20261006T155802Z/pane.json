@@ -1,0 +1,19 @@
+{
+  "agent": "codex",
+  "agent_status": "blocked",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": true,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p1",
+  "revision": 189,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 40
+  },
+  "tab_id": "w1:t1",
+  "terminal_id": "term_65d2e04f831641",
+  "terminal_title": "[ . ] Action Required | Create build.log | coban-sandbox",
+  "terminal_title_stripped": "[ . ] Action Required | Create build.log | coban-sandbox",
+  "workspace_id": "w1"
+}

@@ -16,11 +16,13 @@ region = "bottom_non_empty_trimmed(30)"
 resets = "from_groups"
 regex = '''You've\s+hit\s+your\s+usage\s+limit\.[\s\S]{0,300}?try\s+again\s+(?:at\s+(?P<at>[A-Z][a-z]{2}\w*\.?\s+\d{1,2}\w*,?\s+\d{4},?\s+\d{1,2}:\d{2}\s*[AP]M)|in\s+(?P<in>(?:\d+\s+\w+\s*)+))|You've\s+hit\s+your\s+usage\s+limit\.'''
 
+# An edit or command approval. Codex 0.160 asks "Would you like to run the following
+# command?" (fixtures/codex/blocked_permission/20261006T*); older versions "Allow command?".
 [[rules]]
 id = "codex_edit_or_command_approval"
 state = "blocked_permission"
 region = "bottom_non_empty_trimmed(30)"
-regex = '''(?:Would you like to make the following edits\?|Allow command\?)[\s\S]*?Press enter to confirm or esc to cancel'''
+regex = '''(?:Would you like to make the following edits\?|Would you like to run the following command\?|Allow command\?)[\s\S]*?Press enter to confirm or esc to cancel'''
 
 [[rules]]
 id = "codex_trust_folder"

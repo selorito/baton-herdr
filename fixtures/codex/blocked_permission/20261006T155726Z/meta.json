@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.160.0",
+    "error": null
+  },
+  "scenario": "blocked_permission",
+  "captured_at": "2026-10-06T15:57:26.720858+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "blocked",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "command approval: a compound command (&&)",
+  "explain_error": null
+}

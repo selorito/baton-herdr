@@ -77,6 +77,9 @@ EXPECTED = {
     "codex/blocked_permission/20260930T075506Z": OTHER,  # folder trust
     "codex/blocked_permission/20260930T075527Z": OTHER,  # hooks review
     "codex/blocked_permission/20260930T075730Z": PERM,  # edit approval
+    "codex/blocked_permission/20261006T155659Z": PERM,  # command approval (0.160)
+    "codex/blocked_permission/20261006T155726Z": PERM,  # compound command
+    "codex/blocked_permission/20261006T155802Z": PERM,  # long command, wrapped
     "codex/blocked_question/20260930T075645Z": OTHER,  # update prompt
     # A plain-text question looks exactly like an idle prompt; the end-of-turn contract
     # in agents.md is what will tell them apart.
@@ -348,5 +351,22 @@ def test_the_command_of_a_permission_prompt_is_read_for_the_policy() -> None:
     edit = "─────\n Edit file\n calc.py\n Do you want to proceed?\n"
     assert claude.permission_command(edit) is None
     assert claude.permission_command(_screen("claude/idle/" + _first("claude/idle"))) is None
-    codex = _screen("codex/blocked_permission/20260930T075730Z")
-    assert CodexAdapter().permission_command(codex) is None
+
+
+def test_codex_command_approvals_are_read_only_when_the_command_fits_on_one_line() -> None:
+    codex = CodexAdapter()
+    assert codex.permission_command(_screen("codex/blocked_permission/20261006T155659Z")) == (
+        "touch build.log"
+    )
+    assert codex.permission_command(_screen("codex/blocked_permission/20261006T155726Z")) == (
+        "mkdir -p build && touch build/out.txt && ls build"
+    )
+    # Wrapped over four unmarked lines: it cannot be rebuilt with certainty.
+    assert codex.permission_command(_screen("codex/blocked_permission/20261006T155802Z")) is None
+    # An edit approval has no command.
+    assert codex.permission_command(_screen("codex/blocked_permission/20260930T075730Z")) is None
+    prompt = (
+        "  Would you like to run the following command?\n\n  $ ls\n{}\n\n› 1. Yes, proceed (y)\n"
+    )
+    assert codex.permission_command(prompt.format("  -la")) is None  # a second line
+    assert codex.permission_command(prompt.format("")) == "ls"

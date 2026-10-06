@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 # security meaning. Folder trust and hook review stay with a person.
 # "1. Yes, proceed (y)" and "esc to cancel" (fixtures/codex/blocked_permission/).
 APPROVE_KEYS = ("y",)
+COMMAND_APPROVAL = "Would you like to run the following command?"
 DENY_KEYS = ("Escape",)
 STARTUP_ANSWERS: dict[str, tuple[str, ...]] = {"baton:codex_update_prompt": ("Down", "Enter")}
 
@@ -57,10 +58,22 @@ class CodexAdapter:
         return one_line_summary(kept)
 
     def permission_command(self, screen: str) -> str | None:
-        # Only edit approvals are recorded (fixtures/codex/blocked_permission/); a command
-        # approval's layout has not been seen yet, so a person decides it.
-        del screen
-        return None
+        # A command approval shows the command on a line of its own after "$ ", then a
+        # blank line (fixtures/codex/blocked_permission/20261006T*). A long command wraps
+        # onto unmarked lines, sometimes inside a word, so it cannot be put back together
+        # with certainty: then, as for edits, a person decides.
+        lines = screen.splitlines()
+        anchors = [i for i, line in enumerate(lines) if COMMAND_APPROVAL in line]
+        if not anchors:
+            return None
+        rest = lines[anchors[-1] + 1 :]
+        starts = [i for i, line in enumerate(rest) if line.strip().startswith("$ ")]
+        if len(starts) != 1:
+            return None
+        start = starts[0]
+        if start + 1 >= len(rest) or rest[start + 1].strip():
+            return None  # wrapped, or more than one line
+        return rest[start].strip().removeprefix("$ ").strip() or None
 
     def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
         if evidence != "baton:codex_edit_or_command_approval":
