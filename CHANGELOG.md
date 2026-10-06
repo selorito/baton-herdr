@@ -11,6 +11,14 @@ is:
 
 ## [Unreleased]
 
+### Added
+
+- **Claude's own rate limits.** The Claude sessions baton starts get a status line,
+  `baton-detect statusline`, which shows `5h 23% · 7d 54%` and records Claude's five-hour
+  and weekly windows. `baton budget`, Telegram `/budget` and agent choice then use those
+  figures instead of the estimate. Your own Claude sessions and settings are not changed
+  (ADR 0015). New setting: `[usage] claude_status_log`.
+
 ## [1.0.1] - 2026-10-06
 
 ### Added

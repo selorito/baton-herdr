@@ -19,3 +19,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0012](0012-remaining-budget.md) | Remaining budget per agent: reported for Codex, estimated for Claude, never a hard gate | accepted |
 | [0013](0013-permission-policy.md) | A small permission policy: allow, ask or deny an agent's shell command, by rule | accepted |
 | [0014](0014-stall-detection.md) | A working agent is stuck when neither its screen nor its tokens move | accepted |
+| [0015](0015-claude-limits-from-status-line.md) | Claude's own rate limits, from a status line in the sessions baton starts | accepted |

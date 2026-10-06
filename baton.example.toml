@@ -41,6 +41,9 @@ timezone = "UTC"
 # claude_dir = "~/.claude/projects"
 # codex_dir = "~/.codex/sessions"
 # opencode_db = "~/.local/share/opencode/opencode.db"
+# Where the Claude sessions baton starts log Claude's rate limits, through their status
+# line (ADR 0015):
+# claude_status_log = "~/.local/state/baton/claude-status.jsonl"
 
 [detector]
 # The screen classifier, baton-detect classify (ADR 0011). While it gives no answer,

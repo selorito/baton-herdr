@@ -101,4 +101,5 @@ only the summary the decision used. The usage records stay in their own tables (
 - Bad: Claude Code's status line receives `rate_limits` (session and weekly, used share and
   reset time). Reading that would replace the estimate with Claude's own figures, but it
   needs a status-line command installed in the operator's Claude Code settings. Left for
-  later; the `reported` source is ready for it.
+  later; the `reported` source is ready for it. *Done in ADR 0015*, through `--settings` in
+  baton's own Claude sessions rather than the operator's settings.

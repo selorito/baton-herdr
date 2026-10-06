@@ -153,9 +153,13 @@ Next task: claude: first in preference order, ~61% left (estimate).
 ```
 
 - **Codex** reports its own rate-limit windows in its logs.
-- **Claude Code** does not report its limits, so baton estimates its five-hour window from
-  the tokens it recorded. The cap comes from `[budget] claude_window_tokens`, or from the
-  last limit baton saw. Estimates are always marked as such.
+- **Claude Code** reports its five-hour and weekly windows only to a status line. The
+  Claude sessions baton starts get one (`baton-detect statusline`), which shows
+  `5h 23% · 7d 54%` and records the figures; your own Claude sessions are not changed
+  ([ADR 0015](docs/adr/0015-claude-limits-from-status-line.md)).
+- Until a baton session has reported, baton estimates Claude's five-hour window from the
+  tokens it recorded. The cap comes from `[budget] claude_window_tokens`, or from the last
+  limit baton saw. Estimates are always marked as such.
 
 The scheduler keeps your preference order. An agent with less than `reserve_percent`
 (default 10) left goes behind the others. A low budget never stops a task; only a limit the
@@ -206,7 +210,8 @@ on one line). File edits, wrapped Codex commands and OpenCode prompts still come
   change shows up as a failing test once recorded, not before.
 - **Hangs** take 15 minutes to catch (30 without usage collection): long enough not to
   mistake a slow response for one.
-- **Claude's budget** is an estimate. Codex's is its own figure.
+- **Claude's budget** is Claude's own figure only from the sessions baton starts, as of
+  their last response; before the first one it is an estimate. Codex's is its own figure.
 - **baton-detect must run.** Without it, batond keeps herdr's working and blocked states but
   finishes and hands off nothing until it is back. `baton doctor` checks it.
 - **Codex's update chooser** (Codex ≥ 0.156) is not recognised by herdr 0.9.1
@@ -229,7 +234,6 @@ governed by its vendor's terms; read them before you let baton run unattended:
 
 - **Next:**
   - recognise Codex's update chooser in baton-detect, so a prompt never lands in it;
-  - Claude's status-line limits instead of an estimate.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 
 Details: [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -270,7 +274,7 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
   keys in CI.
 - **Reproducible benchmark.** The real loop runs on simulated time, so the same seed gives
   the same report ([bench/](bench/README.md)).
-- **Decisions on record:** [ADRs 0001–0014](docs/adr/README.md). Examples:
+- **Decisions on record:** [ADRs 0001–0015](docs/adr/README.md). Examples:
   - automation boundaries ([0005](docs/adr/0005-automation-boundaries.md));
   - attempt identity vs. location ([0006](docs/adr/0006-attempt-identity-and-location.md));
   - remote actions ([0009](docs/adr/0009-remote-operator-actions.md));
