@@ -5,6 +5,7 @@
 //! own log format into them.
 
 pub mod claude;
+pub mod claude_status;
 pub mod codex;
 pub mod collect;
 pub mod opencode;

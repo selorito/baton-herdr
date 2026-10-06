@@ -2,7 +2,8 @@
 //!
 //! Claude Code and Codex logs are JSONL files under a directory each; they are found by
 //! scanning, followed with [`Tail`], and read again on file-system events (`notify`) and
-//! on a periodic rescan, which also finds directories that appear later. `OpenCode`'s
+//! on a periodic rescan, which also finds directories that appear later. Claude Code's
+//! rate limits come from one more file, written by `baton-detect statusline` (ADR 0015). `OpenCode`'s
 //! database is polled. Every event goes to stdout as one line, flushed at once;
 //! everything else (unreadable files, bad lines) goes to stderr.
 
@@ -16,6 +17,7 @@ use notify::{RecursiveMode, Watcher};
 use time::OffsetDateTime;
 
 use super::claude::ClaudeLog;
+use super::claude_status;
 use super::codex::CodexLog;
 use super::opencode::OpenCodeDb;
 use super::{Event, UsageRecord};
@@ -30,6 +32,8 @@ pub struct Sources {
     pub claude_dir: Option<PathBuf>,
     pub codex_dir: Option<PathBuf>,
     pub opencode_db: Option<PathBuf>,
+    /// The log `baton-detect statusline` writes Claude Code's rate limits to.
+    pub claude_status: Option<PathBuf>,
 }
 
 impl Sources {
@@ -48,6 +52,7 @@ impl Sources {
             opencode_db: env_dir("XDG_DATA_HOME")
                 .or_else(|| home.as_ref().map(|h| h.join(".local/share")))
                 .map(|d| d.join("opencode/opencode.db")),
+            claude_status: None,
         }
     }
 }
@@ -56,6 +61,7 @@ impl Sources {
 enum Kind {
     Claude,
     Codex,
+    ClaudeStatus,
 }
 
 #[derive(Debug)]
@@ -116,15 +122,14 @@ impl<W: Write> Collector<W> {
                 if self.files.contains_key(&path) || !self.changed_since(&path) {
                     continue;
                 }
-                self.files.insert(
-                    path.clone(),
-                    Followed {
-                        kind,
-                        tail: Tail::new(path),
-                        codex: CodexLog::default(),
-                    },
-                );
+                self.follow_file(path, kind);
             }
+        }
+        if let Some(path) = self.sources.claude_status.clone()
+            && !self.files.contains_key(&path)
+            && path.is_file()
+        {
+            self.follow_file(path, Kind::ClaudeStatus);
         }
         let mut paths: Vec<PathBuf> = self.files.keys().cloned().collect();
         paths.sort();
@@ -143,14 +148,7 @@ impl<W: Write> Collector<W> {
             if !self.files.contains_key(path) {
                 let kind = self.kind_of(path);
                 let Some(kind) = kind else { continue };
-                self.files.insert(
-                    path.clone(),
-                    Followed {
-                        kind,
-                        tail: Tail::new(path.clone()),
-                        codex: CodexLog::default(),
-                    },
-                );
+                self.follow_file(path.clone(), kind);
             }
             self.read_file(path)?;
         }
@@ -247,14 +245,34 @@ impl<W: Write> Collector<W> {
         }
     }
 
-    /// Watches the log directories that exist now and are not watched yet.
+    fn follow_file(&mut self, path: PathBuf, kind: Kind) {
+        self.files.insert(
+            path.clone(),
+            Followed {
+                kind,
+                tail: Tail::new(path),
+                codex: CodexLog::default(),
+            },
+        );
+    }
+
+    /// Watches the log directories that exist now and are not watched yet: the agents'
+    /// trees, and the directory of the status line log (not its tree).
     fn watch_new_dirs(&self, watcher: &mut impl Watcher, watching: &mut HashSet<PathBuf>) {
-        for dir in [&self.sources.claude_dir, &self.sources.codex_dir]
-            .into_iter()
-            .flatten()
-        {
+        let status_dir = self
+            .sources
+            .claude_status
+            .as_ref()
+            .and_then(|p| p.parent().map(Path::to_path_buf));
+        for (dir, mode) in [
+            (self.sources.claude_dir.clone(), RecursiveMode::Recursive),
+            (self.sources.codex_dir.clone(), RecursiveMode::Recursive),
+            (status_dir, RecursiveMode::NonRecursive),
+        ] {
+            let Some(dir) = dir else { continue };
+            let dir = &dir;
             if !watching.contains(dir) && dir.is_dir() {
-                match watcher.watch(dir, RecursiveMode::Recursive) {
+                match watcher.watch(dir, mode) {
                     Ok(()) => {
                         watching.insert(dir.clone());
                     }
@@ -294,6 +312,8 @@ impl<W: Write> Collector<W> {
                     .files
                     .get_mut(path)
                     .map_or(Ok(Vec::new()), |f| f.codex.parse_line(line)),
+                Kind::ClaudeStatus => claude_status::parse_line(line)
+                    .map(|limits| limits.map(Event::RateLimits).into_iter().collect()),
             };
             match parsed {
                 Ok(parsed) => events.extend(parsed),
@@ -346,7 +366,9 @@ impl<W: Write> Collector<W> {
 
     fn kind_of(&self, path: &Path) -> Option<Kind> {
         let under = |dir: &Option<PathBuf>| dir.as_ref().is_some_and(|d| path.starts_with(d));
-        if under(&self.sources.claude_dir) && is_log(path, Kind::Claude) {
+        if self.sources.claude_status.as_deref() == Some(path) {
+            Some(Kind::ClaudeStatus)
+        } else if under(&self.sources.claude_dir) && is_log(path, Kind::Claude) {
             Some(Kind::Claude)
         } else if under(&self.sources.codex_dir) && is_log(path, Kind::Codex) {
             Some(Kind::Codex)

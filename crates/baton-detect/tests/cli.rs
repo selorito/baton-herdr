@@ -254,3 +254,96 @@ mod classify {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+// Helpers of a test file: a failure should stop the test, with the error.
+#[allow(clippy::unwrap_used)]
+mod statusline {
+    use std::io::Write;
+    use std::path::Path;
+    use std::process::{Command, Output, Stdio};
+
+    use serde_json::Value;
+
+    fn run(log: &Path, payload: &str) -> Output {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_baton-detect"))
+            .args(["statusline", "--log"])
+            .arg(log)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(payload.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    }
+
+    fn payload(five_hour: f64) -> String {
+        serde_json::json!({
+            "session_id": "s-1",
+            "model": {"display_name": "Opus"},
+            "rate_limits": {
+                "five_hour": {"used_percentage": five_hour, "resets_at": 1_790_000_000},
+                "seven_day": {"used_percentage": 41.2, "resets_at": 1_790_500_000}
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn changes_are_logged_once_and_read_back_as_claudes_rate_limits() {
+        let root =
+            std::env::temp_dir().join(format!("baton-detect-statusline-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let log = root.join("state/claude-status.jsonl");
+
+        let shown = run(&log, &payload(23.0));
+        assert!(shown.status.success());
+        assert_eq!(String::from_utf8_lossy(&shown.stdout), "5h 23% · 7d 41%\n");
+        run(&log, &payload(23.0)); // the same windows again: not logged
+        run(&log, &payload(30.0));
+        let logged = std::fs::read_to_string(&log).unwrap();
+        assert_eq!(logged.lines().count(), 2);
+
+        // Anything else is ignored, quietly: Claude Code shows what this prints.
+        let garbage = run(&log, "not json");
+        assert!(garbage.status.success());
+        assert_eq!(String::from_utf8_lossy(&garbage.stdout), "");
+        let no_limits = run(&log, r#"{"session_id":"s-1"}"#);
+        assert_eq!(String::from_utf8_lossy(&no_limits.stdout), "");
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), logged);
+
+        let output = Command::new(env!("CARGO_BIN_EXE_baton-detect"))
+            .args(["usage", "--once", "--claude-dir"])
+            .arg(root.join("none"))
+            .arg("--codex-dir")
+            .arg(root.join("none"))
+            .arg("--opencode-db")
+            .arg(root.join("none.db"))
+            .arg("--claude-status")
+            .arg(&log)
+            .output()
+            .unwrap();
+        let events: Vec<Value> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let used: Vec<_> = events
+            .iter()
+            .map(|e| {
+                assert_eq!(
+                    (e["kind"].as_str(), e["agent"].as_str()),
+                    (Some("rate_limits"), Some("claude"))
+                );
+                e["windows"][0]["used_percent"].as_f64().unwrap()
+            })
+            .collect();
+        assert_eq!(used, [23.0, 30.0]);
+        assert_eq!(events[0]["windows"][1]["window_minutes"], 10_080);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

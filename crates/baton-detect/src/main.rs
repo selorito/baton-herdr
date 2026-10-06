@@ -1,13 +1,17 @@
 //! `baton-detect`: reports what coding agents leave behind to batond as NDJSON
-//! (ADR 0011). Phase 1: `baton-detect usage`; phase 2: `baton-detect classify`.
+//! (ADR 0011). Phase 1: `baton-detect usage`; phase 2: `baton-detect classify`. And
+//! `baton-detect statusline`, Claude Code's status line command in baton's sessions,
+//! which keeps Claude's rate limits for `usage` (ADR 0015).
 
-use std::io::{self, BufRead, BufWriter, Write};
-use std::path::PathBuf;
+use std::fs::{self, OpenOptions};
+use std::io::{self, BufRead, BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
 use baton_detect::classify::rules::RuleBook;
 use baton_detect::classify::{Request, classify, classify_using};
+use baton_detect::usage::claude_status;
 use baton_detect::usage::collect::{Collector, Sources};
 use baton_detect::usage::parse_time;
 use clap::{Parser, Subcommand};
@@ -27,6 +31,17 @@ enum Command {
     /// Classify screens: one detection request per stdin line, one result per stdout line
     /// (schemas/detector-*.v1.json). Each result is flushed as soon as it is written.
     Classify(ClassifyArgs),
+    /// Claude Code's status line command: reads its JSON on stdin, appends its rate limits
+    /// to LOG when they changed, and prints them (`5h 23% · 7d 41%`). Never fails, so a
+    /// problem here never shows in Claude's footer.
+    Statusline(StatuslineArgs),
+}
+
+#[derive(Debug, clap::Args)]
+struct StatuslineArgs {
+    /// The log the windows are appended to; `baton-detect usage --claude-status` reads it.
+    #[arg(long, value_name = "LOG")]
+    log: PathBuf,
 }
 
 #[derive(Debug, clap::Args)]
@@ -62,6 +77,9 @@ struct UsageArgs {
                 else ~/.local/share/opencode/opencode.db]"
     )]
     opencode_db: Option<PathBuf>,
+    /// Claude Code's rate limits, as `baton-detect statusline --log` writes them.
+    #[arg(long, value_name = "LOG")]
+    claude_status: Option<PathBuf>,
     /// How often the database is polled and file events are handled, in milliseconds.
     #[arg(long, default_value_t = 2000)]
     poll_ms: u64,
@@ -75,6 +93,7 @@ fn main() -> ExitCode {
     match cli.command {
         None => ExitCode::SUCCESS,
         Some(Command::Usage(args)) => usage(args),
+        Some(Command::Statusline(args)) => statusline(&args),
         Some(Command::Classify(args)) => {
             let book = match args.rules.as_deref().map(RuleBook::load).transpose() {
                 Ok(book) => book,
@@ -148,6 +167,7 @@ fn usage(args: UsageArgs) -> ExitCode {
         claude_dir: args.claude_dir.or(defaults.claude_dir),
         codex_dir: args.codex_dir.or(defaults.codex_dir),
         opencode_db: args.opencode_db.or(defaults.opencode_db),
+        claude_status: args.claude_status,
     };
     let mut collector = Collector::new(sources, since, BufWriter::new(io::stdout().lock()));
     let result = if args.once {
@@ -167,4 +187,52 @@ fn usage(args: UsageArgs) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Claude Code waits for this on every refresh, so it reads little and writes one line at
+/// most; whatever goes wrong goes to stderr, which Claude Code does not show.
+fn statusline(args: &StatuslineArgs) -> ExitCode {
+    let mut input = String::new();
+    // A payload is a few kilobytes; more is not Claude Code's.
+    let read = io::stdin().lock().take(1 << 20).read_to_string(&mut input);
+    let payload: serde_json::Value = match read.map(|_| serde_json::from_str(&input)) {
+        Ok(Ok(payload)) => payload,
+        _ => return ExitCode::SUCCESS,
+    };
+    if let Some(line) = claude_status::record(&payload, time::OffsetDateTime::now_utc())
+        && let Err(error) = append_if_changed(&args.log, &line)
+    {
+        eprintln!("baton-detect: {}: {error}", args.log.display());
+    }
+    let text = claude_status::status_text(&payload);
+    if !text.is_empty() {
+        println!("{text}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// Appends `line` unless the log's last line reports the same windows. One `write` of a
+/// short line with `O_APPEND`, so sessions writing at once do not interleave.
+fn append_if_changed(log: &Path, line: &str) -> io::Result<()> {
+    if last_line(log)?.is_some_and(|last| claude_status::same_windows(&last, line)) {
+        return Ok(());
+    }
+    if let Some(dir) = log.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(log)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+fn last_line(log: &Path) -> io::Result<Option<String>> {
+    let mut file = match fs::File::open(log) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    let length = file.metadata()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(4096)))?;
+    let mut tail = String::new();
+    file.read_to_string(&mut tail)?;
+    Ok(tail.lines().last().map(str::to_owned))
 }
