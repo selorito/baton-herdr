@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-10-05
-revised: 2026-10-05 (tests and builds only in trusted directories)
+revised: 2026-10-05 (tests and builds only in trusted directories); 2026-10-06 (Codex commands)
 ---
 
 # A small permission policy: allow, ask or deny an agent's shell command, by rule
@@ -110,7 +110,9 @@ it cannot read with certainty; a person then decides. In v1:
 - **Claude Code's Bash prompt:** the command is read. A last line that reads as prose is
   taken for the tool's description. Any other line stays in the command, which makes the
   policy ask.
-- **Codex's command approval:** its layout has not been recorded yet, so it goes to a person.
+- **Codex's command approval:** the command is read from its `$ ` line when it fits on that
+  line. Codex wraps a long command onto unmarked lines, sometimes inside a word, so a wrapped
+  one goes to a person.
 - **Edits and other tools, and OpenCode:** they go to a person too.
 
 **Upgrading.** Before 1.0, batond sent every permission prompt to a person. From 1.0 it

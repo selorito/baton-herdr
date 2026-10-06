@@ -26,7 +26,8 @@ Scenarios are a fixed list: `idle`, `working`, `blocked_permission`, `blocked_qu
 
 ## Capturing a screen
 
-1. Start herdr and open a pane **inside `~/dev/coban-sandbox`** (the toy repository). The tool
+1. Start herdr and open a pane **inside `~/dev/baton-sandbox`** (the toy repository; for a
+   sandbox made under the project's earlier name, pass its path with `--sandbox`). The tool
    refuses to save a pane whose working directory is anywhere else unless you pass
    `--allow-outside-sandbox`; do not use that for commits.
 2. Start the agent in that pane and bring it into the scenario's state.

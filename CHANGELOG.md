@@ -11,6 +11,29 @@ is:
 
 ## [Unreleased]
 
+### Added
+
+- **Labels on Telegram notices that need you**: 🔐 Needs approval, ❓ Needs answer,
+  ❗ Needs you, ⏸ Stalled, ⚠ Stopped, ⛔ All agents limited, above the task's title.
+
+### Changed
+
+- **Only notices that need you make a sound** on the phone: permission prompts, questions
+  and every agent being limited. Started, moved, done, stopped and resumed arrive silently,
+  as do the bot's confirmations of a button press.
+
+### Fixed
+
+- **Codex 0.160's command approvals** ("Would you like to run the following command?")
+  were not recognised as permission prompts: they reached Telegram without Approve / Deny
+  and the policy never saw them. They are now, and a command that fits on one line is
+  read for the policy; a wrapped one still comes to you.
+- **With every agent limited**, the notice named the last agent's reset time even when
+  another agent was free sooner and would take the task then. It now names the agent free
+  first and whether the task resumes or moves.
+- **A Telegram message that is not a reply** reached no agent and got no answer. The bot
+  now says so and how to answer.
+
 ## [1.0.0] - 2026-10-06
 
 The first release: baton runs a queue of coding tasks unattended on one Linux machine,

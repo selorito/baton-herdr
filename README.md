@@ -195,8 +195,8 @@ ask: pytest -q: runs the project's own code (tests, builds), so it is allowed on
 Each decision is logged as `attempt.permission_decided`, with the rule and the reason.
 Upgrading from 0.1, where every prompt came to you: `baton doctor` warns until a
 `policy.yaml` exists, and `[policy] enabled = false` restores the old behaviour. In v1 the
-policy reads Claude Code's Bash prompts. Codex command approvals, file edits and
-OpenCode prompts still come to you.
+policy reads Claude Code's Bash prompts and Codex's command approvals (a command that fits
+on one line). File edits, wrapped Codex commands and OpenCode prompts still come to you.
 
 ## Limitations and terms
 
@@ -229,7 +229,6 @@ governed by its vendor's terms; read them before you let baton run unattended:
 
 - **Next:**
   - recognise Codex's update chooser in baton-detect, so a prompt never lands in it;
-  - read Codex's command approvals for the policy, once one is recorded;
   - Claude's status-line limits instead of an estimate.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 
