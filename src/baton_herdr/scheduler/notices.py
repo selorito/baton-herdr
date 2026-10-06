@@ -135,12 +135,16 @@ def waiting_for_reset(  # noqa: PLR0913 - the attempt and when it may go on
     now: datetime,
     zone: tzinfo,
     attempt_id: AttemptId | None = None,
+    moves: bool = False,
 ) -> Notice:
+    """``agent`` is the one free first, at ``until``: the attempt's own, which resumes its
+    session, or with ``moves`` another, which the task moves to."""
     when_text = f" at {local_time(until, now, zone)}" if until else " later"
+    goes_on = f"the task moves to {agent.value}" if moves else f"{agent.value} resumes this session"
     return Notice(
         NoticeKind.WAITING_FOR_AGENT,
         task.task_id,
-        f"Every agent is limited; {agent.value} resumes this session{when_text}.",
+        f"Every agent is limited; {goes_on}{when_text}.",
         attempt_id,
         title=task.title,
     )

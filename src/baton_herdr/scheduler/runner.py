@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from datetime import datetime
 
+    from baton_herdr.budget.availability import Availability
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.model import AttemptId, TaskId
@@ -271,14 +272,16 @@ class TaskRunner:
             )
             return _Outcome.HANDED_OFF if plan is Plan.HAND_OFF else _Outcome.RESTARTED
         if plan is Plan.WAIT:
+            first, until = self._free_first(availability, attempt.agent)
             await self._deliver(
                 notices.waiting_for_reset(
                     task,
-                    attempt.agent,
-                    availability.limited_until.get(attempt.agent),
+                    first,
+                    until,
                     now=now,
                     zone=self._zone,
                     attempt_id=attempt.attempt_id,
+                    moves=first is not attempt.agent,
                 )
             )
             return _Outcome.STOPPED
@@ -291,6 +294,21 @@ class TaskRunner:
             )
         )
         return _Outcome.STOPPED
+
+    def _free_first(
+        self, availability: Availability, own: AgentKind
+    ) -> tuple[AgentKind, datetime | None]:
+        """The agent that stops being limited first, and when: what the task does next.
+        On a tie the attempt's own agent wins, since its session is resumed then."""
+        limits = [
+            (until, agent is not own, agent)
+            for agent in self._settings.agents
+            if agent in self._adapters and (until := availability.limited_until.get(agent))
+        ]
+        if not limits:
+            return own, None
+        until, _, agent = min(limits)
+        return agent, until
 
     async def _resume(self, task: TaskView, attempt: AttemptView, session_ref: str) -> _Outcome:
         """Continue the attempt's own agent session in a fresh pane (ADR 0006)."""

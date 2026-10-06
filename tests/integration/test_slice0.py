@@ -34,6 +34,7 @@ from baton_herdr.core.model import (
     InterruptReason,
     TaskId,
     TaskStatus,
+    new_attempt_id,
 )
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
@@ -212,6 +213,56 @@ async def test_with_every_agent_limited_the_attempt_waits_and_resumes_its_own_se
     assert len(task.attempts) == 1  # one attempt, one conversation, across the limit
     assert task.attempts[0].outcome is AttemptOutcome.SUCCEEDED
     assert NoticeKind.TASK_RESUMED in notifier.kinds
+
+
+async def test_with_every_agent_limited_the_notice_names_the_one_free_first() -> None:
+    store, host, notifier, _ = await setup()
+    clock = FixedClock(NOW)
+    runner = TaskRunner(
+        detector=rust_detector(),
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=clock,
+        settings=SETTINGS,
+    )
+    # Codex is limited by another task, until before Claude's limit (09:30) lifts.
+    codex_attempt = new_attempt_id()
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=NOW,
+                task_id=TaskId("other"),
+                title="other",
+                instructions="other",
+                workdir="/work/other",
+            ),
+            AttemptStarted(
+                occurred_at=NOW,
+                task_id=TaskId("other"),
+                attempt_id=codex_attempt,
+                agent=AgentKind.CODEX,
+            ),
+            AttemptInterrupted(
+                occurred_at=NOW,
+                task_id=TaskId("other"),
+                attempt_id=codex_attempt,
+                reason=InterruptReason.RATE_LIMITED,
+                resume_not_before=NOW + timedelta(minutes=15),
+            ),
+        ]
+    )
+
+    assert await runner.run(TASK) is TaskStatus.WAITING
+    assert notifier.notices[-1].text == (
+        "Every agent is limited; the task moves to codex at 09:15 UTC."
+    )
+
+    # And so it does, once Codex is free and Claude is not yet.
+    clock.advance(timedelta(minutes=16))
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert host.launched == ["claude", "codex"]
 
 
 async def test_a_crashed_agent_is_resumed_in_its_own_session() -> None:
