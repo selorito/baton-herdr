@@ -8,12 +8,13 @@ so the checks themselves are tested without them.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from importlib.metadata import version
 from pathlib import Path
@@ -115,6 +116,17 @@ def _classify_probe(binary: Path) -> str:
     return result.stdout
 
 
+def _last_line(path: Path) -> str | None:
+    """The last line of a log, reading only its end; ``None`` when there is none."""
+    try:
+        with path.open("rb") as file:
+            file.seek(max(0, path.stat().st_size - 4096))
+            lines = file.read().decode(errors="replace").splitlines()
+    except FileNotFoundError:
+        return None
+    return lines[-1] if lines else None
+
+
 def _local_timezone() -> str | None:
     link = Path("/etc/localtime")
     if link.is_symlink():
@@ -137,6 +149,8 @@ class Probes:
     classify: Callable[[Path], str] = _classify_probe
     package_version: Callable[[], str] = lambda: version("baton-herdr")
     environ: Callable[[], Mapping[str, str]] = os.environ.copy
+    last_line: Callable[[Path], str | None] = _last_line
+    now: Callable[[], datetime] = lambda: datetime.now(UTC)
 
 
 async def diagnose(probes: Probes | None = None) -> list[Check]:
@@ -171,6 +185,8 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     checks.extend(_agents(settings, probes))
     checks.append(_detector(settings, probes))
     checks.append(_classifier(settings, probes))
+    if (limits := _claude_limits(settings, probes)) is not None:
+        checks.append(limits)
     checks.append(_policy(settings))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
@@ -341,6 +357,47 @@ def _detector(settings: BatonSettings, probes: Probes) -> Check:
             "Install the matching version: cargo install --path crates/baton-detect --locked",
         )
     return Check("baton-detect", Level.OK, f"{reported} at {binary}")
+
+
+def _claude_limits(settings: BatonSettings, probes: Probes) -> Check | None:
+    """What Claude last reported of its limits through baton's status line (ADR 0015)."""
+    if "claude" not in settings.scheduler.agents or not settings.usage.enabled:
+        return None
+    log = settings.usage.claude_status_log
+    try:
+        last = probes.last_line(log)
+    except OSError as err:
+        return Check("claude limits", Level.WARN, f"{log}: {err.strerror}")
+    if last is None:
+        return Check(
+            "claude limits",
+            Level.OK,
+            "none reported yet: Claude's budget is an estimate until a Claude session "
+            "baton starts has answered",
+        )
+    try:
+        line = json.loads(last)
+        at = datetime.fromisoformat(line["at"])
+        used = {
+            label: round(float(line["rate_limits"][name]["used_percentage"]))
+            for name, label in (("five_hour", "5h"), ("seven_day", "7d"))
+            if name in line["rate_limits"]
+        }
+    except (ValueError, KeyError, TypeError):
+        return Check("claude limits", Level.WARN, f"{log}: the last line cannot be read")
+    shown = " · ".join(f"{label} {percent}%" for label, percent in used.items())
+    return Check(
+        "claude limits", Level.OK, f"{shown}, reported {_ago(probes.now() - at)} ago ({log})"
+    )
+
+
+def _ago(span: timedelta) -> str:
+    minutes = max(0, int(span.total_seconds() // 60))
+    if minutes < 60:
+        return f"{minutes} min"
+    if minutes < 48 * 60:
+        return f"{minutes // 60} h"
+    return f"{minutes // (24 * 60)} days"
 
 
 def _policy(settings: BatonSettings) -> Check:

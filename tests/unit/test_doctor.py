@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     import pytest
 
@@ -30,8 +31,12 @@ def test_integration_status_lines_are_parsed() -> None:
     }
 
 
+NOW = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+
+
 def probes(
     *,
+    status_lines: Mapping[Path, str] | None = None,
     herdr_up: bool = True,
     on_path: Sequence[str] = ("herdr", "claude"),
     detector: str | None = "baton-detect 0.1.0",
@@ -58,6 +63,7 @@ def probes(
             return f"{detector}\n"
         return "herdr 0.9.1\n"
 
+    status_lines = status_lines or {}
     return Probes(
         which=lambda name: f"/bin/{name}" if name in on_path else None,
         run=run,
@@ -70,6 +76,8 @@ def probes(
         detector=lambda name: Path(f"/opt/{name}") if detector else None,
         classify=lambda _: classified,
         package_version=lambda: "0.1.0",
+        last_line=status_lines.get,
+        now=lambda: NOW,
     )
 
 
@@ -230,3 +238,30 @@ async def test_a_broken_policy_file_fails_before_batond_would(
         f"{policy}: read-only commands approved without asking; tests and builds always "
         "asked (no trusted_dirs); 1 own rule first"
     )
+
+
+async def test_claudes_last_reported_limits_are_shown_with_their_age(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BATON_CONFIG", str(tmp_path / "missing.toml"))
+    monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
+    log = tmp_path / "claude-status.jsonl"
+    monkeypatch.setenv("BATON_USAGE__CLAUDE_STATUS_LOG", str(log))
+
+    checks = by_name(await diagnose(probes()))
+    assert checks["claude limits"].level is Level.OK
+    assert checks["claude limits"].detail.startswith("none reported yet")
+
+    line = (
+        '{"at":"2026-10-10T09:00:00.000Z","session_id":"s","rate_limits":{'
+        '"five_hour":{"used_percentage":23.6,"resets_at":1},'
+        '"seven_day":{"used_percentage":54,"resets_at":2}}}'
+    )
+    checks = by_name(await diagnose(probes(status_lines={log: line})))
+    assert checks["claude limits"].detail == f"5h 24% · 7d 54%, reported 3 h ago ({log})"
+
+    checks = by_name(await diagnose(probes(status_lines={log: "not json"})))
+    assert checks["claude limits"].level is Level.WARN
+
+    monkeypatch.setenv("BATON_USAGE__ENABLED", "false")
+    assert "claude limits" not in by_name(await diagnose(probes()))
