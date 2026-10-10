@@ -236,7 +236,6 @@ governed by its vendor's terms; read them before you let baton run unattended:
 ## Roadmap
 
 - **Next:**
-  - `baton doctor`: how old Claude's last reported limits are;
   - record Codex 0.160's working screen, so baton tells its idle without herdr's help.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 

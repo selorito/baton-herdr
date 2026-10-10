@@ -17,7 +17,8 @@ is:
   `baton-detect statusline`, which shows `5h 23% · 7d 54%` and records Claude's five-hour
   and weekly windows. `baton budget`, Telegram `/budget` and agent choice then use those
   figures instead of the estimate. Your own Claude sessions and settings are not changed
-  (ADR 0015). New setting: `[usage] claude_status_log`.
+  (ADR 0015). New setting: `[usage] claude_status_log`. `baton doctor` shows Claude's last
+  report and how old it is.
 
 ### Fixed
 
