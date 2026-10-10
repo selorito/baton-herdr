@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.usage import USAGE_EVENT
@@ -33,14 +33,6 @@ if TYPE_CHECKING:
 # Lines are stored this many at a time, or after this long without a new one.
 BATCH_SIZE = 500
 BATCH_WAIT_S = 0.5
-
-
-@dataclass(frozen=True, slots=True)
-class Backoff:
-    first_s: float = 1
-    max_s: float = 60
-    # A run this long counts as healthy: the next failure starts from first_s again.
-    healthy_s: float = 60
 
 
 class UsageCollector:

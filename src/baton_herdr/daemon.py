@@ -42,7 +42,7 @@ from baton_herdr.scheduler.queue import (
     task_positions,
 )
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
-from baton_herdr.telegram.bot import BotSettings, OperatorBot, run_bot
+from baton_herdr.telegram.bot import BotSettings, OperatorBot, keep_running, run_bot
 from baton_herdr.telegram.notifier import telegram_notifier
 from baton_herdr.workdir import GitWorkspace
 
@@ -354,9 +354,10 @@ async def serve(
     tasks, or less when an agent's limit resets sooner.
     """
     seen: dict[TaskId, Signature] = {}
+    bot, operator = runtime.bot, runtime.operator
     bot_task = (
-        asyncio.create_task(run_bot(runtime.bot, runtime.operator))
-        if runtime.bot is not None and runtime.operator is not None
+        asyncio.create_task(keep_running(lambda: run_bot(bot, operator)))
+        if bot is not None and operator is not None
         else None
     )
     if bot_task is not None:
@@ -371,8 +372,8 @@ async def serve(
     finally:
         if bot_task is not None:
             bot_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await bot_task
+            # A bot that already failed must not fail batond's shutdown with its error.
+            await asyncio.gather(bot_task, return_exceptions=True)
         if collecting is not None:
             # It stops its baton-detect when stop is set; cancel if the loop ended otherwise.
             collecting.cancel()

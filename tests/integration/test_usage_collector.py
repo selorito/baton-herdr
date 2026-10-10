@@ -8,7 +8,8 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from baton_herdr.collector.usage import Backoff, UsageCollector
+from baton_herdr.collector.usage import UsageCollector
+from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.config import UsageSettings
 from baton_herdr.core.fakes import InMemoryUsageStore
 from baton_herdr.core.usage import UsageRecord, UsageTokens

@@ -11,12 +11,15 @@ that the pane hosts the attempt before anything is typed.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.report import budget_lines, when
+from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction, TaskId
 from baton_herdr.core.projection import project
@@ -24,7 +27,7 @@ from baton_herdr.scheduler.operator import ActionRefusedError, act, find_blocker
 from baton_herdr.telegram.notifier import parse_reference
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping
     from datetime import timedelta
 
     from aiogram import Bot
@@ -171,6 +174,38 @@ class OperatorBot:
             return str(err)
         self._on_action()
         return _DONE[action]
+
+
+async def keep_running(
+    start: Callable[[], Awaitable[None]],
+    *,
+    backoff: Backoff | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> None:
+    """Run ``start`` (the bot) again whenever it stops with an error, until cancelled.
+
+    Telegram may be out of reach when batond starts (the network comes up after it at
+    boot) or later; without this, approvals and replies stopped until batond restarted,
+    while notices still went out and nobody noticed. Waits longer after each quick failure.
+    """
+    backoff = backoff or Backoff()
+    log = get_logger("baton.telegram")
+    delay = backoff.first_s
+    while True:
+        started = clock()
+        try:
+            await start()
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001 - any failure: try again later, never stop batond
+            if clock() - started >= backoff.healthy_s:
+                delay = backoff.first_s
+            log.warning("telegram bot stopped; starting it again", error=repr(err), after_s=delay)
+            await sleep(delay)
+            delay = min(delay * 2, backoff.max_s)
+        else:
+            return  # polling ended on its own: batond is stopping
 
 
 async def run_bot(bot: Bot, operator: OperatorBot) -> None:
