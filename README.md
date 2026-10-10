@@ -214,10 +214,13 @@ on one line). File edits, wrapped Codex commands and OpenCode prompts still come
   their last response; before the first one it is an estimate. Codex's is its own figure.
 - **baton-detect must run.** Without it, batond keeps herdr's working and blocked states but
   finishes and hands off nothing until it is back. `baton doctor` checks it.
-- **Codex's update chooser** (Codex ≥ 0.156) is not recognised by herdr 0.9.1
-  ([herdr#4811](https://github.com/herdrdev/herdr/issues/4811)). baton can then type the
-  task into it, which picks "Update now" and runs Codex's own update. Set
-  `check_for_update_on_startup = false` in `~/.codex/config.toml` for unattended use.
+- **Codex updates itself.** herdr calls Codex idle from its window title, even before
+  Codex has drawn its screen and while its update chooser is open
+  ([herdr#4811](https://github.com/herdrdev/herdr/issues/4811)). baton waits for Codex's
+  composer before typing and answers the chooser with Skip. Codex also updates its own
+  background server: when that runs a newer version than the `codex` command, `codex`
+  stops at start-up until the command is updated too (`npm install -g @openai/codex`), and
+  baton sees each attempt crash.
 - **Telegram** was tested live with a phone (2026-10-06) against fake agents: buttons,
   replies, hand-off, stall, `/status`, `/budget`, sounds, and updates from anyone but
   `owner_id` ignored. Real agents' screens were not part of that run.
@@ -233,7 +236,8 @@ governed by its vendor's terms; read them before you let baton run unattended:
 ## Roadmap
 
 - **Next:**
-  - recognise Codex's update chooser in baton-detect, so a prompt never lands in it;
+  - `baton doctor`: how old Claude's last reported limits are;
+  - record Codex 0.160's working screen, so baton tells its idle without herdr's help.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 
 Details: [docs/ROADMAP.md](docs/ROADMAP.md).

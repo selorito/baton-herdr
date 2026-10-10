@@ -19,6 +19,17 @@ is:
   figures instead of the estimate. Your own Claude sessions and settings are not changed
   (ADR 0015). New setting: `[usage] claude_status_log`.
 
+### Fixed
+
+- **A task no longer lands in Codex's update chooser.** herdr's detection catalog reads
+  Codex as idle from its window title, even right after launch and while the chooser is
+  open; baton typed the task there and Enter picked "Update now". baton now waits until
+  Codex's composer is on screen.
+- **The Telegram bot is started again after it fails.** When batond started before the
+  network (at boot), the bot stopped for good: notices still went out, but approvals and
+  replies did nothing until batond restarted. A failed bot also made batond exit with an
+  error when it stopped.
+
 ## [1.0.1] - 2026-10-06
 
 ### Added
