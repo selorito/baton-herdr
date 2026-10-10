@@ -267,7 +267,8 @@ class ProjectsSettings(_Section):
     # The read-only preview of a delivered project's web page. 127.0.0.1 keeps it on this
     # machine; this machine's address on your network lets a phone on it open the link.
     preview_host: str = "127.0.0.1"
-    preview_port: int = Field(default=8765, ge=1, le=65535)
+    # 0: any free port, chosen when batond starts.
+    preview_port: int = Field(default=8765, ge=0, le=65535)
     # A Chromium or Chrome for the page's screenshot; unset: looked up on PATH.
     browser: str | None = None
 

@@ -7,11 +7,16 @@ from typing import TYPE_CHECKING
 from baton_herdr.core.notify import Notice, NoticeKind
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
+
+    from baton_herdr.core.changes import Changes
     from baton_herdr.core.projection import TaskView
     from baton_herdr.projects.plan import Plan
 
 PLAN_READY = "📋 Plan ready"
 PLAN_FAILED = "⚠ No plan"
+DELIVERED = "✅ Project done"
 
 
 def plan_choices(task: TaskView) -> tuple[tuple[str, str], ...]:
@@ -41,4 +46,28 @@ def plan_unreadable(task: TaskView, reason: str) -> Notice:
         title=task.request or task.title,
         details=(reason,),
         label=PLAN_FAILED,
+    )
+
+
+def delivered(
+    plan_task: TaskView,
+    steps: Sequence[TaskView],
+    *,
+    changes: Changes | None,
+    url: str | None,
+    image: Path | None,
+) -> Notice:
+    details = [f"Preview: {url}"] if url else []
+    if url and image is None:
+        details.append("No screenshot: no browser was found, or it could not open the page.")
+    details.append(f"Directory: {plan_task.workdir}")
+    return Notice(
+        NoticeKind.PROJECT_DELIVERED,
+        steps[-1].task_id,
+        f"All {len(steps)} steps are done.",
+        title=plan_task.request or plan_task.title,
+        details=tuple(details),
+        blocks=(changes.stat(limit=10),) if changes is not None else (),
+        label=DELIVERED,
+        image=str(image) if image is not None else None,
     )

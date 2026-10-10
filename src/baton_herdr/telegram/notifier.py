@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 type Buttons = Sequence[tuple[str, str]]
 # (chat id, HTML text, buttons, silent): a silent message arrives without a sound.
 type SendMessage = Callable[[int, str, Buttons, bool], Awaitable[object]]
+# (chat id, path of a picture): sent after the notice it belongs to, silently.
+type SendPhoto = Callable[[int, str], Awaitable[object]]
 
 MAX_MESSAGE_LENGTH = 4096  # Telegram's limit for one text message, counted without markup
 ANSWER_HINT = "Reply to this message to answer."
@@ -119,8 +121,10 @@ class TelegramNotifier:
         *,
         bot: Bot | None = None,
         secrets: Iterable[str] = (),
+        send_photo: SendPhoto | None = None,
     ) -> None:
         self._send = send
+        self._send_photo = send_photo
         self._chat_id = chat_id
         self._bot = bot
         # Masked wherever they appear in a notice: the bot's own token.
@@ -135,6 +139,8 @@ class TelegramNotifier:
                 notice_buttons(notice),
                 not notice.urgent,
             )
+            if notice.image is not None and self._send_photo is not None:
+                await self._send_photo(self._chat_id, notice.image)
         except Exception as err:  # noqa: BLE001 - delivery must never break a task
             self._log.warning(
                 "telegram delivery failed", kind=notice.kind.value, error=type(err).__name__
@@ -179,5 +185,12 @@ def telegram_notifier(settings: TelegramSettings) -> TelegramNotifier | None:
             disable_notification=silent,
         )
 
+    async def send_photo(chat_id: int, path: str) -> object:
+        from aiogram.types import FSInputFile  # noqa: PLC0415
+
+        return await bot.send_photo(chat_id, FSInputFile(path), disable_notification=True)
+
     token = settings.bot_token.get_secret_value()
-    return TelegramNotifier(send, settings.chat_id, bot=bot, secrets=(token,))
+    return TelegramNotifier(
+        send, settings.chat_id, bot=bot, secrets=(token,), send_photo=send_photo
+    )

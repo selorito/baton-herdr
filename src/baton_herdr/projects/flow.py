@@ -6,9 +6,16 @@ one before it. The steps are ordinary tasks from then on.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
-from baton_herdr.core.events import PlanApproved, PlanProposed, PlanRejected, TaskCreated
+from baton_herdr.core.events import (
+    AttemptStarted,
+    PlanApproved,
+    PlanProposed,
+    PlanRejected,
+    ProjectDelivered,
+    TaskCreated,
+)
 from baton_herdr.core.model import TaskId, TaskStatus
 from baton_herdr.core.projection import project
 from baton_herdr.projects import notices
@@ -25,13 +32,13 @@ from baton_herdr.projects.plan import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from datetime import datetime
     from pathlib import Path
 
-    from baton_herdr.core.events import Event
+    from baton_herdr.core.events import Event, StoredEvent
     from baton_herdr.core.notify import Notice
-    from baton_herdr.core.ports import Clock, EventStore
+    from baton_herdr.core.ports import Clock, EventStore, Workspace
     from baton_herdr.core.projection import PlanView, TaskView
 
 # Whoever acts for baton itself in the log.
@@ -156,3 +163,64 @@ async def _waiting_plan(store: EventStore, task_id: TaskId) -> tuple[TaskView, P
         msg = "That plan is no longer waiting."
         raise ProjectError(msg)
     return task, task.plan
+
+
+class Show(Protocol):
+    """A project's page link and picture (``deliver.Showcase``); faked in tests."""
+
+    def url(self, workdir: Path) -> str | None: ...
+
+    async def picture(self, url: str, workdir: Path) -> Path | None: ...
+
+
+async def deliver_projects(
+    store: EventStore,
+    *,
+    clock: Clock,
+    workspace: Workspace | None = None,
+    show: Show | None = None,
+) -> list[Notice]:
+    """Deliver every project whose steps have all completed: record it, and say what it
+    changed, with its page's link and picture when it has a page."""
+    from pathlib import Path  # noqa: PLC0415 - only the type is needed at module level
+
+    events = await store.read()
+    board = project(events)
+    by_project: dict[str, list[TaskView]] = {}
+    for task in board.tasks.values():
+        if task.project is not None:
+            by_project.setdefault(task.project, []).append(task)
+    found: list[tuple[Event, Notice]] = []
+    for project_id, tasks in by_project.items():
+        steps = [t for t in tasks if t.role == "step"]
+        plan_task = next((t for t in tasks if t.role == "plan"), None)
+        if not steps or plan_task is None or steps[-1].delivered:
+            continue
+        if any(t.status is not TaskStatus.COMPLETED for t in steps):
+            continue
+        workdir = Path(steps[-1].workdir)
+        start = _first_head(events, plan_task.task_id)
+        changes = await workspace.changes(str(workdir), start) if workspace else None
+        url = show.url(workdir) if show else None
+        picture = await show.picture(url, workdir) if show and url else None
+        event = ProjectDelivered(
+            occurred_at=clock.now(),
+            task_id=steps[-1].task_id,
+            project=project_id,
+            preview_url=url,
+        )
+        found.append(
+            (event, notices.delivered(plan_task, steps, changes=changes, url=url, image=picture))
+        )
+    if found:
+        await store.append([event for event, _ in found])
+    return [notice for _, notice in found]
+
+
+def _first_head(events: Sequence[StoredEvent], task_id: TaskId) -> str | None:
+    """The commit the project started from: its plan task's first attempt's."""
+    for stored in events:
+        event = stored.event
+        if isinstance(event, AttemptStarted) and event.task_id == task_id:
+            return event.workdir_head
+    return None

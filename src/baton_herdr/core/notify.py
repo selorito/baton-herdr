@@ -56,6 +56,8 @@ class Notice:
     label: str = ""
     # Buttons that are not about a blocker, as (label, data): a plan's Start and Cancel.
     choices: tuple[tuple[str, str], ...] = ()
+    # A picture to show with it, as a local file: a delivered project's page.
+    image: str | None = None
     blocks: tuple[str, ...] = ()
 
     @property

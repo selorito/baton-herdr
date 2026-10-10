@@ -35,6 +35,7 @@ from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.policy.load import PolicyError, load_policy
+from baton_herdr.projects.deliver import find_browser
 from baton_herdr.service import installed_session
 
 if TYPE_CHECKING:
@@ -150,6 +151,7 @@ class Probes:
     package_version: Callable[[], str] = lambda: version("baton-herdr")
     environ: Callable[[], Mapping[str, str]] = os.environ.copy
     last_line: Callable[[Path], str | None] = _last_line
+    browser: Callable[[str | None], Path | None] = find_browser
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
 
 
@@ -188,6 +190,7 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     if (limits := _claude_limits(settings, probes)) is not None:
         checks.append(limits)
     checks.append(_policy(settings))
+    checks.extend(_projects(settings, probes))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
     return checks
@@ -398,6 +401,57 @@ def _ago(span: timedelta) -> str:
     if minutes < 48 * 60:
         return f"{minutes // 60} h"
     return f"{minutes // (24 * 60)} days"
+
+
+def _projects(settings: BatonSettings, probes: Probes) -> list[Check]:
+    """Projects from Telegram (ADR 0016): where they go, and what a delivery can show."""
+    projects = settings.projects
+    root = projects.root
+    checks = []
+    policy = None
+    if settings.policy.enabled:
+        try:
+            policy = load_policy(settings.policy.path)
+        except PolicyError:
+            policy = None  # the policy check says what is wrong with it
+    if policy is not None and not policy.trusts(str(root)):
+        checks.append(
+            Check(
+                "projects",
+                Level.WARN,
+                f"{root}: not in the policy's trusted_dirs",
+                f"Agents ask before every test or build in a project. Add {root} to "
+                "trusted_dirs in policy.yaml if you trust what they write there.",
+            )
+        )
+    else:
+        checks.append(Check("projects", Level.OK, f"{root}"))
+    where = f"http://{projects.preview_host}:{projects.preview_port}/"
+    if projects.preview_host in {"127.0.0.1", "localhost", "::1"}:
+        checks.append(
+            Check(
+                "project preview",
+                Level.OK,
+                f"{where} (this machine only)",
+                "To open a delivered page from a phone on your network, set [projects] "
+                "preview_host to this machine's address there; anyone on it can then read "
+                "the projects' pages.",
+            )
+        )
+    else:
+        checks.append(Check("project preview", Level.OK, f"{where} (read-only)"))
+    browser = probes.browser(projects.browser)
+    checks.append(
+        Check("screenshots", Level.OK, str(browser))
+        if browser is not None
+        else Check(
+            "screenshots",
+            Level.WARN,
+            "no Chromium or Chrome found: deliveries come without a picture",
+            "Install chromium, or set [projects] browser to one.",
+        )
+    )
+    return checks
 
 
 def _policy(settings: BatonSettings) -> Check:

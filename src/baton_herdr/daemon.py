@@ -34,7 +34,8 @@ from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
-from baton_herdr.projects.flow import propose_plans
+from baton_herdr.projects.deliver import PreviewServer, Showcase, find_browser
+from baton_herdr.projects.flow import deliver_projects, propose_plans
 from baton_herdr.scheduler.queue import (
     Signature,
     available_agents,
@@ -141,6 +142,9 @@ class Runtime:
     wake_fifo: Path | None = None
     # Where notices go, for what happens outside a task's run: a project's plan (ADR 0016).
     notifier: Notifier | None = None
+    # A finished project's page: the preview batond serves, and a browser for its picture.
+    preview: PreviewServer | None = None
+    browser: Path | None = None
 
 
 @asynccontextmanager
@@ -226,6 +230,12 @@ async def open_runtime(
             budget=budget,
             wake_fifo=wake_path(settings.database.path),
             notifier=notices,
+            preview=PreviewServer(
+                settings.projects.root,
+                host=settings.projects.preview_host,
+                port=settings.projects.preview_port,
+            ),
+            browser=find_browser(settings.projects.browser),
         )
     finally:
         await detector.aclose()
@@ -372,10 +382,15 @@ async def serve(
         asyncio.create_task(runtime.collector.run(stop)) if runtime.collector is not None else None
     )
     listen = listening(runtime.wake_fifo, runtime.wake) if runtime.wake_fifo else nullcontext()
+    # Only batond serves the preview; the CLI opens a runtime too, and must not take the port.
+    if runtime.preview is not None:
+        runtime.preview.start()
     try:
         with listen:
             await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
     finally:
+        if runtime.preview is not None:
+            runtime.preview.stop()
         if bot_task is not None:
             bot_task.cancel()
             # A bot that already failed must not fail batond's shutdown with its error.
@@ -422,8 +437,15 @@ async def _serve_loop(
 
 
 async def advance_projects(runtime: Runtime) -> None:
-    """Propose the plans of finished plan tasks to the operator (ADR 0016)."""
-    for notice in await propose_plans(runtime.store, clock=runtime.clock, read_text=_read_plan):
+    """Propose the plans of finished plan tasks, and deliver finished projects (ADR 0016)."""
+    proposed = await propose_plans(runtime.store, clock=runtime.clock, read_text=_read_plan)
+    delivered = await deliver_projects(
+        runtime.store,
+        clock=runtime.clock,
+        workspace=GitWorkspace(),
+        show=Showcase(runtime.preview, runtime.browser),
+    )
+    for notice in [*proposed, *delivered]:
         if runtime.notifier is not None:
             await runtime.notifier.notify(notice)
 

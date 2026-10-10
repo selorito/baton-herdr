@@ -77,6 +77,7 @@ def probes(
         classify=lambda _: classified,
         package_version=lambda: "0.1.0",
         last_line=status_lines.get,
+        browser=lambda _: Path("/usr/bin/chromium"),
         now=lambda: NOW,
     )
 
@@ -104,6 +105,7 @@ async def test_a_healthy_setup_with_one_outdated_integration(
     assert {name: c.level for name, c in checks.items() if c.level is not Level.OK} == {
         "codex integration": Level.FAIL,
         "policy": Level.WARN,  # no policy.yaml: the defaults, said out loud
+        "projects": Level.WARN,  # and so no trusted_dirs for the projects
     }
     assert "herdr integration install codex" in checks["codex integration"].hint
     assert checks["telegram"].detail == "@baton_bot, actions from user 7"
@@ -265,3 +267,27 @@ async def test_claudes_last_reported_limits_are_shown_with_their_age(
 
     monkeypatch.setenv("BATON_USAGE__ENABLED", "false")
     assert "claude limits" not in by_name(await diagnose(probes()))
+
+
+async def test_projects_are_checked_for_trust_reach_and_pictures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BATON_CONFIG", str(tmp_path / "missing.toml"))
+    monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
+    root = tmp_path / "projects"
+    monkeypatch.setenv("BATON_PROJECTS__ROOT", str(root))
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_PORT", "8765")
+    checks = by_name(await diagnose(probes()))
+    assert checks["projects"].level is Level.WARN
+    assert "trusted_dirs" in checks["projects"].hint
+    assert checks["project preview"].detail == "http://127.0.0.1:8765/ (this machine only)"
+    assert checks["screenshots"].detail == "/usr/bin/chromium"
+
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(f"trusted_dirs: [{tmp_path}]\n", encoding="utf-8")
+    monkeypatch.setenv("BATON_POLICY__PATH", str(policy))
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "192.168.1.20")
+    checks = by_name(await diagnose(replace(probes(), browser=lambda _: None)))
+    assert checks["projects"].level is Level.OK  # inside a trusted directory
+    assert checks["project preview"].detail == "http://192.168.1.20:8765/ (read-only)"
+    assert checks["screenshots"].level is Level.WARN

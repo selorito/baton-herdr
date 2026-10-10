@@ -40,6 +40,9 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         if key.startswith("BATON_"):
             monkeypatch.delenv(key)
     monkeypatch.chdir(tmp_path)
+    # A running batond's projects and preview port are not the tests' (ADR 0016).
+    monkeypatch.setenv("BATON_PROJECTS__ROOT", str(tmp_path / "projects"))
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_PORT", "0")
     user_dir = tmp_path / "user-config" / "baton"
     monkeypatch.setattr(config, "user_config_dir", lambda: user_dir)
 
