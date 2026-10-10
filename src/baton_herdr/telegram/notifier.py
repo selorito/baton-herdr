@@ -87,6 +87,8 @@ def _shown_length(text: str) -> int:
 
 
 def notice_buttons(notice: Notice) -> list[tuple[str, str]]:
+    if notice.choices:
+        return list(notice.choices)
     if notice.blocker_seq is None:
         return []
     return [

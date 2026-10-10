@@ -25,6 +25,11 @@ from baton_herdr.core.events import (
     AttemptStarted,
     OperatorActed,
     PermissionDecided,
+    PlanApproved,
+    PlanProposed,
+    PlanRejected,
+    PlanStep,
+    ProjectDelivered,
     StoredEvent,
     TaskCancelled,
     TaskCompleted,
@@ -70,6 +75,16 @@ class AttemptView:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanView:
+    """A project's plan, on its plan task (ADR 0016)."""
+
+    summary: str
+    steps: tuple[PlanStep, ...]
+    # "proposed" until the operator approves or rejects it.
+    status: str = "proposed"
+
+
+@dataclass(frozen=True, slots=True)
 class TaskView:
     task_id: TaskId
     title: str
@@ -78,6 +93,15 @@ class TaskView:
     attempts: tuple[AttemptView, ...] = ()
     # Set once, by task.completed / task.failed / task.cancelled.
     closed_as: TaskStatus | None = None
+    # A project's task (ADR 0016), and the task it waits for.
+    project: str | None = None
+    role: str | None = None
+    after: TaskId | None = None
+    request: str | None = None
+    # On a plan task: the plan, once proposed; on a project's last step: once delivered.
+    plan: PlanView | None = None
+    plan_rejected: bool = False
+    delivered: bool = False
 
     @property
     def live_attempt(self) -> AttemptView | None:
@@ -124,16 +148,25 @@ def apply(board: Board, stored: StoredEvent) -> Board:
     if isinstance(event, TaskCreated):
         if event.task_id in board.tasks:
             raise InvalidEventError(stored, "task already exists")
+        if event.after is not None and event.after not in board.tasks:
+            raise InvalidEventError(stored, "waits for an unknown task")
         task = TaskView(
             task_id=event.task_id,
             title=event.title,
             instructions=event.instructions,
             workdir=event.workdir,
+            project=event.project,
+            role=event.role,
+            after=event.after,
+            request=event.request,
         )
     else:
         existing = board.tasks.get(event.task_id)
         if existing is None:
             raise InvalidEventError(stored, "unknown task")
+        if isinstance(event, PlanProposed | PlanApproved | PlanRejected | ProjectDelivered):
+            task = _apply_note(existing, stored)
+            return Board(tasks={**board.tasks, task.task_id: task}, last_seq=stored.seq)
         if existing.status.is_terminal:
             raise InvalidEventError(stored, f"task is {existing.status.value}")
         task = _apply_to_task(existing, stored)
@@ -176,6 +209,35 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             return replace(task, attempts=(*task.attempts[:-1], updated))
         case _:
             raise InvalidEventError(stored, "event cannot be applied to an existing task")
+
+
+def _apply_note(task: TaskView, stored: StoredEvent) -> TaskView:
+    """Plan and delivery notes (ADR 0016): allowed on a closed task, in their order."""
+    event = stored.event
+    match event:
+        case PlanProposed():
+            if task.role != "plan" or task.plan is not None or task.plan_rejected:
+                raise InvalidEventError(stored, "not a plan task waiting for its plan")
+            return replace(task, plan=PlanView(summary=event.summary, steps=event.steps))
+        case PlanApproved():
+            if task.plan is None or task.plan.status != "proposed":
+                raise InvalidEventError(stored, "no proposed plan")
+            return replace(task, plan=replace(task.plan, status="approved"))
+        case PlanRejected():
+            if (
+                task.role != "plan"
+                or task.plan_rejected
+                or (task.plan is not None and task.plan.status != "proposed")
+            ):
+                raise InvalidEventError(stored, "no plan to reject")
+            plan = replace(task.plan, status="rejected") if task.plan is not None else None
+            return replace(task, plan=plan, plan_rejected=True)
+        case ProjectDelivered():
+            if task.status is not TaskStatus.COMPLETED or task.delivered:
+                raise InvalidEventError(stored, "not a completed step to deliver from")
+            return replace(task, delivered=True)
+        case _:
+            raise InvalidEventError(stored, "not a note")
 
 
 _CLOSED_AS = {

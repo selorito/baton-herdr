@@ -51,6 +51,13 @@ class TaskCreated(_Event):
     title: str
     instructions: str
     workdir: str
+    # A task of a project (ADR 0016): its plan, or one of its steps. A task with
+    # ``after`` waits until that task has completed.
+    project: str | None = None
+    role: Literal["plan", "step"] | None = None
+    after: TaskId | None = None
+    # On a plan task: the request as the operator wrote it.
+    request: str | None = Field(default=None, max_length=4000)
 
 
 class TaskCompleted(_Event):
@@ -65,6 +72,51 @@ class TaskFailed(_Event):
 class TaskCancelled(_Event):
     type: Literal["task.cancelled"] = "task.cancelled"
     reason: str | None = None
+
+
+class PlanStep(BaseModel):
+    """One step of a project's plan (ADR 0016)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1, max_length=120)
+    instructions: str = Field(min_length=1, max_length=4000)
+
+
+class PlanProposed(_Event):
+    """The plan a project's plan task wrote, waiting for the operator (ADR 0016). A note
+    about the plan task, which has completed by then."""
+
+    type: Literal["plan.proposed"] = "plan.proposed"
+    summary: str = Field(max_length=2000)
+    steps: tuple[PlanStep, ...] = Field(min_length=1, max_length=8)
+
+
+class PlanApproved(_Event):
+    type: Literal["plan.approved"] = "plan.approved"
+    by: str = Field(min_length=1)  # "telegram:<user id>" or "cli"
+
+
+class PlanRejected(_Event):
+    """The operator cancelled the plan, or baton could not read one."""
+
+    type: Literal["plan.rejected"] = "plan.rejected"
+    by: str = Field(min_length=1)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectDelivered(_Event):
+    """The project's last step completed and its result was sent (ADR 0016). A note about
+    that step task."""
+
+    type: Literal["project.delivered"] = "project.delivered"
+    project: str
+    preview_url: str | None = None
+
+
+# Notes about a task that may follow its completion: they record what happened around the
+# task, not to it.
+NOTE_TYPES = frozenset({"plan.proposed", "plan.approved", "plan.rejected", "project.delivered"})
 
 
 class BudgetNote(BaseModel):
@@ -213,7 +265,11 @@ type Event = Annotated[
     | PermissionDecided
     | AttemptInterrupted
     | AttemptResumed
-    | AttemptEnded,
+    | AttemptEnded
+    | PlanProposed
+    | PlanApproved
+    | PlanRejected
+    | ProjectDelivered,
     Field(discriminator="type"),
 ]
 

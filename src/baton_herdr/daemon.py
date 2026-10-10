@@ -34,6 +34,7 @@ from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
+from baton_herdr.projects.flow import propose_plans
 from baton_herdr.scheduler.queue import (
     Signature,
     available_agents,
@@ -138,6 +139,8 @@ class Runtime:
     budget: BudgetReader | None = None
     # The FIFO CLI commands write to, to wake batond at once (``poke``); None: not listened to.
     wake_fifo: Path | None = None
+    # Where notices go, for what happens outside a task's run: a project's plan (ADR 0016).
+    notifier: Notifier | None = None
 
 
 @asynccontextmanager
@@ -173,12 +176,13 @@ async def open_runtime(
         claude_window_tokens=settings.budget.claude_window_tokens,
     )
     detector = make_detector(settings.detector)
+    notices = notifier or telegram or LoggingNotifier()
     try:
         runner = TaskRunner(
             store=store,
             host=host,
             adapters=ADAPTERS,
-            notifier=notifier or telegram or LoggingNotifier(),
+            notifier=notices,
             clock=clock,
             settings=scheduling,
             budget=budget,
@@ -202,6 +206,7 @@ async def open_runtime(
                 ),
                 budget=budget,
                 on_action=wake.set,
+                projects_root=settings.projects.root,
             )
         yield Runtime(
             store=store,
@@ -220,6 +225,7 @@ async def open_runtime(
             ),
             budget=budget,
             wake_fifo=wake_path(settings.database.path),
+            notifier=notices,
         )
     finally:
         await detector.aclose()
@@ -399,6 +405,7 @@ async def _serve_loop(
     log = get_logger("baton.daemon")
     while not stop.is_set():
         await run_pending(runtime, seen=seen)
+        await advance_projects(runtime)
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             break
@@ -412,6 +419,19 @@ async def _serve_loop(
         log.debug("sleeping", seconds=delay)
         await _sleep(delay, stop, runtime.wake)
         runtime.wake.clear()
+
+
+async def advance_projects(runtime: Runtime) -> None:
+    """Propose the plans of finished plan tasks to the operator (ADR 0016)."""
+    for notice in await propose_plans(runtime.store, clock=runtime.clock, read_text=_read_plan):
+        if runtime.notifier is not None:
+            await runtime.notifier.notify(notice)
+
+
+def _read_plan(path: Path) -> str:
+    # A plan is a few kilobytes; a huge file is not one.
+    with path.open(encoding="utf-8") as file:
+        return file.read(256_000)
 
 
 async def _sleep(delay: float, *events: asyncio.Event) -> None:

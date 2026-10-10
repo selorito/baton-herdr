@@ -129,6 +129,31 @@ def test_cli_adds_tasks_and_shows_their_status(tmp_path: Path, env: dict[str, st
     assert shown.stdout.split() == [task_id, "pending", "power"]
 
 
+def test_cli_cancels_a_task_once(tmp_path: Path, env: dict[str, str]) -> None:
+    added = cli.invoke(app, ["task", "add", "x", "-i", "x", "-C", str(tmp_path)], env=env)
+    task_id = added.stdout.strip()
+
+    cancelled = cli.invoke(app, ["task", "cancel", task_id, "--reason", "not needed"], env=env)
+    assert cancelled.exit_code == 0, cancelled.output
+    assert cli.invoke(app, ["status"], env=env).stdout.split() == [task_id, "cancelled", "x"]
+
+    again = cli.invoke(app, ["task", "cancel", task_id], env=env)
+    assert again.exit_code == 1
+    assert "already cancelled" in again.output
+    assert cli.invoke(app, ["task", "cancel", "t-none"], env=env).exit_code == 1
+
+
+def test_cli_starts_a_project_with_a_plan_task(tmp_path: Path, env: dict[str, str]) -> None:
+    env = {**env, "BATON_PROJECTS__ROOT": str(tmp_path / "projects")}
+    started = cli.invoke(app, ["project", "new", "A one-page website"], env=env)
+    assert started.exit_code == 0, started.output
+    assert started.stdout.startswith("p-")
+    assert (tmp_path / "projects").is_dir()
+    shown = cli.invoke(app, ["status"], env=env).stdout
+    assert "pending" in shown
+    assert "Plan: A one-page website" in shown
+
+
 @pytest.mark.parametrize("args", [[], ["-i", "x", "-f", "README.md"]])
 def test_cli_needs_exactly_one_source_of_instructions(
     tmp_path: Path, env: dict[str, str], args: list[str]

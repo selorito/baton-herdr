@@ -38,7 +38,7 @@ async def test_telegram_notifier_sends_to_the_configured_chat_only() -> None:
 
 
 @pytest.mark.parametrize("kind", list(NoticeKind))
-async def test_only_decisions_and_a_lack_of_agents_make_a_sound(kind: NoticeKind) -> None:
+async def test_only_decisions_plans_and_a_lack_of_agents_make_a_sound(kind: NoticeKind) -> None:
     silent: list[bool] = []
 
     async def send(_chat_id: int, _text: str, _buttons: Buttons, quiet: bool) -> None:
@@ -46,7 +46,7 @@ async def test_only_decisions_and_a_lack_of_agents_make_a_sound(kind: NoticeKind
 
     await TelegramNotifier(send, chat_id=42).notify(replace(NOTICE, kind=kind))
 
-    loud = {NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT}
+    loud = {NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT, NoticeKind.PLAN_PROPOSED}
     assert silent == [kind not in loud]
 
 

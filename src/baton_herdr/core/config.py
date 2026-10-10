@@ -258,6 +258,25 @@ class PolicySettings(_Section):
         return value.expanduser()
 
 
+class ProjectsSettings(_Section):
+    """Requests from Telegram, planned and run as projects (ADR 0016)."""
+
+    # Each request gets a new directory here. Add it to the policy's trusted_dirs so the
+    # agents may run the projects' tests without asking.
+    root: Path = Field(default_factory=lambda: Path.home() / "dev" / "baton-projects")
+    # The read-only preview of a delivered project's web page. 127.0.0.1 keeps it on this
+    # machine; this machine's address on your network lets a phone on it open the link.
+    preview_host: str = "127.0.0.1"
+    preview_port: int = Field(default=8765, ge=1, le=65535)
+    # A Chromium or Chrome for the page's screenshot; unset: looked up on PATH.
+    browser: str | None = None
+
+    @field_validator("root")
+    @classmethod
+    def _expand_user(cls, value: Path) -> Path:
+        return value.expanduser()
+
+
 class TelegramSettings(_Section):
     bot_token: SecretStr | None = None
     # The only chat baton writes to. Without it no message is sent.
@@ -285,6 +304,7 @@ class BatonSettings(BaseSettings):
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     detector: DetectorSettings = Field(default_factory=DetectorSettings)
     policy: PolicySettings = Field(default_factory=PolicySettings)
+    projects: ProjectsSettings = Field(default_factory=ProjectsSettings)
 
     @classmethod
     def settings_customise_sources(

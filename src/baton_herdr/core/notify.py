@@ -21,11 +21,13 @@ class NoticeKind(StrEnum):
     NEEDS_HUMAN = "needs_human"
     TASK_COMPLETED = "task_completed"
     TASK_STOPPED = "task_stopped"
+    PLAN_PROPOSED = "plan_proposed"
+    PROJECT_DELIVERED = "project_delivered"
 
 
 # The notices that need the operator: a decision or answer, or no agent left to work.
 # The rest report progress and arrive without a sound.
-URGENT = frozenset({NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT})
+URGENT = frozenset({NoticeKind.NEEDS_HUMAN, NoticeKind.WAITING_FOR_AGENT, NoticeKind.PLAN_PROPOSED})
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,8 @@ class Notice:
     # What kind of attention it needs, at a glance, for notices that need some
     # ("🔐 Needs approval", "⏸ Stalled"); channels show it first.
     label: str = ""
+    # Buttons that are not about a blocker, as (label, data): a plan's Start and Cancel.
+    choices: tuple[tuple[str, str], ...] = ()
     blocks: tuple[str, ...] = ()
 
     @property

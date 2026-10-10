@@ -19,6 +19,7 @@ from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
+from baton_herdr.core.commands import CommandRejectedError, cancel_task
 from baton_herdr.core.config import BatonSettings, config_file
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
@@ -28,6 +29,8 @@ from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, render
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import PolicyError, load_policy
+from baton_herdr.projects.create import ProjectSetupError
+from baton_herdr.projects.flow import ProjectError, approve_plan, reject_plan, start_project
 from baton_herdr.scheduler.operator import ActionRefusedError, act
 from baton_herdr.service import (
     BATON_UNIT,
@@ -43,6 +46,10 @@ task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
 app.add_typer(task_app)
 service_app = typer.Typer(name="service", help="Run batond as a systemd user service.")
 app.add_typer(service_app)
+project_app = typer.Typer(
+    name="project", help="Projects: a request, planned and run step by step.", no_args_is_help=True
+)
+app.add_typer(project_app)
 policy_app = typer.Typer(
     name="policy", help="Which agent commands run without asking you.", no_args_is_help=True
 )
@@ -136,6 +143,96 @@ def task_add(
 
     typer.echo(asyncio.run(add()))
     poke(settings.database.path)  # a running batond picks it up now
+
+
+@task_app.command("cancel")
+def task_cancel(
+    task_id: Annotated[str, typer.Argument(help="The task to drop.")],
+    reason: Annotated[str | None, typer.Option("--reason", help="Kept in the log.")] = None,
+) -> None:
+    """Cancel an open task. Its agent's pane is left as it is; close it in herdr."""
+    settings = _settings()
+
+    async def cancel() -> str:
+        store = await open_event_store(settings.database.path)
+        try:
+            task = project(await store.read()).tasks.get(TaskId(task_id))
+            if task is None:
+                typer.echo(f"no task {task_id}", err=True)
+                raise typer.Exit(code=1)
+            try:
+                events = cancel_task(task, at=SystemClock().now(), reason=reason)
+            except CommandRejectedError as err:
+                typer.echo(str(err), err=True)
+                raise typer.Exit(code=1) from err
+            await store.append(events)
+            return f"{task_id} cancelled"
+        finally:
+            await store.close()
+
+    typer.echo(asyncio.run(cancel()))
+    poke(settings.database.path)
+
+
+@project_app.command("new")
+def project_new(
+    request: Annotated[str, typer.Argument(help="What to build, as you would say it.")],
+) -> None:
+    """Start a project: a new directory, and an agent to plan it (ADR 0016)."""
+    settings = _settings()
+
+    async def start() -> str:
+        store = await open_event_store(settings.database.path)
+        try:
+            project_id, task_id, workdir = await start_project(
+                store, root=settings.projects.root, request=request, clock=SystemClock()
+            )
+        except (ProjectError, ProjectSetupError) as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(code=1) from err
+        finally:
+            await store.close()
+        return f"{project_id}  {workdir}\nplan task {task_id}"
+
+    typer.echo(asyncio.run(start()))
+    poke(settings.database.path)
+
+
+def _plan_choice(task_id: str, *, start: bool) -> None:
+    settings = _settings()
+
+    async def choose() -> str:
+        store = await open_event_store(settings.database.path)
+        try:
+            if start:
+                steps = await approve_plan(store, TaskId(task_id), by="cli", clock=SystemClock())
+                return f"started: {len(steps)} steps ({', '.join(steps)})"
+            await reject_plan(store, TaskId(task_id), by="cli", clock=SystemClock())
+            return "plan cancelled"
+        except ProjectError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(code=1) from err
+        finally:
+            await store.close()
+
+    typer.echo(asyncio.run(choose()))
+    poke(settings.database.path)
+
+
+@project_app.command("start")
+def project_start(
+    task_id: Annotated[str, typer.Argument(help="The plan task whose plan to start.")],
+) -> None:
+    """Start a proposed plan: its steps run one after another."""
+    _plan_choice(task_id, start=True)
+
+
+@project_app.command("cancel")
+def project_cancel(
+    task_id: Annotated[str, typer.Argument(help="The plan task whose plan to drop.")],
+) -> None:
+    """Cancel a proposed plan: none of it runs."""
+    _plan_choice(task_id, start=False)
 
 
 @app.command()

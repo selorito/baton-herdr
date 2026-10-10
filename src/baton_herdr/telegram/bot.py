@@ -23,12 +23,15 @@ from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction, TaskId
 from baton_herdr.core.projection import project
+from baton_herdr.projects.create import ProjectSetupError
+from baton_herdr.projects.flow import ProjectError, approve_plan, reject_plan, start_project
 from baton_herdr.scheduler.operator import ActionRefusedError, act, find_blocker
 from baton_herdr.telegram.notifier import parse_reference
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
     from datetime import timedelta
+    from pathlib import Path
 
     from aiogram import Bot
     from aiogram.types import CallbackQuery, Message
@@ -40,10 +43,14 @@ if TYPE_CHECKING:
     from baton_herdr.core.ports import Clock, EventStore
 
 HELP = (
+    "/new <request>: start a project, e.g. /new a one-page website for my cafe. "
+    "An agent plans it; you get the plan with Start and Cancel.\n"
     "/status: open tasks and agents.\n"
-    "/budget: what each agent has left; Claude's figure is an estimate.\n"
+    "/budget: what each agent has left.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
+PLAN_STARTED = "Started."
+PLAN_CANCELLED = "Cancelled."
 # Said to a message that is neither a command nor a reply: it reached no agent.
 NOT_A_REPLY = "That message went to no agent. To answer a question, reply to its message."
 _DONE = {
@@ -74,6 +81,7 @@ class OperatorBot:
         settings: BotSettings,
         budget: BudgetReader | None = None,
         on_action: Callable[[], None] | None = None,
+        projects_root: Path | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -84,6 +92,8 @@ class OperatorBot:
         self._zone = ZoneInfo(settings.timezone)
         # Called after an action was carried out, so the daemon looks at the task now.
         self._on_action = on_action or (lambda: None)
+        # Where /new makes projects (ADR 0016); None: /new is not offered.
+        self._projects_root = projects_root
         self._log = get_logger("baton.telegram")
 
     def authorized(self, chat_id: int | None, user_id: int | None) -> bool:
@@ -98,6 +108,8 @@ class OperatorBot:
             return await self.status()
         if name == "/budget":
             return await self.budget()
+        if name == "/new":
+            return await self.new_project(text.split(maxsplit=1)[1] if " " in text.strip() else "")
         if not name.startswith("/"):
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
@@ -135,8 +147,43 @@ class OperatorBot:
             )
         return "\n".join([*(lines or ["No open tasks."]), "", *agents])
 
+    async def new_project(self, request: str) -> str:
+        """``/new <request>``: a project and its plan task (ADR 0016)."""
+        if self._projects_root is None:
+            return "Projects are not set up."
+        try:
+            project_id, task_id, workdir = await start_project(
+                self._store, root=self._projects_root, request=request, clock=self._clock
+            )
+        except (ProjectError, ProjectSetupError) as err:
+            return str(err)
+        self._on_action()
+        return (
+            f"Project {project_id} in {workdir}. An agent plans it now ({task_id}); "
+            "the plan comes here for you to start or cancel."
+        )
+
+    async def plan_choice(self, data: str) -> str:
+        """A press on a plan's Start or Cancel; ``data`` is ``plan:start:t-1a2b3c4d``."""
+        _, choice, task_id = [*data.split(":"), "", ""][:3]
+        by = f"telegram:{self._settings.owner_id}"
+        try:
+            if choice == "start":
+                steps = await approve_plan(self._store, TaskId(task_id), by=by, clock=self._clock)
+            elif choice == "cancel":
+                await reject_plan(self._store, TaskId(task_id), by=by, clock=self._clock)
+                return PLAN_CANCELLED
+            else:
+                return "Unknown button."
+        except ProjectError as err:
+            return str(err)
+        self._on_action()
+        return f"{PLAN_STARTED} {len(steps)} steps, one after another."
+
     async def button(self, data: str) -> str:
-        """A press on Approve / Deny; ``data`` is ``action:task:seq``."""
+        """A press on Approve / Deny (``action:task:seq``) or on a plan's Start / Cancel."""
+        if data.startswith("plan:"):
+            return await self.plan_choice(data)
         try:
             action_name, task_id, seq = data.split(":")
             action = OperatorAction(action_name)
@@ -219,7 +266,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     def sender(update: Message | CallbackQuery) -> int | None:
         return update.from_user.id if update.from_user else None
 
-    @router.message(Command("status", "budget", "help", "start"))
+    @router.message(Command("status", "budget", "help", "start", "new"))
     async def on_command(message: Message) -> None:
         if operator.authorized(message.chat.id, sender(message)):
             await message.answer(await operator.command(message.text or ""))
@@ -247,8 +294,9 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             await query.answer()
             return
         result = await operator.button(query.data or "")
-        await query.answer(result, show_alert=result not in _DONE.values())
-        if query.message is not None and result in _DONE.values():
+        final = result in _DONE.values() or result.startswith((PLAN_STARTED, PLAN_CANCELLED))
+        await query.answer(result, show_alert=not final)
+        if query.message is not None and final:
             # The buttons are spent; the answer stays visible as a reply.
             await bot.edit_message_reply_markup(
                 chat_id=query.message.chat.id, message_id=query.message.message_id

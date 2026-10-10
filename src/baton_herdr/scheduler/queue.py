@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from baton_herdr.core.model import AttemptStatus
+from baton_herdr.core.model import AttemptStatus, TaskStatus
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -47,13 +47,23 @@ def select_tasks(
     available: frozenset[AgentKind],
     seen: Mapping[TaskId, Signature],
 ) -> tuple[TaskId, ...]:
-    """Tasks to run now, oldest first."""
+    """Tasks to run now, oldest first. A task that waits for another (``after``, a
+    project's next step) is not run until that one has completed (ADR 0016)."""
+    by_id = {task.task_id: task for task in tasks}
     return tuple(
         task.task_id
         for task in tasks
         if not task.status.is_terminal
+        and _ready(task, by_id)
         and (_active(task) or seen.get(task.task_id) != (positions.get(task.task_id, 0), available))
     )
+
+
+def _ready(task: TaskView, tasks: Mapping[TaskId, TaskView]) -> bool:
+    if task.after is None:
+        return True
+    before = tasks.get(task.after)
+    return before is not None and before.status is TaskStatus.COMPLETED
 
 
 def _active(task: TaskView) -> bool:
