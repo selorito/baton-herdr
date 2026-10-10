@@ -1,0 +1,40 @@
+[0m[2m╭─────────────────────────────────────────────────╮[0m
+[0m[2m│ [0m[1m[38;2;99;168;248m✨ Update available![0m [0m[1m0.160.0 -> 0.160.1[0m[2m         │[0m
+[0m[2m│ [0mRun [0m[38;2;99;168;248mnpm install -g @openai/codex [0mto update.[0m[2m     │[0m
+[0m[2m│                                                 │[0m
+[0m[2m│ [0mSee full release notes:[0m[2m                         │[0m
+[0m[2m│ [0m[4m[38;2;99;168;248mhttps://github.com/openai/codex/releases/latest[0m[2m │[0m
+[0m[2m╰─────────────────────────────────────────────────╯[0m
+
+
+  [0m[38;2;99;168;248m>_ [0m[1mOpenAI Codex[0m[2m (v0.160.0)[0m
+     [0m[2m~/dev/coban-sandbox[0m
+
+  [0m[38;2;99;168;248mWell, this terminal just got interesting.[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m[1m› [0m[2mAsk Codex to do anything[0m
+
+  [0m[38;2;246;226;183mGPT-6-Sol medium[0m · [0m[38;2;171;223;167m~/dev/coban-sandbox[0m
+  [0m[1m? [0mfor shortcuts

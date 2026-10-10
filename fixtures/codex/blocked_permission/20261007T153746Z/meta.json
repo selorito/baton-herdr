@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.160.0",
+    "error": null
+  },
+  "scenario": "blocked_permission",
+  "captured_at": "2026-10-07T15:37:46.434044+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w2:p6",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "start-up update chooser (0.160.0 -> 0.160.1); herdr catalog 2026.10.01.1 reports idle from a title without a spinner (osc_title_idle), and Enter picks Update now",
+  "explain_error": null
+}

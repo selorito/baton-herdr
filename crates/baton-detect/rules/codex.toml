@@ -56,10 +56,25 @@ region = "bottom_non_empty_trimmed(1)"
 applies_when = ["unknown"]
 regex = '''^ {2}\S[^\n]* · [^\n]*[\x{2800}-\x{28FF}]\z'''
 
-# herdr has no idle rule for Codex, so this idle is a fallback for when herdr knows nothing.
+# The composer over the model and directory footer, when herdr knows nothing.
 [[rules]]
 id = "codex_idle_prompt"
 state = "idle"
 region = "bottom_non_empty_trimmed(2)"
 applies_when = ["unknown"]
 regex = '''^› (?!\d+\.\s)[^\n]*\n {2}\S[^\n]* · [^\n]*[^\n\x{2800}-\x{28FF}]\z'''
+
+# herdr's catalog (2026.10.01.1) reads Codex as idle from a window title without a spinner.
+# The shell's own title has none, nor does a start-up dialog: herdr says idle before Codex
+# has drawn anything, and while its update chooser is open. A prompt typed then lands in
+# the chooser, where Enter picks "Update now" (fixtures/codex/blocked_permission/
+# 20261007T153746Z; seen live on 2026-10-05, 0.65 s after launch). So herdr's idle counts
+# only with the composer on screen: "› " that is not a numbered option, over the footer
+# (fixtures/codex/idle/20261010T191541Z, with a hint line under it). Otherwise Codex is not
+# ready, and nothing is typed (ADR 0004).
+[[rules]]
+id = "codex_idle_unconfirmed"
+state = "unknown"
+region = "bottom_non_empty_trimmed(4)"
+applies_when = ["idle"]
+regex = '''\A(?![\s\S]*(?m:^)› (?!\d+\.\s)[^\n]*\n {2}\S[^\n]* · )'''

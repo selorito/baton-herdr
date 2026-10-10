@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from herdr_dialogs import HERDR_IDLE_DIALOGS
 
 from baton_herdr.core.model import AgentState
 from baton_herdr.herdr.state import derive_state
@@ -79,10 +80,11 @@ def state_of(capture: Path) -> AgentState:
         ("claude/idle", {AgentState.IDLE}),
         ("claude/blocked_*", {AgentState.BLOCKED_OTHER}),
         ("opencode/blocked_*", {AgentState.BLOCKED_OTHER}),
-        # Codex: start-up dialogs and plain-text questions are invisible to herdr.
-        ("codex/blocked_*", {AgentState.BLOCKED_OTHER, AgentState.UNKNOWN}),
-        # Codex has no idle rule, so herdr alone can never confirm it is idle.
-        ("codex/idle", {AgentState.UNKNOWN}),
+        # Codex: start-up dialogs and plain-text questions are invisible to herdr. Since its
+        # catalog 2026.10.01.1, herdr calls Codex idle from a title without a spinner, which
+        # the update chooser has too; baton-detect corrects that (HERDR_IDLE_DIALOGS).
+        ("codex/blocked_*", {AgentState.BLOCKED_OTHER, AgentState.UNKNOWN, AgentState.IDLE}),
+        ("codex/idle", {AgentState.UNKNOWN, AgentState.IDLE}),
         ("codex/done", {AgentState.UNKNOWN}),
     ],
 )
@@ -93,10 +95,12 @@ def test_recorded_captures_map_to_safe_states(pattern: str, allowed: set[AgentSt
 
 
 def test_no_recorded_dialog_or_picker_is_reported_idle() -> None:
-    """The ADR 0004 rule in one assertion: only real prompts are ``idle``."""
-    idle = [
+    """The ADR 0004 rule in one assertion: only real prompts are ``idle``, apart from the
+    dialogs herdr is known to misread."""
+    idle = {
         str(capture.relative_to(FIXTURES))
         for capture in captures("*/*")
         if state_of(capture) is AgentState.IDLE
-    ]
-    assert all(path.split("/")[1] in {"idle", "done"} for path in idle), idle
+    }
+    dialogs = {path for path in idle if path.split("/")[1] not in {"idle", "done"}}
+    assert dialogs == HERDR_IDLE_DIALOGS

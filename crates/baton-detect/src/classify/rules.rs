@@ -348,7 +348,11 @@ mod tests {
             .collect();
         assert_eq!(
             backtracking,
-            ["codex_idle_prompt", "opencode_idle_composer"]
+            [
+                "codex_idle_prompt",
+                "codex_idle_unconfirmed",
+                "opencode_idle_composer"
+            ]
         );
     }
 

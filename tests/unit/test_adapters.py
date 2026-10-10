@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from herdr_dialogs import HERDR_IDLE_DIALOGS
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.adapters.claude import ClaudeAdapter, status_line_args
@@ -72,6 +73,7 @@ EXPECTED = {
     "claude/resume_prompt/20260930T075339Z": OTHER,
     "codex/idle/20260930T075545Z": IDLE,
     "codex/idle/20260930T075913Z": IDLE,
+    "codex/idle/20261010T191541Z": IDLE,  # 0.160, a hint line under the footer
     "codex/done/20260930T075601Z": IDLE,  # turn ended with an API error line above the prompt
     "codex/done/20260930T075714Z": IDLE,
     "codex/working/20260930T075548Z": WORK,
@@ -82,6 +84,7 @@ EXPECTED = {
     "codex/blocked_permission/20261006T155659Z": PERM,  # command approval (0.160)
     "codex/blocked_permission/20261006T155726Z": PERM,  # compound command
     "codex/blocked_permission/20261006T155802Z": PERM,  # long command, wrapped
+    "codex/blocked_permission/20261007T153746Z": OTHER,  # update chooser, herdr says idle
     "codex/blocked_question/20260930T075645Z": OTHER,  # update prompt
     # A plain-text question looks exactly like an idle prompt; the end-of-turn contract
     # in agents.md is what will tell them apart.
@@ -387,3 +390,32 @@ def test_claudes_status_line_is_passed_as_settings_that_survive_the_shell(tmp_pa
         "--log",
         str(log),
     ]
+
+
+def test_no_dialog_herdr_calls_idle_is_idle_for_baton() -> None:
+    """Where herdr alone says idle on a dialog, baton-detect must not: a prompt typed into
+    Codex's update chooser picks "Update now" (seen live on 2026-10-05)."""
+    assert {c: classify_capture(c).state for c in HERDR_IDLE_DIALOGS} == dict.fromkeys(
+        HERDR_IDLE_DIALOGS, OTHER
+    )
+
+
+def test_codex_is_not_idle_before_its_composer_is_drawn() -> None:
+    """herdr's title rule says idle as soon as the pane opens, over the shell's own title."""
+    shell = "<user>@<host>:~/dev/baton-sandbox$ codex\n"
+    composer = (
+        "› Ask Codex to do anything\n  GPT-6-Sol medium · ~/dev/baton-sandbox\n  ? for shortcuts\n"
+    )
+
+    def over_herdr_idle(screen: str) -> AgentState:
+        request = DetectionRequest(
+            agent=AgentKind.CODEX,
+            screen=screen,
+            host_state=AgentState.IDLE,
+            host_evidence="herdr:rule:osc_title_idle",
+            observed_at=NOW,
+        )
+        return classify_one(request).state
+
+    assert over_herdr_idle(shell) is AgentState.UNKNOWN
+    assert over_herdr_idle(shell + composer) is AgentState.IDLE

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.160.0",
+    "error": null
+  },
+  "scenario": "idle",
+  "captured_at": "2026-10-10T19:15:41.094975+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "codex-cli 0.160.0 idle after start-up (update chooser skipped); a hint line under the footer; herdr catalog 2026.10.01.1 says idle by osc_title_idle",
+  "explain_error": null
+}
