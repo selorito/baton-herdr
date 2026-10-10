@@ -8,6 +8,8 @@
 baton keeps a queue of coding tasks moving across Claude Code, Codex CLI and OpenCode running
 in [herdr](https://github.com/herdrdev/herdr). When one agent hits its usage limit, crashes or
 stalls, baton resumes the task or hands it to another agent, and tells you on Telegram.
+From Telegram you can also ask for a whole project: an agent plans it, you start the plan,
+the steps run one after another, and the result comes back with a link and a screenshot.
 
 ![baton handing a task from Claude Code to Codex in herdr](docs/assets/demo.gif)
 
@@ -130,7 +132,9 @@ message that is not a reply reaches no agent, and the bot says so.
 
 Only what needs you makes a sound: permission prompts, questions, and every agent being
 limited. The other notices arrive silently.
-`/status` lists open tasks and agents, and `/budget` shows what each agent has left.
+`/new <request>` starts a project (below), `/status` lists open tasks and agents, and
+`/budget` shows what each agent has left. `baton task cancel <task>` drops a task you no
+longer want.
 
 Two safeguards:
 - Messages from anyone but `owner_id`, or from another chat, are ignored.
@@ -141,6 +145,33 @@ The same actions work from the CLI: `baton approve|deny <task>`,
 `baton answer <task> "…"`. Each one applies only to the prompt you were shown, at most
 once, and only after baton has verified the pane still hosts that agent session
 ([ADR 0009](docs/adr/0009-remote-operator-actions.md)).
+
+## Projects from Telegram
+
+```
+/new a one-page website for my cafe, with the menu and opening hours
+```
+
+1. baton makes `~/dev/baton-projects/<name>-<id>`, a git repository, and asks an agent to
+   plan the request. The agent writes the plan only, and may ask you a question first.
+2. **📋 Plan ready** comes to Telegram: a summary and at most eight steps, with **Start**
+   and **Cancel**. Nothing runs before you press Start.
+3. Each step is an ordinary task, run after the one before it. Limits, hand-offs, stalls,
+   permission prompts and questions work as for any task.
+4. **✅ Project done** comes when the last step has: the files the project changed, a link
+   to its page (`index.html` at the top, or in `dist/`, `build/`, `public/`, `site/`), and
+   a screenshot of that page.
+
+The link points to a read-only preview batond serves over the projects root. It serves
+files only: no listings, nothing hidden (`.git`, `.baton`, `.env`), nothing a link points
+to outside the projects. By default it listens on `127.0.0.1`, which a phone cannot reach.
+To open links from a phone on your network, set `[projects] preview_host` to this
+machine's address there; anyone on that network can then read the projects' pages.
+
+Add the projects root to `trusted_dirs` in `policy.yaml`, or agents ask before each test
+or build there. `baton doctor` checks this, the preview, and the browser for screenshots.
+From the terminal: `baton project new "<request>"`, `baton project start|cancel <plan task>`
+([ADR 0016](docs/adr/0016-projects-from-telegram.md)).
 
 ## Budget
 
@@ -224,6 +255,8 @@ on one line). File edits, wrapped Codex commands and OpenCode prompts still come
 - **Telegram** was tested live with a phone (2026-10-06) against fake agents: buttons,
   replies, hand-off, stall, `/status`, `/budget`, sounds, and updates from anyone but
   `owner_id` ignored. Real agents' screens were not part of that run.
+- **Projects** run their steps one after another, and a plan is only as good as the agent
+  that wrote it. Eight steps at most keeps it reviewable on a phone.
 
 baton drives the official, unmodified agent CLIs in a terminal, and never touches their
 credentials ([ADR 0005](docs/adr/0005-automation-boundaries.md)). It does not rotate
@@ -236,6 +269,7 @@ governed by its vendor's terms; read them before you let baton run unattended:
 ## Roadmap
 
 - **Next:**
+  - run a project's independent steps at once, each in its own git worktree;
   - record Codex 0.160's working screen, so baton tells its idle without herdr's help.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 
@@ -277,7 +311,7 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
   keys in CI.
 - **Reproducible benchmark.** The real loop runs on simulated time, so the same seed gives
   the same report ([bench/](bench/README.md)).
-- **Decisions on record:** [ADRs 0001–0015](docs/adr/README.md). Examples:
+- **Decisions on record:** [ADRs 0001–0016](docs/adr/README.md). Examples:
   - automation boundaries ([0005](docs/adr/0005-automation-boundaries.md));
   - attempt identity vs. location ([0006](docs/adr/0006-attempt-identity-and-location.md));
   - remote actions ([0009](docs/adr/0009-remote-operator-actions.md));

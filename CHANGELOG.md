@@ -13,6 +13,16 @@ is:
 
 ### Added
 
+- **Projects from Telegram** (ADR 0016). `/new <request>` makes a project directory with a
+  git repository and asks an agent to plan the request. The plan comes back with **Start**
+  and **Cancel**; Start runs its steps one after another, as ordinary tasks. When the last
+  step is done, baton sends what the project changed, a link to its page on a read-only
+  preview, and a screenshot of it. From the terminal: `baton project new|start|cancel`.
+  New settings: `[projects]`. New events: `plan.proposed`, `plan.approved`,
+  `plan.rejected`, `project.delivered`; `task.created` gains `project`, `role`, `after`
+  and `request`.
+- **`baton task cancel <task>`** drops a task you no longer want.
+
 - **Claude's own rate limits.** The Claude sessions baton starts get a status line,
   `baton-detect statusline`, which shows `5h 23% · 7d 54%` and records Claude's five-hour
   and weekly windows. `baton budget`, Telegram `/budget` and agent choice then use those
