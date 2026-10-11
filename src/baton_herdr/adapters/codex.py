@@ -42,6 +42,11 @@ class CodexAdapter:
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         return STARTUP_ANSWERS.get(evidence)
 
+    def trust_answer(self, evidence: str) -> Sequence[str] | None:
+        # "1. Trust and continue" is selected (fixtures/codex/blocked_permission/
+        # 20260930T075506Z).
+        return ("Enter",) if evidence == "baton:codex_trust_folder" else None
+
     def permission_summary(self, screen: str) -> str | None:
         # "Would you like to ...?" and its details, down to the first option
         # (fixtures/codex/blocked_permission/).

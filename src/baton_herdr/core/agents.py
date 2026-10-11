@@ -36,7 +36,15 @@ class AgentAdapter(Protocol):
 
         Only for dialogs whose answer has no security or account meaning (an update
         prompt, for example). Folder trust, hook review and sign-in always go to a
-        person.
+        person, apart from ``trust_answer``.
+        """
+        ...
+
+    def trust_answer(self, evidence: str) -> Sequence[str] | None:
+        """Keys that trust the folder in the agent's folder-trust dialog, or ``None``.
+
+        Used only in a directory baton made itself for a project, where nothing is to be
+        trusted but what baton put there (ADR 0016); everywhere else a person decides.
         """
         ...
 

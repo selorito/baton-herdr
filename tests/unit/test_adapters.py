@@ -67,6 +67,7 @@ EXPECTED = {
     "claude/idle/20261006T172135Z": IDLE,  # with baton's status line (ADR 0015)
     "claude/working/20260930T072147Z": WORK,
     "claude/blocked_permission/20260930T072344Z": PERM,
+    "claude/blocked_permission/20261011T113734Z": OTHER,  # folder trust (ADR 0016)
     "claude/blocked_question/20260930T072744Z": QUESTION,
     "claude/done/20260930T074252Z": IDLE,
     "claude/crashed/20260930T074646Z": UNK,
@@ -419,3 +420,20 @@ def test_codex_is_not_idle_before_its_composer_is_drawn() -> None:
 
     assert over_herdr_idle(shell) is AgentState.UNKNOWN
     assert over_herdr_idle(shell + composer) is AgentState.IDLE
+
+
+@pytest.mark.parametrize(
+    ("agent", "evidence", "keys"),
+    [
+        (AgentKind.CLAUDE, "baton:claude_trust_folder", ("Down", "Enter")),
+        (AgentKind.CODEX, "baton:codex_trust_folder", ("Enter",)),
+        (AgentKind.CLAUDE, "herdr:rule:live_blocked_form", None),
+        (AgentKind.CODEX, "baton:codex_hooks_review", None),
+        (AgentKind.OPENCODE, "herdr:rule:permission_prompt", None),
+    ],
+)
+def test_folder_trust_has_keys_only_for_the_trust_question(
+    agent: AgentKind, evidence: str, keys: tuple[str, ...] | None
+) -> None:
+    assert ADAPTERS[agent].trust_answer(evidence) == keys
+    assert ADAPTERS[agent].startup_answer(evidence) is None  # never as a general answer

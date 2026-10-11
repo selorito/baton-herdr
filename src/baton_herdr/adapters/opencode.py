@@ -30,6 +30,10 @@ class OpenCodeAdapter:
         del screen
         return False
 
+    def trust_answer(self, evidence: str) -> Sequence[str] | None:
+        del evidence  # OpenCode asks no folder-trust question
+        return None
+
     def startup_answer(self, evidence: str) -> Sequence[str] | None:
         del evidence
         return None

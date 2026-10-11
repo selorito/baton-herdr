@@ -23,6 +23,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
@@ -140,6 +141,9 @@ class RunnerSettings:
     # Appended to an agent's own launch and resume commands, not to an override: the
     # status line that reports Claude's rate limits (ADR 0015).
     launch_args: Mapping[AgentKind, str] = field(default_factory=dict)
+    # Where baton makes projects' directories ([projects] root): in them, and only in them,
+    # an agent's folder-trust question is answered Yes (ADR 0016).
+    own_dirs: tuple[str, ...] = ()
     # Automatic resumes after crashes and stalls, per task (ADR 0005).
     max_failure_resumes: int = 2
     # An agent with less budget left than this goes behind the others (ADR 0012).
@@ -297,6 +301,13 @@ class TaskRunner:
             )
         )
         return _Outcome.STOPPED
+
+    async def _own_project_dir(self, task_id: TaskId) -> str | None:
+        """The task's directory, if baton made it for a project (ADR 0016)."""
+        task = (await self._board()).tasks.get(task_id)
+        if task is None or task.project is None or not task.workdir:
+            return None
+        return task.workdir if _inside(task.workdir, self._settings.own_dirs) else None
 
     def _with_args(self, agent: AgentKind, command: str) -> str:
         args = self._settings.launch_args.get(agent)
@@ -515,6 +526,7 @@ class TaskRunner:
         saw_agent = last_seen is not None
         screen = ""
         progress = ProgressWatch()
+        own_dir = await self._own_project_dir(task_id)
         try:
             while True:
                 if loop.time() > deadline:
@@ -550,9 +562,7 @@ class TaskRunner:
                         task_id, attempt_id, InterruptReason.STALLED, stuck, screen=screen
                     )
                 pane_for_input = await self._locate(task_id, attempt_id)
-                startup_keys = (
-                    adapter.startup_answer(evidence) if state is AgentState.BLOCKED_OTHER else None
-                )
+                startup_keys = _startup_keys(adapter, state, evidence, screen, own_dir)
                 turn, step = next_step(
                     turn, state, startup_keys=startup_keys, can_send=pane_for_input is not None
                 )
@@ -1118,3 +1128,30 @@ def _policy_note(events: Iterable[StoredEvent], attempt_id: AttemptId) -> str:
                 else f"Policy: {event.decision.value}, {event.reason}."
             )
     return note
+
+
+def _shows_dir(screen: str, workdir: str) -> bool:
+    """Whether a folder-trust question on ``screen`` names ``workdir``, as a full path or
+    under ``~``; wrapped lines are joined first."""
+    flat = "".join(screen.split())
+    home = str(Path.home())
+    names = {workdir, "~" + workdir.removeprefix(home) if workdir.startswith(home) else workdir}
+    return any("".join(name.split()) in flat for name in names)
+
+
+def _startup_keys(
+    adapter: AgentAdapter, state: AgentState, evidence: str, screen: str, own_dir: str | None
+) -> Sequence[str] | None:
+    """The safe answer to a start-up dialog; in a directory baton made for a project, also
+    the folder-trust question about that directory (ADR 0016)."""
+    if state is not AgentState.BLOCKED_OTHER:
+        return None
+    keys = adapter.startup_answer(evidence)
+    if keys is None and own_dir is not None and _shows_dir(screen, own_dir):
+        keys = adapter.trust_answer(evidence)
+    return keys
+
+
+def _inside(workdir: str, roots: Sequence[str]) -> bool:
+    where = Path(workdir).resolve()
+    return any(where.is_relative_to(Path(root).resolve()) for root in roots)

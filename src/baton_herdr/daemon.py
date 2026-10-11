@@ -102,6 +102,7 @@ def runner_settings(
     *,
     collecting_usage: bool = False,
     launch_args: Mapping[AgentKind, str] | None = None,
+    own_dirs: tuple[str, ...] = (),
 ) -> RunnerSettings:
     budget = budget or BudgetSettings()
     return RunnerSettings(
@@ -119,6 +120,7 @@ def runner_settings(
         # Without the collector there is no last response to wait for.
         usage_grace_s=3 if collecting_usage else 0,
         launch_args=launch_args or {},
+        own_dirs=own_dirs,
     )
 
 
@@ -171,6 +173,7 @@ async def open_runtime(
         settings.budget,
         collecting_usage=settings.usage.enabled,
         launch_args=claude_status_line(settings.usage),
+        own_dirs=(str(settings.projects.root),),
     )
     host = host or connect(settings.herdr)
     wake = asyncio.Event()

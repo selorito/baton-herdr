@@ -54,6 +54,11 @@ class ClaudeAdapter:
         del evidence
         return None
 
+    def trust_answer(self, evidence: str) -> Sequence[str] | None:
+        # "No, exit" is selected; "Yes, I trust this folder" is below it (seen live,
+        # 2.1.291, fixtures/claude/blocked_permission/20261011T113734Z).
+        return ("Down", "Enter") if evidence == "baton:claude_trust_folder" else None
+
     def permission_summary(self, screen: str) -> str | None:
         # The prompt sits between a full-width rule and "Do you want to proceed?";
         # the command itself is framed by dashed lines (fixtures/claude/blocked_permission/).

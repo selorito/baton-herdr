@@ -31,3 +31,12 @@ id = "claude_resume_picker"
 state = "blocked_other"
 region = "bottom_non_empty_trimmed(30)"
 regex = '''Ctrl\+A to show all projects[\s\S]{0,200}?Space to preview'''
+
+# The first-run folder trust question, which herdr reads as a blocking form (fixtures/claude/
+# blocked_permission/20261011T113734Z). Kept apart from questions and permissions: only in a
+# directory baton made for a project is it answered without a person (ADR 0016).
+[[rules]]
+id = "claude_trust_folder"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''Is this a project you created or one you trust\?[\s\S]*?Yes, I trust this folder'''
