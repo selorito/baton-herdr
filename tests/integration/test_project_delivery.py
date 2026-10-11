@@ -165,6 +165,9 @@ async def test_a_delivery_notice_is_followed_by_its_picture(tmp_path: Path) -> N
     assert sent[1] == ("photo", "/p/shot.png")
 
 
+# A real browser: a CI runner's Chrome may not start its sandbox, and baton never turns
+# the sandbox off for pages agents wrote. Run with `just smoke`.
+@pytest.mark.live
 @pytest.mark.skipif(find_browser(None) is None, reason="no Chromium or Chrome on this machine")
 async def test_the_page_is_photographed_with_a_headless_browser(
     preview: PreviewServer,
