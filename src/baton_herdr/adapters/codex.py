@@ -80,7 +80,10 @@ class CodexAdapter:
             return None  # wrapped, or more than one line
         return rest[start].strip().removeprefix("$ ").strip() or None
 
-    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+    def permission_keys(
+        self, evidence: str, *, approve: bool, screen: str = ""
+    ) -> Sequence[str] | None:
+        del screen
         if evidence != "baton:codex_edit_or_command_approval":
             return None  # folder trust and hook review stay at the terminal
         return APPROVE_KEYS if approve else DENY_KEYS

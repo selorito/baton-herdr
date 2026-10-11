@@ -65,10 +65,14 @@ class AgentAdapter(Protocol):
         """
         ...
 
-    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+    def permission_keys(
+        self, evidence: str, *, approve: bool, screen: str = ""
+    ) -> Sequence[str] | None:
         """Keys that approve (or deny) the permission prompt behind ``evidence``, or ``None``.
 
         Only for tool permission prompts whose keys were verified on a recorded
-        screen; anything else is answered at the terminal (ADR 0009).
+        screen; anything else is answered at the terminal (ADR 0009). Where the approving
+        choice depends on what the prompt offers, it is read from ``screen``, and an
+        empty screen gives no keys.
         """
         ...

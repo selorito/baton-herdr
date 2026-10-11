@@ -1,0 +1,25 @@
+{
+  "agent": "claude",
+  "agent_session": {
+    "agent": "claude",
+    "kind": "id",
+    "source": "herdr:claude",
+    "value": "76cde8d9-3e94-4cba-8866-53bb30c9e0a0"
+  },
+  "agent_status": "blocked",
+  "cwd": "~/dev/coban-sandbox",
+  "focused": true,
+  "foreground_cwd": "~/dev/coban-sandbox",
+  "pane_id": "w1:p1",
+  "revision": 3,
+  "scroll": {
+    "max_offset_from_bottom": 0,
+    "offset_from_bottom": 0,
+    "viewport_rows": 40
+  },
+  "tab_id": "w1:t1",
+  "terminal_id": "term_65d8f1a6dea931",
+  "terminal_title": "✳ Read /etc/hostname first line",
+  "terminal_title_stripped": "Read /etc/hostname first line",
+  "workspace_id": "w1"
+}

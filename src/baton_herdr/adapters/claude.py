@@ -64,7 +64,7 @@ class ClaudeAdapter:
         # the command itself is framed by dashed lines (fixtures/claude/blocked_permission/).
         block = _prompt_block(screen)
         if block is None:
-            return None
+            return _tool_summary(screen)
         kept = [
             text
             for text in block
@@ -91,10 +91,54 @@ class ClaudeAdapter:
             lines.pop()
         return "\n".join(lines) or None
 
-    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
-        if evidence not in PERMISSION_EVIDENCE:
-            return None
-        return APPROVE_KEYS if approve else DENY_KEYS
+    def permission_keys(
+        self, evidence: str, *, approve: bool, screen: str = ""
+    ) -> Sequence[str] | None:
+        if evidence in PERMISSION_EVIDENCE:
+            return APPROVE_KEYS if approve else DENY_KEYS
+        if evidence == TOOL_PERMISSION_EVIDENCE:
+            if not approve:
+                return DENY_KEYS
+            choice = one_time_yes(screen)
+            return (choice,) if choice else None
+        return None
+
+
+TOOL_PERMISSION_EVIDENCE = "baton:claude_tool_permission"
+# A numbered choice of a dialog, the selected one marked with U+276F: "4. Yes, but ask
+# again next time".
+_CHOICE = re.compile(r"^\s*(?:\u276f\s*)?(\d)\.\s+(.+?)\s*$")
+# A choice that says yes for this once. Anything that also keeps, always or from now on
+# allows is not one: it changes the user's settings beyond this prompt.
+_ONE_TIME_YES = re.compile(r"Yes(?:, but ask again next time)?\.?")
+
+
+def one_time_yes(screen: str) -> str | None:
+    """The number of the last dialog's choice that approves this once, or ``None``."""
+    lines = screen.splitlines()
+    asks = [i for i, line in enumerate(lines) if line.strip().endswith("?")]
+    if not asks:
+        return None
+    for line in lines[asks[-1] + 1 :]:
+        if (choice := _CHOICE.match(line)) and _ONE_TIME_YES.fullmatch(choice[2]):
+            return choice[1]
+    return None
+
+
+def _tool_summary(screen: str) -> str | None:
+    """A tool dialog other than Bash's: its title and the call, under the last full-width
+    rule (fixtures/claude/blocked_permission/20261011T114435Z)."""
+    lines = screen.splitlines()
+    rules = [i for i, line in enumerate(lines) if line.strip().startswith("────")]
+    asks = [line for line in lines if line.strip().startswith("Allow this")]
+    if not rules or not asks or not asks[-1].strip().endswith("?"):
+        return None
+    kept = [
+        line.strip()
+        for line in lines[rules[-1] + 1 :]
+        if line.strip() and not line.strip().startswith("╌")
+    ][:2]
+    return one_line_summary(kept) if kept else None
 
 
 # A tool description: a capitalized word, more words, nothing a shell would treat specially.

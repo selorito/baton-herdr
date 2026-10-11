@@ -1,0 +1,30 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.296[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mOpus 5.5 · Claude Pro[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m~/dev/coban-sandbox[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse your Read tool on the file /etc/hostname and tell me its first line. Do not use Bash.[0m[48;2;55;55;55m                            [0m
+
+[0m[38;2;153;153;153m  [0mReading /etc/hostname
+[0m[38;2;153;153;153m  ⎿  /etc/hostname[0m
+
+[0m[38;2;177;185;249m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mRead outside the working directories[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Read(/etc/hostname)
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[38;2;153;153;153mAuto mode and the sandbox read outside the working directories without asking. Yes or No answers for this read; the [0m
+ [0m[38;2;153;153;153mrest is for later reads. Block: the file tools refuse reads outside the working directories in every project. [0m
+ [0m[38;2;153;153;153mSandboxed commands are not changed on this machine (the sandbox is off, its filesystem rules are relaxed, a managed [0m
+ [0m[38;2;153;153;153mread-path lock is on, or the working directory name has glob characters). To undo, remove [0m
+ [0m[38;2;153;153;153mpermissions.blockReadsOutsideWorkingDirectories from your user settings; file tools follow next session, sandboxed [0m
+ [0m[38;2;153;153;153mcommands at once.[0m
+
+ Allow this read outside the working directories?
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes, and keep allowing any reads outside the working directories[0m
+   [0m[38;2;153;153;153m2. [0mNo, and block reads outside the working directories from now on
+   [0m[38;2;153;153;153m3. [0mNo, and ask again next time
+   [0m[38;2;153;153;153m4. [0mYes, but ask again next time
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend[0m

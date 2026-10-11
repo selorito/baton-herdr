@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "claude",
+  "agent_cli": {
+    "version": "2.1.296 (Claude Code)",
+    "error": null
+  },
+  "scenario": "blocked_permission",
+  "captured_at": "2026-10-11T11:44:35.066138+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "claude",
+  "herdr_agent_status": "blocked",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "Read outside the working directories (2.1.291): option 1 keeps allowing for good, option 4 is the one-time yes; herdr: legacy_no_prompt_blocker",
+  "explain_error": null
+}

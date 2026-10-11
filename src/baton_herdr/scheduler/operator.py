@@ -69,13 +69,16 @@ def find_blocker(events: Iterable[StoredEvent], task_id: TaskId) -> Blocker | No
     )
 
 
-def allowed_actions(blocker: Blocker, adapter: AgentAdapter) -> tuple[OperatorAction, ...]:
-    """The remote actions that fit ``blocker``; empty means "at the terminal"."""
+def allowed_actions(
+    blocker: Blocker, adapter: AgentAdapter, screen: str = ""
+) -> tuple[OperatorAction, ...]:
+    """The remote actions that fit ``blocker`` as ``screen`` shows it; empty means "at the
+    terminal". Some prompts' approving choice is read from the screen."""
     if blocker.state is AgentState.BLOCKED_PERMISSION:
         return tuple(
             action
             for action, approve in ((OperatorAction.APPROVE, True), (OperatorAction.DENY, False))
-            if adapter.permission_keys(blocker.evidence, approve=approve)
+            if adapter.permission_keys(blocker.evidence, approve=approve, screen=screen)
         )
     # Free text only goes to an agent waiting at its own prompt.
     if blocker.state is AgentState.BLOCKED_QUESTION and blocker.evidence in ANSWERABLE_EVIDENCE:
@@ -115,11 +118,8 @@ async def act(  # noqa: PLR0913 - the ports, the action and who takes it
     if answered(events, blocker.seq):
         raise ActionRefusedError(f"{task_id}: this was already answered.")
     adapter = adapters.get(blocker.agent)
-    if adapter is None or action not in allowed_actions(blocker, adapter):
-        raise ActionRefusedError(
-            f"{task_id}: {action.value} does not fit this prompt ({blocker.state.value}); "
-            "answer it at the terminal."
-        )
+    if adapter is None:
+        raise ActionRefusedError(f"{task_id}: answer it at the terminal.")
     answer = one_line(text)
     if action is OperatorAction.ANSWER and not answer:
         raise ActionRefusedError("An answer needs some text.")
@@ -137,11 +137,20 @@ async def act(  # noqa: PLR0913 - the ports, the action and who takes it
         raise ActionRefusedError(
             f"{task_id}: the pane no longer hosts this attempt ({target.check.value})."
         )
+    # The prompt as it is now: an approving choice is read from it, never from memory.
+    screen = await host.read_screen(target.pane_id)
+    if action not in allowed_actions(blocker, adapter, screen):
+        raise ActionRefusedError(
+            f"{task_id}: {action.value} does not fit this prompt ({blocker.state.value}); "
+            "answer it at the terminal."
+        )
 
     if action is OperatorAction.ANSWER:
         await host.send_prompt(target.pane_id, answer)
     else:
-        keys = adapter.permission_keys(blocker.evidence, approve=action is OperatorAction.APPROVE)
+        keys = adapter.permission_keys(
+            blocker.evidence, approve=action is OperatorAction.APPROVE, screen=screen
+        )
         await host.send_keys(target.pane_id, list(keys or ()))
     await store.append(
         [

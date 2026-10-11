@@ -646,7 +646,11 @@ class TaskRunner:
                     text = f"{ctx.agent.value} is waiting for a decision: {ctx.detail}"
                 events = await self._store.read()
                 blocker = find_blocker(events, ctx.task_id)
-                actions = allowed_actions(blocker, self._adapters[ctx.agent]) if blocker else ()
+                actions = (
+                    allowed_actions(blocker, self._adapters[ctx.agent], ctx.screen)
+                    if blocker
+                    else ()
+                )
                 await self._deliver(
                     notices.needs_human(
                         project(events).tasks[ctx.task_id],

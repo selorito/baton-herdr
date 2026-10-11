@@ -68,6 +68,7 @@ EXPECTED = {
     "claude/working/20260930T072147Z": WORK,
     "claude/blocked_permission/20260930T072344Z": PERM,
     "claude/blocked_permission/20261011T113734Z": OTHER,  # folder trust (ADR 0016)
+    "claude/blocked_permission/20261011T114435Z": PERM,  # read outside the working dirs
     "claude/blocked_question/20260930T072744Z": QUESTION,
     "claude/done/20260930T074252Z": IDLE,
     "claude/crashed/20260930T074646Z": UNK,

@@ -40,3 +40,14 @@ id = "claude_trust_folder"
 state = "blocked_other"
 region = "bottom_non_empty_trimmed(30)"
 regex = '''Is this a project you created or one you trust\?[\s\S]*?Yes, I trust this folder'''
+
+# A tool permission other than Bash's: "Allow this … ?" over numbered choices
+# (fixtures/claude/blocked_permission/20261011T114435Z, reading outside the working
+# directories). herdr calls it a blocker without a prompt. Its first choice may change the
+# user's settings for good, so its Approve is the one-time "Yes" read from the screen.
+[[rules]]
+id = "claude_tool_permission"
+state = "blocked_permission"
+region = "bottom_non_empty_trimmed(12)"
+applies_when = ["blocked_other", "unknown"]
+regex = '''(?m)^ *Allow this [^\n]*\?\s*\n *❯ *1\. [\s\S]*?Esc to cancel'''

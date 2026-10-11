@@ -47,7 +47,10 @@ class OpenCodeAdapter:
         del screen
         return None
 
-    def permission_keys(self, evidence: str, *, approve: bool) -> Sequence[str] | None:
+    def permission_keys(
+        self, evidence: str, *, approve: bool, screen: str = ""
+    ) -> Sequence[str] | None:
+        del screen
         # The permission dialog's keys have not been verified yet: answer at the terminal.
         del evidence, approve
         return None
