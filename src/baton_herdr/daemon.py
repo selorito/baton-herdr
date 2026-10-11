@@ -422,11 +422,13 @@ async def _serve_loop(
     cycles = 0
     log = get_logger("baton.daemon")
     while not stop.is_set():
-        await run_pending(runtime, seen=seen)
+        results = await run_pending(runtime, seen=seen)
         await advance_projects(runtime)
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             break
+        if TaskStatus.COMPLETED in results.values():
+            continue  # a project's next step may start now, not after the idle time
         availability = fold_availability(
             await runtime.store.read(), cooldown=runtime.settings.limit_cooldown
         )

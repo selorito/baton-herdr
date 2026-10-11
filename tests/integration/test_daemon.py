@@ -18,6 +18,7 @@ from baton_herdr.core.config import (
     SchedulerSettings,
     UsageSettings,
 )
+from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.fakes import FixedClock, RecordingNotifier
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
@@ -207,6 +208,42 @@ async def test_the_daemon_waits_quietly_and_resumes_after_the_reset(tmp_path: Pa
             later: TaskStatus.WAITING,
         }
     assert host.launched == ["claude", "claude --resume claude-session", "claude"]
+
+
+async def test_the_task_after_a_finished_one_starts_without_the_idle_wait(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    first = await add_task(store, title="one", instructions="do one", workdir="/w", clock=clock)
+    second = TaskId("t-second")
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=NOW,
+                task_id=second,
+                title="two",
+                instructions="do two",
+                workdir="/w",
+                after=first,
+            )
+        ]
+    )
+    await store.close()
+
+    async with open_runtime(
+        settings_for(db, agents=["codex"]),
+        host=SimulatedAgents(clock),
+        notifier=RecordingNotifier(),
+        clock=clock,
+    ) as runtime:
+        # Two cycles, an hour's idle time: the second cycle must not wait for it.
+        serving = serve(runtime, stop=asyncio.Event(), idle_s=3600, max_cycles=2)
+        await asyncio.wait_for(serving, timeout=20)
+        board = project(await runtime.store.read())
+    assert board.tasks[first].status is TaskStatus.COMPLETED
+    assert board.tasks[second].status is TaskStatus.COMPLETED
 
 
 async def test_serve_stops_when_asked(tmp_path: Path) -> None:
