@@ -32,6 +32,12 @@ is:
 
 ### Fixed
 
+- **Claude's tool permissions other than Bash's** (reading outside the working
+  directories, for example) reached Telegram without buttons, and their first choice
+  changes Claude's settings for good. They now come with Approve and Deny; Approve picks
+  the one-time "Yes" on the screen as it is when pressed, or is refused without one.
+- **A project's next step** started up to 30 s after the one before it finished; it now
+  starts at once.
 - **A task no longer lands in Codex's update chooser.** herdr's detection catalog reads
   Codex as idle from its window title, even right after launch and while the chooser is
   open; baton typed the task there and Enter picked "Update now". baton now waits until

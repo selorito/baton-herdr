@@ -127,7 +127,10 @@ with a label above the title: 🔐 Needs approval, ❓ Needs answer, ❗ Needs y
 - **Done**: how long the task took, the tokens its attempt used, the files it changed (at
   most five), and the agent's budget left.
 
-Permission prompts carry Approve / Deny buttons. To answer a question, reply to it; a
+Permission prompts carry Approve / Deny buttons. For Claude's prompts other than a shell
+command (reading outside the project, for example), Approve picks the choice that allows it
+this once, read from the screen when you press it; a choice that would change Claude's
+settings for good is never pressed. To answer a question, reply to it; a
 message that is not a reply reaches no agent, and the bot says so.
 
 Only what needs you makes a sound: permission prompts, questions, and every agent being

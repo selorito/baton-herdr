@@ -60,6 +60,13 @@ task: its prompt is the step's instructions, with the request and the plan aroun
 the agent knows where the step fits. If a step fails or is cancelled, the steps after it
 wait, and the operator is told.
 
+**Folder trust.** An agent opened in a directory for the first time asks whether to trust
+it. baton answers Yes itself only in a directory it made for a project, under
+`[projects] root`, and only when the question names that directory. That directory holds
+nothing but what baton put there and what the project's own agents wrote. Everywhere else
+the question still goes to a person (ADR 0005). Added after the first live project
+(2026-10-11), whose plan stopped at Claude's question with nothing to press in Telegram.
+
 **Delivery.** When the last step completes, baton records `project.delivered` and sends:
 - a summary: the steps, and the files the project changed since its first commit;
 - if the project has a web page (`index.html` at its root, or in `dist/`, `build/`,
