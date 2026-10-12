@@ -159,14 +159,17 @@ async def open_runtime(
     host: PaneHost | None = None,
     notifier: Notifier | None = None,
     clock: Clock | None = None,
+    announce: bool = False,
 ) -> AsyncIterator[Runtime]:
-    """Open the store and connect everything; arguments replace the real parts."""
+    """Open the store and connect everything; arguments replace the real parts. Only batond
+    (``announce``) logs the policy it runs with: the CLI's commands print their own result."""
     policy = make_policy(settings.policy)
-    get_logger("baton.daemon").info(
-        "permission policy",
-        policy=policy.summary() if policy else "off: every permission prompt goes to a person",
-        source=policy.source if policy else None,
-    )
+    if announce:
+        get_logger("baton.daemon").info(
+            "permission policy",
+            policy=policy.summary() if policy else "off: every permission prompt goes to a person",
+            source=policy.source if policy else None,
+        )
     store = await open_event_store(settings.database.path)
     usage = await open_usage_store(settings.database.path)
     telegram = telegram_notifier(settings.telegram) if notifier is None else None

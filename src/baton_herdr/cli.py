@@ -374,7 +374,7 @@ def daemon(
         loop = asyncio.get_running_loop()
         for signal_number in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(signal_number, stop.set)
-        async with open_runtime(settings) as runtime:
+        async with open_runtime(settings, announce=True) as runtime:
             await serve(runtime, stop=stop, idle_s=idle)
 
     asyncio.run(serve_until_interrupted())
