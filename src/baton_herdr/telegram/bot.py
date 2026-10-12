@@ -24,8 +24,14 @@ from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction, TaskId
 from baton_herdr.core.projection import project
 from baton_herdr.projects.create import ProjectSetupError
-from baton_herdr.projects.flow import ProjectError, approve_plan, reject_plan, start_project
-from baton_herdr.scheduler.operator import ActionRefusedError, act, find_blocker
+from baton_herdr.projects.flow import (
+    ProjectError,
+    approve_plan,
+    cancel_project,
+    reject_plan,
+    start_project,
+)
+from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel, find_blocker
 from baton_herdr.telegram.notifier import parse_reference
 
 if TYPE_CHECKING:
@@ -46,11 +52,13 @@ HELP = (
     "/new <request>: start a project, e.g. /new a one-page website for my cafe. "
     "An agent plans it; you get the plan with Start and Cancel.\n"
     "/status: open tasks and agents.\n"
+    "/cancel <task or project>: drop it and close its agent's pane, e.g. /cancel t-1a2b3c4d.\n"
     "/budget: what each agent has left.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
 PLAN_STARTED = "Started."
 PLAN_CANCELLED = "Cancelled."
+TASK_CANCELLED = "Task cancelled."
 # Said to a message that is neither a command nor a reply: it reached no agent.
 NOT_A_REPLY = "That message went to no agent. To answer a question, reply to its message."
 _DONE = {
@@ -108,6 +116,10 @@ class OperatorBot:
             return await self.status()
         if name == "/budget":
             return await self.budget()
+        if name == "/cancel":
+            return await self.cancel(
+                text.split(maxsplit=1)[1].strip() if " " in text.strip() else ""
+            )
         if name == "/new":
             return await self.new_project(text.split(maxsplit=1)[1] if " " in text.strip() else "")
         if not name.startswith("/"):
@@ -163,6 +175,31 @@ class OperatorBot:
             "the plan comes here for you to start or cancel."
         )
 
+    async def cancel(self, target: str) -> str:
+        """``/cancel t-…`` drops a task, ``/cancel p-…`` a whole project."""
+        by = f"telegram:{self._settings.owner_id}"
+        try:
+            if target.startswith("p-"):
+                count = await cancel_project(
+                    self._store, self._host, project_id=target, by=by, clock=self._clock
+                )
+                result = f"Project {target} cancelled: {count} task(s) dropped."
+            elif target:
+                closed = await cancel(
+                    store=self._store,
+                    host=self._host,
+                    clock=self._clock,
+                    task_id=TaskId(target),
+                    by=by,
+                )
+                result = f"{TASK_CANCELLED} {target}" + ("; its pane is closed." if closed else ".")
+            else:
+                return "Say what to cancel: /cancel t-1a2b3c4d, or /cancel p-1a2b3c for a project."
+        except (ActionRefusedError, ProjectError) as err:
+            return str(err)
+        self._on_action()
+        return result
+
     async def plan_choice(self, data: str) -> str:
         """A press on a plan's Start or Cancel; ``data`` is ``plan:start:t-1a2b3c4d``."""
         _, choice, task_id = [*data.split(":"), "", ""][:3]
@@ -184,6 +221,8 @@ class OperatorBot:
         """A press on Approve / Deny (``action:task:seq``) or on a plan's Start / Cancel."""
         if data.startswith("plan:"):
             return await self.plan_choice(data)
+        if data.startswith("task:cancel:"):
+            return await self.cancel(data.removeprefix("task:cancel:"))
         try:
             action_name, task_id, seq = data.split(":")
             action = OperatorAction(action_name)
@@ -266,7 +305,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     def sender(update: Message | CallbackQuery) -> int | None:
         return update.from_user.id if update.from_user else None
 
-    @router.message(Command("status", "budget", "help", "start", "new"))
+    @router.message(Command("status", "budget", "help", "start", "new", "cancel"))
     async def on_command(message: Message) -> None:
         if operator.authorized(message.chat.id, sender(message)):
             await message.answer(await operator.command(message.text or ""))
@@ -294,7 +333,9 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             await query.answer()
             return
         result = await operator.button(query.data or "")
-        final = result in _DONE.values() or result.startswith((PLAN_STARTED, PLAN_CANCELLED))
+        final = result in _DONE.values() or result.startswith(
+            (PLAN_STARTED, PLAN_CANCELLED, TASK_CANCELLED, "Project ")
+        )
         await query.answer(result, show_alert=not final)
         if query.message is not None and final:
             # The buttons are spent; the answer stays visible as a reply.

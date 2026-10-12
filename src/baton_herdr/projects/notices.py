@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 PLAN_READY = "📋 Plan ready"
 PLAN_FAILED = "⚠ No plan"
 DELIVERED = "✅ Project done"
+HALTED = "⚠ Project stopped"
 
 
 def plan_choices(task: TaskView) -> tuple[tuple[str, str], ...]:
@@ -70,4 +71,17 @@ def delivered(
         blocks=(changes.stat(limit=10),) if changes is not None else (),
         label=DELIVERED,
         image=str(image) if image is not None else None,
+    )
+
+
+def halted(plan_task: TaskView | None, stopped: TaskView, dropped: int) -> Notice:
+    """A step did not complete, so the steps after it were dropped."""
+    return Notice(
+        NoticeKind.NEEDS_HUMAN,
+        stopped.task_id,
+        f"{stopped.title} was {stopped.status.value}, so the {dropped} step(s) after it were "
+        "cancelled. What the steps before it did is still in the directory.",
+        title=(plan_task.request or plan_task.title) if plan_task else stopped.title,
+        details=(f"Directory: {stopped.workdir}",),
+        label=HALTED,
     )

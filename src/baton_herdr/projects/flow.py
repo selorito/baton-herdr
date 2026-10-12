@@ -5,9 +5,11 @@ one before it. The steps are ordinary tasks from then on.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import TYPE_CHECKING, Protocol
 
+from baton_herdr.core.commands import cancel_task
 from baton_herdr.core.events import (
     AttemptStarted,
     PlanApproved,
@@ -30,6 +32,7 @@ from baton_herdr.projects.plan import (
     step_prompt,
     step_title,
 )
+from baton_herdr.scheduler.operator import ActionRefusedError, cancel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
 
     from baton_herdr.core.events import Event, StoredEvent
     from baton_herdr.core.notify import Notice
+    from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, Workspace
     from baton_herdr.core.projection import PlanView, TaskView
 
@@ -224,3 +228,57 @@ def _first_head(events: Sequence[StoredEvent], task_id: TaskId) -> str | None:
         if isinstance(event, AttemptStarted) and event.task_id == task_id:
             return event.workdir_head
     return None
+
+
+async def cancel_project(
+    store: EventStore, host: PaneHost, *, project_id: str, by: str, clock: Clock
+) -> int:
+    """Drop a project: its waiting plan, and every open task of it, agents' panes closed.
+    Returns how many tasks were cancelled."""
+    tasks = [t for t in project(await store.read()).tasks.values() if t.project == project_id]
+    if not tasks:
+        msg = f"There is no project {project_id}."
+        raise ProjectError(msg)
+    for task in tasks:
+        if task.role == "plan" and task.plan is not None and task.plan.status == "proposed":
+            await reject_plan(store, task.task_id, by=by, clock=clock)
+    cancelled = 0
+    for task in tasks:
+        if not task.status.is_terminal:
+            with contextlib.suppress(ActionRefusedError):  # closed meanwhile
+                await cancel(store=store, host=host, clock=clock, task_id=task.task_id, by=by)
+                cancelled += 1
+    return cancelled
+
+
+async def halt_stopped_projects(store: EventStore, *, clock: Clock) -> list[Notice]:
+    """A project whose step failed or was cancelled cannot go on: its later steps would wait
+    for ever. They are cancelled, and the operator is told once."""
+    board = project(await store.read())
+    by_project: dict[str, list[TaskView]] = {}
+    for task in board.tasks.values():
+        if task.project is not None and task.role == "step":
+            by_project.setdefault(task.project, []).append(task)
+    found: list[Notice] = []
+    events: list[Event] = []
+    for steps in by_project.values():
+        stopped = next(
+            (t for t in steps if t.status in {TaskStatus.FAILED, TaskStatus.CANCELLED}), None
+        )
+        if stopped is None:
+            continue
+        waiting = [t for t in steps if t.status is TaskStatus.PENDING and t.live_attempt is None]
+        if not waiting:
+            continue
+        for task in waiting:
+            events.extend(
+                cancel_task(task, at=clock.now(), reason=f"{stopped.title} did not complete")
+            )
+        plan_task = next(
+            (t for t in board.tasks.values() if t.project == stopped.project and t.role == "plan"),
+            None,
+        )
+        found.append(notices.halted(plan_task, stopped, len(waiting)))
+    if events:
+        await store.append(events)
+    return found

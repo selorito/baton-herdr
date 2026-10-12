@@ -180,6 +180,8 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
         label = NEEDS_ANSWER
     else:
         label = NEEDS_YOU  # nothing to press or reply to: a look at the terminal
+    # Nothing to answer from here: the task can at least be dropped from here.
+    choices = (("Cancel task", f"task:cancel:{task.task_id}"),) if label == NEEDS_YOU else ()
     return Notice(
         NoticeKind.NEEDS_HUMAN,
         task.task_id,
@@ -190,6 +192,7 @@ def needs_human(  # noqa: PLR0913 - what is asked, where, and what may be done r
         title=task.title,
         details=(policy,) if policy else (),
         label=label,
+        choices=choices,
         blocks=(tail,) if tail else (),
     )
 

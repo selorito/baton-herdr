@@ -35,7 +35,7 @@ from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
 from baton_herdr.projects.deliver import PreviewServer, Showcase, find_browser
-from baton_herdr.projects.flow import deliver_projects, propose_plans
+from baton_herdr.projects.flow import deliver_projects, halt_stopped_projects, propose_plans
 from baton_herdr.scheduler.queue import (
     Signature,
     available_agents,
@@ -452,13 +452,14 @@ async def _serve_loop(
 async def advance_projects(runtime: Runtime) -> None:
     """Propose the plans of finished plan tasks, and deliver finished projects (ADR 0016)."""
     proposed = await propose_plans(runtime.store, clock=runtime.clock, read_text=_read_plan)
+    halted = await halt_stopped_projects(runtime.store, clock=runtime.clock)
     delivered = await deliver_projects(
         runtime.store,
         clock=runtime.clock,
         workspace=GitWorkspace(),
         show=Showcase(runtime.preview, runtime.browser),
     )
-    for notice in [*proposed, *delivered]:
+    for notice in [*proposed, *halted, *delivered]:
         if runtime.notifier is not None:
             await runtime.notifier.notify(notice)
 

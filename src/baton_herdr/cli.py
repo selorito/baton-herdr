@@ -19,7 +19,6 @@ from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
-from baton_herdr.core.commands import CommandRejectedError, cancel_task
 from baton_herdr.core.config import BatonSettings, config_file
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
@@ -30,8 +29,14 @@ from baton_herdr.doctor import Level, diagnose, render
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.create import ProjectSetupError
-from baton_herdr.projects.flow import ProjectError, approve_plan, reject_plan, start_project
-from baton_herdr.scheduler.operator import ActionRefusedError, act
+from baton_herdr.projects.flow import (
+    ProjectError,
+    approve_plan,
+    cancel_project,
+    reject_plan,
+    start_project,
+)
+from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel
 from baton_herdr.service import (
     BATON_UNIT,
     NEXT_STEPS,
@@ -150,27 +155,26 @@ def task_cancel(
     task_id: Annotated[str, typer.Argument(help="The task to drop.")],
     reason: Annotated[str | None, typer.Option("--reason", help="Kept in the log.")] = None,
 ) -> None:
-    """Cancel an open task. Its agent's pane is left as it is; close it in herdr."""
+    """Cancel an open task, and close its agent's pane."""
     settings = _settings()
 
-    async def cancel() -> str:
-        store = await open_event_store(settings.database.path)
-        try:
-            task = project(await store.read()).tasks.get(TaskId(task_id))
-            if task is None:
-                typer.echo(f"no task {task_id}", err=True)
-                raise typer.Exit(code=1)
+    async def drop() -> str:
+        async with open_runtime(settings) as runtime:
             try:
-                events = cancel_task(task, at=SystemClock().now(), reason=reason)
-            except CommandRejectedError as err:
+                closed = await cancel(
+                    store=runtime.store,
+                    host=runtime.host,
+                    clock=runtime.clock,
+                    task_id=TaskId(task_id),
+                    by="cli",
+                    reason=reason or "",
+                )
+            except ActionRefusedError as err:
                 typer.echo(str(err), err=True)
                 raise typer.Exit(code=1) from err
-            await store.append(events)
-            return f"{task_id} cancelled"
-        finally:
-            await store.close()
+        return f"{task_id} cancelled" + ("; its pane is closed" if closed else "")
 
-    typer.echo(asyncio.run(cancel()))
+    typer.echo(asyncio.run(drop()))
     poke(settings.database.path)
 
 
@@ -229,10 +233,29 @@ def project_start(
 
 @project_app.command("cancel")
 def project_cancel(
-    task_id: Annotated[str, typer.Argument(help="The plan task whose plan to drop.")],
+    target: Annotated[
+        str, typer.Argument(help="A project (p-…), or the plan task of a plan waiting for you.")
+    ],
 ) -> None:
-    """Cancel a proposed plan: none of it runs."""
-    _plan_choice(task_id, start=False)
+    """Drop a project: its waiting plan, and every open task of it, panes closed."""
+    if not target.startswith("p-"):
+        _plan_choice(target, start=False)
+        return
+    settings = _settings()
+
+    async def drop() -> str:
+        async with open_runtime(settings) as runtime:
+            try:
+                count = await cancel_project(
+                    runtime.store, runtime.host, project_id=target, by="cli", clock=runtime.clock
+                )
+            except ProjectError as err:
+                typer.echo(str(err), err=True)
+                raise typer.Exit(code=1) from err
+        return f"{target} cancelled: {count} task(s) dropped"
+
+    typer.echo(asyncio.run(drop()))
+    poke(settings.database.path)
 
 
 @app.command()

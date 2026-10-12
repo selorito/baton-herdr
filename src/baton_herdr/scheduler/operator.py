@@ -11,11 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from baton_herdr.core.commands import cancel_task
 from baton_herdr.core.contract import ANSWERABLE_EVIDENCE, one_line
 from baton_herdr.core.events import AgentStateObserved, OperatorActed
 from baton_herdr.core.model import AgentState, AttemptStatus, OperatorAction
 from baton_herdr.core.panes import PaneHostError
-from baton_herdr.core.projection import project
+from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.targeting import resolve_target
 
 if TYPE_CHECKING:
@@ -166,3 +167,40 @@ async def act(  # noqa: PLR0913 - the ports, the action and who takes it
         ]
     )
     return blocker
+
+
+async def cancel(  # noqa: PLR0913 - the ports, the task and who cancels it
+    *,
+    store: EventStore,
+    host: PaneHost,
+    clock: Clock,
+    task_id: TaskId,
+    by: str,
+    reason: str = "",
+) -> bool:
+    """Cancel ``task_id`` and close its agent's pane, so a dropped task's agent does not go
+    on changing its files. The pane is closed only when it is verified to host the task's
+    attempt. Returns whether a pane was closed; raises ``ActionRefusedError`` for a task
+    that does not exist or is already closed."""
+    task = project(await store.read()).tasks.get(task_id)
+    if task is None:
+        raise ActionRefusedError(f"There is no task {task_id}.")
+    if task.status.is_terminal:
+        raise ActionRefusedError(f"{task_id} is already {task.status.value}.")
+    closed = False
+    attempt = task.live_attempt
+    if attempt is not None and attempt.pane_id is not None:
+        try:
+            target = await resolve_target(host, task_id, attempt, at=clock.now())
+            if target.check.may_send and target.pane_id is not None:
+                await host.close_pane(target.pane_id)
+                closed = True
+        except PaneHostError:
+            pass  # the pane is gone already, or herdr is out of reach: cancel all the same
+    text = f"cancelled by {by}" + (f": {reason}" if reason else "")
+    task = project(await store.read()).tasks[task_id]
+    try:
+        await store.append(cancel_task(task, at=clock.now(), reason=text[:500]))
+    except InvalidEventError as err:
+        raise ActionRefusedError(f"{task_id} has moved on; try again.") from err
+    return closed
