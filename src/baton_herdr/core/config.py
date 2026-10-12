@@ -188,6 +188,9 @@ class SchedulerSettings(_Section):
     launch_commands: dict[Literal["claude", "codex", "opencode"], str] = Field(default_factory=dict)
     # Automatic resumes of a task after its agent crashed or stalled (ADR 0005).
     max_failure_resumes: int = Field(default=2, ge=0)
+    # Close an agent's pane once its attempt is over (done, handed off, resumed in a new
+    # pane): an idle agent holds hundreds of MB. Its conversation stays in the agent's logs.
+    close_finished_panes: bool = True
 
 
 class UsageSettings(_Section):

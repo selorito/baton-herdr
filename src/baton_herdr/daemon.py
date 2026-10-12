@@ -117,6 +117,7 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
         timezone=settings.timezone,
         launch_commands={AgentKind(a): cmd for a, cmd in settings.launch_commands.items()},
         max_failure_resumes=settings.max_failure_resumes,
+        close_finished_panes=settings.close_finished_panes,
         reserve_percent=budget.reserve_percent,
         # Without the collector there is no last response to wait for.
         usage_grace_s=3 if collecting_usage else 0,

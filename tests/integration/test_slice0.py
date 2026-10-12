@@ -173,6 +173,18 @@ async def test_a_limited_claude_hands_the_task_to_codex_which_finishes_it() -> N
     assert any(isinstance(e, TaskCompleted) for e in events)
 
 
+async def test_the_panes_of_finished_attempts_are_closed() -> None:
+    _, host, _, runner = await setup()
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert host.launched == ["claude", "codex"]
+    # Claude's pane after the hand-off, Codex's once the task was done: no idle agent left.
+    assert host.observations == {}
+
+    _, host, _, runner = await setup(settings=replace(SETTINGS, close_finished_panes=False))
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    assert len(host.observations) == 2
+
+
 def only(agent: AgentKind) -> RunnerSettings:
     return replace(SETTINGS, agents=(agent,))
 

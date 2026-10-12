@@ -30,6 +30,9 @@ limit_cooldown_minutes = 60
 # decides, after the longer wait.
 # stall_minutes = 15
 # stall_minutes_without_usage = 30
+# Close an agent's pane once its attempt is over (done, handed off, resumed elsewhere): an
+# idle agent holds hundreds of MB. Its conversation stays in the agent's own logs.
+# close_finished_panes = true
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 

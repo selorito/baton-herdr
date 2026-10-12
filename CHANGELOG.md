@@ -32,6 +32,11 @@ is:
 
 ### Fixed
 
+- **Finished agents stayed open.** Each finished or handed-off attempt left its agent idle
+  in its pane, a few hundred MB each, and an agent idle after its limit held the session
+  baton later resumed elsewhere. Their panes are now closed once the attempt is over
+  (`[scheduler] close_finished_panes`, on by default); the conversations stay in the
+  agents' own logs.
 - **After herdr restarted, agents ran twice.** herdr resumes every pane's agent when it
   restores a session, so baton's resume of the same session failed and started afresh,
   with idle copies of old agents left running. `baton service install` now runs baton's

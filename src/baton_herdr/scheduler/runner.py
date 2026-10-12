@@ -161,6 +161,9 @@ class RunnerSettings:
     # an agent's folder-trust question is answered Yes (ADR 0016); elsewhere a person decides.
     own_dirs: tuple[str, ...] = ()
     trusted_dirs: tuple[str, ...] = ()
+    # Close an attempt's pane once it is over (done, handed off, or resumed elsewhere): an
+    # idle agent holds hundreds of MB, and an unattended day runs many tasks.
+    close_finished_panes: bool = True
     # Automatic resumes after crashes and stalls, per task (ADR 0005).
     max_failure_resumes: int = 2
     # An agent with less budget left than this goes behind the others (ADR 0012).
@@ -307,6 +310,7 @@ class TaskRunner:
                     outcome=AttemptOutcome.ABANDONED,
                 )
             )
+            await self._release_pane(attempt)
             return _Outcome.HANDED_OFF if plan is Plan.HAND_OFF else _Outcome.RESTARTED
         if plan is Plan.WAIT:
             first, until = self._free_first(availability, attempt.agent)
@@ -427,6 +431,8 @@ class TaskRunner:
         """Continue the attempt's own agent session in a fresh pane (ADR 0006)."""
         adapter = self._adapters[attempt.agent]
         with log_context(attempt_id=str(attempt.attempt_id)):
+            # The old pane may still hold the session (an agent idle after its limit).
+            await self._release_pane(attempt)
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
             now = self._clock.now()
             await self._append(
@@ -1025,6 +1031,7 @@ class TaskRunner:
     async def _finish(self, task_id: TaskId, agent: AgentKind, attempt_id: AttemptId) -> None:
         now = self._clock.now()
         task = (await self._board()).tasks[task_id]
+        finished = next(a for a in task.attempts if a.attempt_id == attempt_id)
         await self._append(*complete_task(task, at=now))
         events = await self._store.read()
         starts = [
@@ -1057,6 +1064,23 @@ class TaskRunner:
                 attempt_id=attempt_id,
             )
         )
+        await self._release_pane(finished)
+
+    async def _release_pane(self, attempt: AttemptView) -> None:
+        """Close the pane of an attempt that is over, unless another session lives there.
+        Its conversation stays in the agent's own logs, and can be resumed by hand."""
+        if not self._settings.close_finished_panes or attempt.pane_id is None:
+            return
+        try:
+            seen = await self._host.observe(attempt.pane_id)
+            ours = seen.agent is None or (
+                seen.agent is attempt.agent and seen.session_ref in {None, attempt.session_ref}
+            )
+            if ours:
+                await self._host.close_pane(attempt.pane_id)
+                self._log.info("closed the pane of a finished attempt", pane_id=attempt.pane_id)
+        except PaneHostError:
+            return  # gone already, or herdr out of reach: nothing to free
 
     async def _deliver(self, notice: Notice) -> None:
         self._log.info("notice", kind=notice.kind.value, text=notice.plain)
