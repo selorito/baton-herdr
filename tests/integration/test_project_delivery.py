@@ -22,6 +22,7 @@ from baton_herdr.projects.deliver import (
     Showcase,
     find_browser,
     find_page,
+    local_address,
     page_url,
     screenshot,
 )
@@ -182,3 +183,27 @@ async def test_the_page_is_photographed_with_a_headless_browser(
     out = site / ".baton" / "screenshot.png"
     assert await screenshot(browser, url, out)
     assert (await asyncio.to_thread(out.read_bytes))[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_a_preview_on_every_network_names_this_machine_s_address_now(tmp_path: Path) -> None:
+    server = PreviewServer(tmp_path / "projects", host="0.0.0.0", port=0)  # noqa: S104
+    assert server.start()
+    try:
+        site = server.root / "cafe"
+        site.mkdir(parents=True)
+        (site / "index.html").write_text("<h1>Cafe</h1>")
+        url = Showcase(server, None).url(site)
+        assert url == f"http://{local_address()}:{server.port}/cafe/"
+        assert fetch(f"http://127.0.0.1:{server.port}/cafe/") == 200
+    finally:
+        server.stop()
+
+
+def test_a_preview_whose_address_is_not_there_yet_is_tried_again(tmp_path: Path) -> None:
+    server = PreviewServer(tmp_path / "projects", host="192.0.2.1", port=0)  # not ours
+    assert not server.start()
+    assert not server.running
+    assert Showcase(server, None).url(tmp_path) is None  # no link while it does not serve
+    server.host = "127.0.0.1"  # the address is there now
+    assert server.start()
+    server.stop()

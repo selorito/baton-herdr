@@ -265,7 +265,8 @@ class ProjectsSettings(_Section):
     # agents may run the projects' tests without asking.
     root: Path = Field(default_factory=lambda: Path.home() / "dev" / "baton-projects")
     # The read-only preview of a delivered project's web page. 127.0.0.1 keeps it on this
-    # machine; this machine's address on your network lets a phone on it open the link.
+    # machine; 0.0.0.0 serves it on every network this machine is on, and links name its
+    # address there as it is when they are sent, so a phone on the same network opens them.
     preview_host: str = "127.0.0.1"
     # 0: any free port, chosen when batond starts.
     preview_port: int = Field(default=8765, ge=0, le=65535)

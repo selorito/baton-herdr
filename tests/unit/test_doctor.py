@@ -78,6 +78,8 @@ def probes(
         package_version=lambda: "0.1.0",
         last_line=status_lines.get,
         browser=lambda _: Path("/usr/bin/chromium"),
+        local_address=lambda: "192.168.1.165",
+        can_bind=lambda host: host == "192.168.1.165",
         now=lambda: NOW,
     )
 
@@ -286,8 +288,17 @@ async def test_projects_are_checked_for_trust_reach_and_pictures(
     policy = tmp_path / "policy.yaml"
     policy.write_text(f"trusted_dirs: [{tmp_path}]\n", encoding="utf-8")
     monkeypatch.setenv("BATON_POLICY__PATH", str(policy))
-    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "192.168.1.20")
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "192.168.1.165")
     checks = by_name(await diagnose(replace(probes(), browser=lambda _: None)))
     assert checks["projects"].level is Level.OK  # inside a trusted directory
-    assert checks["project preview"].detail == "http://192.168.1.20:8765/ (read-only)"
+    assert checks["project preview"].detail == "http://192.168.1.165:8765/ (read-only)"
     assert checks["screenshots"].level is Level.WARN
+
+    # The address the network gave before a restart: not this machine's any more.
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "192.168.1.36")
+    checks = by_name(await diagnose(probes()))
+    assert checks["project preview"].level is Level.WARN
+    assert '"0.0.0.0"' in checks["project preview"].hint
+    monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "0.0.0.0")  # noqa: S104 - the setting under test
+    checks = by_name(await diagnose(probes()))
+    assert "192.168.1.165" in checks["project preview"].detail

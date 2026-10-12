@@ -12,6 +12,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -35,7 +36,7 @@ from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.policy.load import PolicyError, load_policy
-from baton_herdr.projects.deliver import find_browser
+from baton_herdr.projects.deliver import find_browser, local_address
 from baton_herdr.service import installed_session
 
 if TYPE_CHECKING:
@@ -128,6 +129,16 @@ def _last_line(path: Path) -> str | None:
     return lines[-1] if lines else None
 
 
+def _can_bind(host: str) -> bool:
+    """Whether ``host`` is an address of this machine now."""
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET) as probe:
+            probe.bind((host, 0))
+    except OSError:
+        return False
+    return True
+
+
 def _local_timezone() -> str | None:
     link = Path("/etc/localtime")
     if link.is_symlink():
@@ -152,6 +163,8 @@ class Probes:
     environ: Callable[[], Mapping[str, str]] = os.environ.copy
     last_line: Callable[[Path], str | None] = _last_line
     browser: Callable[[str | None], Path | None] = find_browser
+    local_address: Callable[[], str] = local_address
+    can_bind: Callable[[str], bool] = _can_bind
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
 
 
@@ -427,7 +440,29 @@ def _projects(settings: BatonSettings, probes: Probes) -> list[Check]:
     else:
         checks.append(Check("projects", Level.OK, f"{root}"))
     where = f"http://{projects.preview_host}:{projects.preview_port}/"
-    if projects.preview_host in {"127.0.0.1", "localhost", "::1"}:
+    if projects.preview_host in {"0.0.0.0", "::"}:  # noqa: S104 - checking the setting
+        checks.append(
+            Check(
+                "project preview",
+                Level.OK,
+                f"every network; links name this machine's address there "
+                f"({probes.local_address()}) when they are sent",
+            )
+        )
+    elif projects.preview_host not in {"127.0.0.1", "localhost", "::1"} and not probes.can_bind(
+        projects.preview_host
+    ):
+        checks.append(
+            Check(
+                "project preview",
+                Level.WARN,
+                f"{projects.preview_host} is not an address of this machine now",
+                "A network may hand out another address after a restart. Set [projects] "
+                'preview_host = "0.0.0.0" to serve on every network with links that follow '
+                "the address.",
+            )
+        )
+    elif projects.preview_host in {"127.0.0.1", "localhost", "::1"}:
         checks.append(
             Check(
                 "project preview",

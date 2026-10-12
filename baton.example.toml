@@ -81,8 +81,8 @@ timezone = "UTC"
 # Requests from Telegram (/new), planned and run as projects (ADR 0016). Each gets a
 # directory here; add it to the policy's trusted_dirs.
 # root = "~/dev/baton-projects"
-# The read-only preview of a delivered project's page. 127.0.0.1: this machine only; this
-# machine's address on your network lets a phone there open the link.
+# The read-only preview of a delivered project's page. 127.0.0.1: this machine only;
+# "0.0.0.0": every network it is on, so a phone on the same one opens the links.
 # preview_host = "127.0.0.1"
 # preview_port = 8765
 # A Chromium or Chrome for the page's screenshot; unset: looked up.

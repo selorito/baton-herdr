@@ -10,7 +10,9 @@ served by its ``index.html``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import shutil
+import socket
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -42,6 +44,16 @@ def find_page(workdir: Path) -> Path | None:
 def page_url(root: Path, page: Path, *, host: str, port: int) -> str:
     relative = page.resolve().relative_to(root.resolve()).as_posix()
     return f"http://{host}:{port}/{quote(relative)}/"
+
+
+def local_address() -> str:
+    """This machine's address on the network its default route uses; 127.0.0.1 without one.
+    A UDP socket's connect sends nothing: it only picks the route."""
+    with contextlib.suppress(OSError), socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("192.0.2.1", 9))  # TEST-NET-1: never answered, never sent to
+        address: str = probe.getsockname()[0]
+        return address
+    return "127.0.0.1"
 
 
 def find_browser(configured: str | None) -> Path | None:
@@ -146,7 +158,8 @@ class Showcase:
         page = find_page(workdir)
         if page is None or self._server is None or not self._server.running:
             return None
-        return page_url(self._server.root, page, host=self._server.host, port=self._server.port)
+        server = self._server
+        return page_url(server.root, page, host=server.link_host, port=server.port)
 
     async def picture(self, url: str, workdir: Path) -> Path | None:
         if self._browser is None:
@@ -164,17 +177,32 @@ class PreviewServer:
         self.port = port
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self._warned = False
+
+    @property
+    def link_host(self) -> str:
+        """The host a link names: the bound address, or for 0.0.0.0 (every interface) this
+        machine's address on its network now, which a DHCP lease may have changed."""
+        return local_address() if self.host in {"0.0.0.0", "::"} else self.host  # noqa: S104
 
     def start(self) -> bool:
-        """Start serving; False (logged) when the address cannot be used."""
+        """Start serving; False when the address cannot be used yet (the network may come up
+        after batond at boot): batond tries again each cycle, and warns once."""
+        if self._server is not None:
+            return True
         handler = partial(_PreviewHandler, directory=str(self.root))
         try:
             self.root.mkdir(parents=True, exist_ok=True)
             self._server = ThreadingHTTPServer((self.host, self.port), handler)
         except OSError as err:
-            get_logger("baton.projects").warning(
-                "project preview not started", host=self.host, port=self.port, error=repr(err)
-            )
+            if not self._warned:
+                get_logger("baton.projects").warning(
+                    "project preview not started; trying again",
+                    host=self.host,
+                    port=self.port,
+                    error=repr(err),
+                )
+                self._warned = True
             return False
         self.port = self._server.server_address[1]  # the real one, when 0 was asked for
         self._thread = threading.Thread(

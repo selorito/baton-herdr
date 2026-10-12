@@ -446,6 +446,8 @@ async def _serve_loop(
     cycles = 0
     log = get_logger("baton.daemon")
     while not stop.is_set():
+        if runtime.preview is not None:
+            runtime.preview.start()  # again each cycle until its address can be used
         results = await run_pending(runtime, seen=seen)
         try:
             await advance_projects(runtime)

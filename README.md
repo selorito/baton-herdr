@@ -168,8 +168,9 @@ once, and only after baton has verified the pane still hosts that agent session
 The link points to a read-only preview batond serves over the projects root. It serves
 files only: no listings, nothing hidden (`.git`, `.baton`, `.env`), nothing a link points
 to outside the projects. By default it listens on `127.0.0.1`, which a phone cannot reach.
-To open links from a phone on your network, set `[projects] preview_host` to this
-machine's address there; anyone on that network can then read the projects' pages.
+To open links from a phone on your network, set `[projects] preview_host = "0.0.0.0"`:
+links then name this machine's address as it is when they are sent, which a router may
+change after a restart. Anyone on that network can then read the projects' pages.
 
 Add the projects root to `trusted_dirs` in `policy.yaml`, or agents ask before each test
 or build there. `baton doctor` checks this, the preview, and the browser for screenshots.
