@@ -11,6 +11,10 @@ is:
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-12
+
+For running baton unattended, and for labs and teams where each person runs their own.
+
 ### Added
 
 - **`baton setup`** takes a fresh machine to a running batond in one guided pass:
@@ -183,6 +187,7 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/selorito/baton-herdr/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/selorito/baton-herdr/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/selorito/baton-herdr/releases/tag/v1.0.0
