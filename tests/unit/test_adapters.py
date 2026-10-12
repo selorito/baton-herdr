@@ -87,6 +87,7 @@ EXPECTED = {
     "codex/blocked_permission/20261006T155726Z": PERM,  # compound command
     "codex/blocked_permission/20261006T155802Z": PERM,  # long command, wrapped
     "codex/blocked_permission/20261007T153746Z": OTHER,  # update chooser, herdr says idle
+    "codex/blocked_permission/20261012T084809Z": OTHER,  # folder trust, 0.162
     "codex/blocked_question/20260930T075645Z": OTHER,  # update prompt
     # A plain-text question looks exactly like an idle prompt; the end-of-turn contract
     # in agents.md is what will tell them apart.

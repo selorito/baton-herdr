@@ -96,13 +96,14 @@ def claude_status_line(usage: UsageSettings) -> dict[AgentKind, str]:
     return {AgentKind.CLAUDE: status_line_args(binary, usage.claude_status_log)}
 
 
-def runner_settings(
+def runner_settings(  # noqa: PLR0913 - the settings sections and what batond adds to them
     settings: SchedulerSettings,
     budget: BudgetSettings | None = None,
     *,
     collecting_usage: bool = False,
     launch_args: Mapping[AgentKind, str] | None = None,
     own_dirs: tuple[str, ...] = (),
+    trusted_dirs: tuple[str, ...] = (),
 ) -> RunnerSettings:
     budget = budget or BudgetSettings()
     return RunnerSettings(
@@ -121,6 +122,7 @@ def runner_settings(
         usage_grace_s=3 if collecting_usage else 0,
         launch_args=launch_args or {},
         own_dirs=own_dirs,
+        trusted_dirs=trusted_dirs,
     )
 
 
@@ -174,6 +176,7 @@ async def open_runtime(
         collecting_usage=settings.usage.enabled,
         launch_args=claude_status_line(settings.usage),
         own_dirs=(str(settings.projects.root),),
+        trusted_dirs=tuple(str(d) for d in policy.trusted_dirs) if policy else (),
     )
     host = host or connect(settings.herdr)
     wake = asyncio.Event()
@@ -395,7 +398,23 @@ async def serve(
         runtime.preview.start()
     try:
         with listen:
-            await _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
+            # Stopping does not wait for a turn to end, which can take hours: the run in
+            # progress is cancelled, its attempt stays active in the log, and the next start
+            # re-attaches to it. A write cut short is rolled back whole.
+            looping = asyncio.create_task(
+                _serve_loop(runtime, stop=stop, idle_s=idle_s, max_cycles=max_cycles, seen=seen)
+            )
+            stopping = asyncio.create_task(stop.wait())
+            try:
+                await asyncio.wait({looping, stopping}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                stopping.cancel()
+                if not looping.done():
+                    looping.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await looping
+            if not looping.cancelled():
+                looping.result()  # a fault of the loop itself still surfaces
     finally:
         if runtime.preview is not None:
             runtime.preview.stop()

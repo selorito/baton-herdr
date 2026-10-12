@@ -141,9 +141,11 @@ class RunnerSettings:
     # Appended to an agent's own launch and resume commands, not to an override: the
     # status line that reports Claude's rate limits (ADR 0015).
     launch_args: Mapping[AgentKind, str] = field(default_factory=dict)
-    # Where baton makes projects' directories ([projects] root): in them, and only in them,
-    # an agent's folder-trust question is answered Yes (ADR 0016).
+    # Where baton makes projects' directories ([projects] root), and the directories the
+    # policy names as trusted (ADR 0013): in a project's own directory, or in a trusted one,
+    # an agent's folder-trust question is answered Yes (ADR 0016); elsewhere a person decides.
     own_dirs: tuple[str, ...] = ()
+    trusted_dirs: tuple[str, ...] = ()
     # Automatic resumes after crashes and stalls, per task (ADR 0005).
     max_failure_resumes: int = 2
     # An agent with less budget left than this goes behind the others (ADR 0012).
@@ -315,12 +317,13 @@ class TaskRunner:
         )
         return _Outcome.STOPPED
 
-    async def _own_project_dir(self, task_id: TaskId) -> str | None:
-        """The task's directory, if baton made it for a project (ADR 0016)."""
+    async def _trusted_workdir(self, task_id: TaskId) -> str | None:
+        """The task's directory, if its folder-trust question may be answered Yes."""
         task = (await self._board()).tasks.get(task_id)
-        if task is None or task.project is None or not task.workdir:
+        if task is None or not task.workdir:
             return None
-        return task.workdir if _inside(task.workdir, self._settings.own_dirs) else None
+        trusted = _trusts(task, self._settings.own_dirs, self._settings.trusted_dirs)
+        return task.workdir if trusted else None
 
     def _with_args(self, agent: AgentKind, command: str) -> str:
         args = self._settings.launch_args.get(agent)
@@ -539,7 +542,7 @@ class TaskRunner:
         saw_agent = last_seen is not None
         screen = ""
         progress = ProgressWatch()
-        own_dir = await self._own_project_dir(task_id)
+        own_dir = await self._trusted_workdir(task_id)
         try:
             while True:
                 if loop.time() > deadline:
@@ -1167,6 +1170,12 @@ def _startup_keys(
     if keys is None and own_dir is not None and _shows_dir(screen, own_dir):
         keys = adapter.trust_answer(evidence)
     return keys
+
+
+def _trusts(task: TaskView, own_dirs: Sequence[str], trusted_dirs: Sequence[str]) -> bool:
+    """A project's own directory baton made, or a directory the operator trusts."""
+    own = task.project is not None and _inside(task.workdir, own_dirs)
+    return own or _inside(task.workdir, trusted_dirs)
 
 
 def _inside(workdir: str, roots: Sequence[str]) -> bool:

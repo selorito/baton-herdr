@@ -4,6 +4,7 @@ task's fault does not stop batond's loop."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -23,7 +24,7 @@ from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNoti
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import InvalidEventError, project
-from baton_herdr.daemon import open_runtime, run_pending
+from baton_herdr.daemon import open_runtime, run_pending, serve
 from baton_herdr.ledger import open_event_store
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
@@ -140,3 +141,40 @@ async def test_one_tasks_fault_does_not_stop_the_others(
         assert await run_pending(runtime, seen=seen) == {TaskId("t-fine"): TaskStatus.COMPLETED}
         assert TASK in seen  # not run again until something about it changes
         assert await run_pending(runtime, seen=seen) == {}
+
+
+class Hangs:
+    """A run that does not end on its own: a turn that takes hours."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def run(self, task_id: TaskId) -> TaskStatus:
+        del task_id
+        self.started.set()
+        await asyncio.Event().wait()
+        return TaskStatus.RUNNING
+
+
+async def test_stopping_batond_does_not_wait_for_a_turn_to_end(tmp_path: Path) -> None:
+    db = tmp_path / "baton.db"
+    store = await open_event_store(db)
+    await store.append([created()])
+    await store.close()
+    hangs = Hangs()
+    stop = asyncio.Event()
+    async with open_runtime(
+        BatonSettings(
+            database=DatabaseSettings(path=db),
+            detector=DetectorSettings(binary=str(detector())),
+            usage=UsageSettings(enabled=False),
+        ),
+        host=SimulatedAgents(FixedClock(NOW)),
+        notifier=RecordingNotifier(),
+        clock=FixedClock(NOW),
+    ) as runtime:
+        object.__setattr__(runtime, "runner", hangs)
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=3600))
+        await asyncio.wait_for(hangs.started.wait(), 5)
+        stop.set()
+        await asyncio.wait_for(serving, 5)  # not after the turn: at once

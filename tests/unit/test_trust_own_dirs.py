@@ -6,8 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.core.model import AgentKind, AgentState
-from baton_herdr.scheduler.runner import _inside, _shows_dir, _startup_keys
+from baton_herdr.core.model import AgentKind, AgentState, TaskId
+from baton_herdr.core.projection import TaskView
+from baton_herdr.scheduler.runner import _inside, _shows_dir, _startup_keys, _trusts
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
 CLAUDE = ADAPTERS[AgentKind.CLAUDE]
@@ -50,3 +51,18 @@ def test_only_directories_under_the_projects_root_are_baton_s(tmp_path: Path) ->
     assert not _inside(str(tmp_path / "elsewhere"), [str(root)])
     assert not _inside(str(root / ".." / "elsewhere"), [str(root)])
     assert not _inside(str(root / "cafe"), [])
+
+
+def test_a_project_s_own_directory_or_a_trusted_one_is_trusted(tmp_path: Path) -> None:
+    root, trusted = tmp_path / "projects", tmp_path / "work"
+    (root / "cafe").mkdir(parents=True)
+    (trusted / "repo").mkdir(parents=True)
+
+    def task(workdir: Path, project: str | None = None) -> TaskView:
+        return TaskView(task_id=TaskId("t"), title="t", workdir=str(workdir), project=project)
+
+    own, policy = [str(root)], [str(trusted)]
+    assert _trusts(task(root / "cafe", "p-1"), own, policy)
+    assert not _trusts(task(root / "cafe"), own, policy)  # not made by baton for a project
+    assert _trusts(task(trusted / "repo"), own, policy)  # the operator trusts it
+    assert not _trusts(task(tmp_path / "elsewhere"), own, policy)

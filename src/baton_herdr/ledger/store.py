@@ -16,7 +16,7 @@ from baton_herdr.ledger.migrate import upgrade
 from baton_herdr.ledger.schema import events
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Coroutine, Sequence
     from pathlib import Path
 
     from sqlalchemy.engine import Connection
@@ -70,12 +70,28 @@ class SqliteEventStore:
         # The log folded up to its last seq seen here; others' appends are folded in under
         # the write lock before new events are checked.
         self._board = Board()
+        # Operations under way. Cancelling a caller (batond stopping) does not cut one short:
+        # it completes, and closing the store waits for it, so no connection is left open.
+        self._inflight: set[asyncio.Future[Any]] = set()
 
     async def close(self) -> None:
+        if self._inflight:
+            await asyncio.gather(*self._inflight, return_exceptions=True)
         await self._engine.dispose()
+
+    async def _guarded[T](self, operation: Coroutine[Any, Any, T]) -> T:
+        future = asyncio.ensure_future(operation)
+        self._inflight.add(future)
+        future.add_done_callback(self._inflight.discard)
+        return await asyncio.shield(future)
 
     async def append(
         self, new_events: Sequence[Event], *, expected_seq: int | None = None
+    ) -> Sequence[StoredEvent]:
+        return await self._guarded(self._append(new_events, expected_seq))
+
+    async def _append(
+        self, new_events: Sequence[Event], expected_seq: int | None
     ) -> Sequence[StoredEvent]:
         async with self._engine.begin() as conn:
             current: int = (
@@ -108,6 +124,9 @@ class SqliteEventStore:
     async def read(
         self, *, after_seq: int = 0, task_id: TaskId | None = None
     ) -> Sequence[StoredEvent]:
+        return await self._guarded(self._read(after_seq, task_id))
+
+    async def _read(self, after_seq: int, task_id: TaskId | None) -> Sequence[StoredEvent]:
         query = select(events.c.seq, events.c.payload).where(events.c.seq > after_seq)
         if task_id is not None:
             query = query.where(events.c.task_id == task_id)
