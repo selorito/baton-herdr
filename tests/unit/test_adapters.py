@@ -439,3 +439,31 @@ def test_folder_trust_has_keys_only_for_the_trust_question(
 ) -> None:
     assert ADAPTERS[agent].trust_answer(evidence) == keys
     assert ADAPTERS[agent].startup_answer(evidence) is None  # never as a general answer
+
+
+def test_a_codex_approval_whose_title_scrolled_away_is_still_a_permission() -> None:
+    """A long command pushes "Would you like to run the following command?" above the
+    lines read; the choices under it still make it an approval (seen live, 2026-10-12)."""
+    script = "\n".join(f"    step({n});" for n in range(40))
+    screen = (
+        "  Would you like to run the following command?\n\n"
+        f"  $ node - <<'JS'\n{script}\n  JS\n\n"
+        "› 1. Yes, proceed (y)\n"
+        "  2. No, and tell Codex what to do differently (esc)\n\n"
+        "  Press enter to confirm or esc to cancel\n"
+    )
+    request = DetectionRequest(
+        agent=AgentKind.CODEX,
+        screen=screen,
+        host_state=AgentState.BLOCKED_OTHER,
+        host_evidence="herdr:rule:osc_title_blocked",
+        observed_at=NOW,
+    )
+    result = classify_one(request)
+    assert (result.state, result.evidence) == (
+        AgentState.BLOCKED_PERMISSION,
+        "baton:codex_edit_or_command_approval",
+    )
+    codex = CodexAdapter()
+    assert codex.permission_keys(result.evidence, approve=True) == ("y",)
+    assert codex.permission_command(screen) is None  # not one line: a person decides

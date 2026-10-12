@@ -42,6 +42,9 @@ is:
 
 ### Fixed
 
+- **A Codex approval for a long command had no buttons.** The command pushed the
+  approval's title above the lines baton reads, so it came as "❗ Needs you". Its choices
+  now make it an approval whatever the command's length.
 - **Finished agents stayed open.** Each finished or handed-off attempt left its agent idle
   in its pane, a few hundred MB each, and an agent idle after its limit held the session
   baton later resumed elsewhere. Their panes are now closed once the attempt is over
