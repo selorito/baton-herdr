@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from baton_herdr.core.events import EVENT_ADAPTER, Event, StoredEvent
 from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError
+from baton_herdr.core.projection import Board, apply
 from baton_herdr.ledger.migrate import upgrade
 from baton_herdr.ledger.schema import events
 
@@ -57,10 +58,18 @@ async def open_event_store(db_path: Path) -> SqliteEventStore:
 
 
 class SqliteEventStore:
+    """Appends are checked: each new event must fold onto the log as it is (ADR 0002), or
+    nothing is written and :class:`~baton_herdr.core.projection.InvalidEventError` is
+    raised. A writer that lost a race (a task cancelled while batond watched it) cannot
+    leave a log that no longer folds."""
+
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
         # Reads do not need the write lock that BEGIN IMMEDIATE takes.
         self._reads = engine.execution_options(isolation_level="AUTOCOMMIT")
+        # The log folded up to its last seq seen here; others' appends are folded in under
+        # the write lock before new events are checked.
+        self._board = Board()
 
     async def close(self) -> None:
         await self._engine.dispose()
@@ -74,15 +83,26 @@ class SqliteEventStore:
             ).scalar_one()
             if expected_seq is not None and expected_seq != current:
                 raise ConcurrencyError(expected_seq=expected_seq, actual_seq=current)
+            board = self._board
+            if board.last_seq < current:
+                query = select(events.c.seq, events.c.payload).where(events.c.seq > board.last_seq)
+                for seq, payload in (await conn.execute(query.order_by(events.c.seq))).all():
+                    board = apply(
+                        board, StoredEvent(seq=seq, event=EVENT_ADAPTER.validate_json(payload))
+                    )
+                self._board = board
             stored = [
                 StoredEvent(seq=current + offset, event=item)
                 for offset, item in enumerate(new_events, start=1)
             ]
+            for item in stored:
+                board = apply(board, item)  # raises InvalidEventError: nothing is written
             if stored:
                 try:
                     await conn.execute(insert(events), [_to_row(s) for s in stored])
                 except IntegrityError as err:
                     raise DuplicateEventError from err
+        self._board = board
         return stored
 
     async def read(

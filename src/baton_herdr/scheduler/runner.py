@@ -66,7 +66,7 @@ from baton_herdr.core.model import (
     TaskStatus,
 )
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
-from baton_herdr.core.projection import project
+from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.redact import redact
 from baton_herdr.core.targeting import resolve_target
 from baton_herdr.policy.rules import Verdict
@@ -215,39 +215,52 @@ class TaskRunner:
         attempt a new one is started on the first available agent; an interrupted
         attempt goes through ``plan_recovery``; an active one that nothing in this
         process drives (batond restarted, or it waited for a person) is re-attached.
+
+        A task closed by someone else meanwhile (``baton task cancel``, Telegram's
+        /cancel) is left as it is: the store refuses this run's events for it.
         """
         with log_context(task_id=task_id):
-            tried: set[AgentKind] = set()
-            previous: AgentKind | None = None
-            while True:
+            try:
+                return await self._run(task_id)
+            except InvalidEventError:
                 task = (await self._board()).tasks[task_id]
-                live = task.live_attempt
-                if task.status.is_terminal:
+                if not task.status.is_terminal:
+                    raise
+                self._log.info("task closed while it ran", status=task.status.value)
+                return task.status
+
+    async def _run(self, task_id: TaskId) -> TaskStatus:
+        tried: set[AgentKind] = set()
+        previous: AgentKind | None = None
+        while True:
+            task = (await self._board()).tasks[task_id]
+            live = task.live_attempt
+            if task.status.is_terminal:
+                break
+            if live is None:
+                agent, reason = await self._choose_agent(task_id, tried)
+                if agent is None:
+                    await self._deliver(notices.no_agent(task, reason))
                     break
-                if live is None:
-                    agent, reason = await self._choose_agent(task_id, tried)
-                    if agent is None:
-                        await self._deliver(notices.no_agent(task, reason))
-                        break
-                    tried.add(agent)
-                    outcome = await self._attempt(task_id, agent, previous, reason)
-                    previous = agent
-                elif live.status is AttemptStatus.INTERRUPTED:
-                    outcome = await self._recover(task, live, tried)
-                    if outcome in {_Outcome.HANDED_OFF, _Outcome.RESTARTED}:
-                        previous = live.agent
-                        if outcome is _Outcome.HANDED_OFF:
-                            tried.add(live.agent)
-                        else:
-                            # A fresh session on the same agent is the point of a restart.
-                            # Each restart costs a failure resume, so this cannot loop.
-                            tried.discard(live.agent)
-                        continue
-                else:
-                    outcome = await self._reattach(task, live)
-                if outcome is not _Outcome.INTERRUPTED:
-                    break
-            return (await self._board()).tasks[task_id].status
+                tried.add(agent)
+                outcome = await self._attempt(task_id, agent, previous, reason)
+                previous = agent
+            elif live.status is AttemptStatus.INTERRUPTED:
+                outcome = await self._recover(task, live, tried)
+                if outcome in {_Outcome.HANDED_OFF, _Outcome.RESTARTED}:
+                    previous = live.agent
+                    if outcome is _Outcome.HANDED_OFF:
+                        tried.add(live.agent)
+                    else:
+                        # A fresh session on the same agent is the point of a restart.
+                        # Each restart costs a failure resume, so this cannot loop.
+                        tried.discard(live.agent)
+                    continue
+            else:
+                outcome = await self._reattach(task, live)
+            if outcome is not _Outcome.INTERRUPTED:
+                break
+        return (await self._board()).tasks[task_id].status
 
     async def _recover(
         self, task: TaskView, attempt: AttemptView, tried: set[AgentKind]

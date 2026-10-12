@@ -16,6 +16,7 @@ from baton_herdr.core.panes import (
     PaneProcess,
 )
 from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError
+from baton_herdr.core.projection import apply, project
 from baton_herdr.core.usage import RateLimitObservation, UsageRecord
 
 if TYPE_CHECKING:
@@ -44,6 +45,9 @@ class InMemoryEventStore:
             StoredEvent(seq=current + offset, event=event)
             for offset, event in enumerate(events, start=1)
         ]
+        board = project(self._events)
+        for item in stored:
+            board = apply(board, item)  # checked like the SQLite store: nothing is written
         self._events.extend(stored)
         return stored
 

@@ -354,7 +354,12 @@ async def run_pending(
     )
     results: dict[TaskId, TaskStatus] = {}
     for task_id in to_run:
-        results[task_id] = await runtime.runner.run(task_id)
+        try:
+            results[task_id] = await runtime.runner.run(task_id)
+        except Exception:  # noqa: BLE001 - one task's fault must not stop the others
+            # Left out of results, and marked seen below: it is not run again until something
+            # about it changes, so a fault that repeats cannot loop batond.
+            get_logger("baton.daemon").exception("task run failed", task_id=task_id)
         events = await runtime.store.read()
         seen[task_id] = (task_positions(events).get(task_id, 0), _available(runtime, events))
     return results
@@ -423,7 +428,10 @@ async def _serve_loop(
     log = get_logger("baton.daemon")
     while not stop.is_set():
         results = await run_pending(runtime, seen=seen)
-        await advance_projects(runtime)
+        try:
+            await advance_projects(runtime)
+        except Exception:  # the next cycle looks again
+            log.exception("advancing projects failed")
         cycles += 1
         if max_cycles is not None and cycles >= max_cycles:
             break
