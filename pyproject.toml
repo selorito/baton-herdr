@@ -132,7 +132,7 @@ type = "layers"
 containers = ["baton_herdr"]
 exhaustive = true
 layers = [
-  "api : telegram : cli : daemon : doctor : service",
+  "api : telegram : cli : daemon : doctor : service : setup",
   "recovery : budget : scheduler : policy : projects",
   "herdr | adapters | ledger | collector | detector | workdir",
   "core",

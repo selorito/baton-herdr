@@ -139,7 +139,7 @@ def _can_bind(host: str) -> bool:
     return True
 
 
-def _local_timezone() -> str | None:
+def local_timezone() -> str | None:
     link = Path("/etc/localtime")
     if link.is_symlink():
         target = str(link.resolve())
@@ -155,7 +155,7 @@ class Probes:
     ping_herdr: Callable[[HerdrSettings], Awaitable[str]] = _ping_herdr
     telegram_bot_name: Callable[[TelegramSettings], Awaitable[str]] = _telegram_bot_name
     count_events: Callable[[Path], Awaitable[int]] = _count_events
-    local_timezone: Callable[[], str | None] = _local_timezone
+    local_timezone: Callable[[], str | None] = local_timezone
     installed_session: Callable[[], str | None] = installed_session
     detector: Callable[[str], Path | None] = detector_binary
     classify: Callable[[Path], str] = _classify_probe
@@ -469,8 +469,7 @@ def _projects(settings: BatonSettings, probes: Probes) -> list[Check]:
                 Level.OK,
                 f"{where} (this machine only)",
                 "To open a delivered page from a phone on your network, set [projects] "
-                "preview_host to this machine's address there; anyone on it can then read "
-                "the projects' pages.",
+                'preview_host = "0.0.0.0"; anyone on it can then read the projects\' pages.',
             )
         )
     else:
@@ -577,7 +576,7 @@ async def _telegram(settings: BatonSettings, probes: Probes) -> Check:
             "telegram",
             Level.WARN,
             "not configured; notices go to the log only",
-            "See the README section on Telegram.",
+            "Run baton setup: it finds your chat once you write to the bot.",
         )
     if telegram.bot_token is None or telegram.chat_id is None:
         missing = "BATON_TELEGRAM__BOT_TOKEN" if telegram.bot_token is None else "chat_id"

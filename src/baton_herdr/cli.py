@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import getpass
+import platform
+import shutil
 import signal
 import subprocess
 import sys
 from datetime import timedelta
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
 import typer
@@ -19,13 +22,13 @@ from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
-from baton_herdr.core.config import BatonSettings, config_file
+from baton_herdr.core.config import BatonSettings, config_file, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
 from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
-from baton_herdr.doctor import Level, diagnose, render
+from baton_herdr.doctor import Level, diagnose, local_timezone, render
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.create import ProjectSetupError
@@ -39,12 +42,17 @@ from baton_herdr.projects.flow import (
 from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel
 from baton_herdr.service import (
     BATON_UNIT,
+    HERDR_UNIT,
     NEXT_STEPS,
     ServiceError,
     install_units,
     plan_units,
     render_units,
 )
+from baton_herdr.setup import Io, Paths, SetupError, ask_secret, run_setup
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 app = typer.Typer(name="baton", no_args_is_help=True, add_completion=False)
 task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
@@ -425,6 +433,89 @@ def doctor() -> None:
     typer.echo(render(checks))
     if any(check.level is Level.FAIL for check in checks):
         raise typer.Exit(code=1)
+
+
+@app.command()
+def setup(
+    *,
+    service: Annotated[
+        bool, typer.Option(help="Install and start baton as a systemd user service.")
+    ] = True,
+) -> None:
+    """Set baton up on this machine, step by step: baton-detect, herdr's integrations, the
+    config, Telegram (it finds your chat itself), the policy, and the service. Safe to run
+    again: what exists is kept unless you say otherwise."""
+    io = Io(
+        say=typer.echo,
+        ask=lambda question, default: str(typer.prompt(question, default=default)),
+        confirm=lambda question, default: typer.confirm(question, default=default),
+        secret=ask_secret,
+        run=_run_command,
+        which=shutil.which,
+    )
+    directory = user_config_dir()
+    settings = _settings()
+    paths = Paths(
+        config=config_file(),
+        env=directory / ".env",
+        policy=settings.policy.path,
+        projects_root=settings.projects.root,
+        local_bin=Path.home() / ".local" / "bin",
+    )
+    arch = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
+    try:
+        complete = run_setup(
+            io,
+            paths,
+            timezone=local_timezone() or "UTC",
+            target=f"{arch}-unknown-linux-gnu",
+        )
+        if service:
+            _setup_service(io)
+    except SetupError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(code=1) from err
+    typer.echo("\nbaton doctor:")
+    checks = asyncio.run(diagnose())
+    typer.echo(render(checks))
+    if not complete:
+        typer.echo("\nSome steps were left for later; run baton setup again to finish them.")
+
+
+def _run_command(command: Sequence[str]) -> tuple[int, str]:
+    try:
+        done = subprocess.run(  # noqa: S603 - fixed commands, no shell
+            list(command), capture_output=True, text=True, timeout=120, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        return 1, str(err)
+    return done.returncode, done.stdout + done.stderr
+
+
+def _setup_service(io: Io) -> None:
+    """The systemd user units, enabled and (re)started, kept running after logout."""
+    if not io.confirm("Run baton as a service (starts at login, keeps running)?", default=True):
+        return
+    settings = _settings()
+    plan = plan_units(settings, config=config_file())
+    try:
+        written = install_units(plan, force=False)
+    except ServiceError:
+        if not io.confirm("The service is installed already. Update it?", default=True):
+            return
+        written = install_units(plan, force=True)
+    for path in written:
+        io.say(f"Wrote {path}.")
+    for command in (
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", HERDR_UNIT, BATON_UNIT],
+        ["systemctl", "--user", "restart", HERDR_UNIT, BATON_UNIT],
+        ["loginctl", "enable-linger", getpass.getuser()],
+    ):
+        code, output = io.run(command)
+        if code != 0:
+            io.say(f"{' '.join(command)} failed: {output.strip()}")
+    io.say(f"batond is running. Watch its agents with: herdr --session {plan.session}")
 
 
 @service_app.command("install")
