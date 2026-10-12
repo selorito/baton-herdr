@@ -312,7 +312,7 @@ class World(FakePaneHost):
             if not await self._respond(pane_id, process, share=1.0, overhead=False, took=took):
                 return
             workdir.done += 1
-        self._show(pane_id, "● Done. All tests pass.", working=False)
+        self._show(pane_id, "● Done. All tests pass.\n  [[BATON:END status=done]]", working=False)
 
     async def _respond(
         self,

@@ -36,6 +36,8 @@ screen = """
 
 • Added power(a, b) to calc.py with a test. All tests pass.
 
+  [[BATON:END status=done]]
+
 › Ask Codex to do anything
   fake-model · ~/dev/baton-sandbox
 """

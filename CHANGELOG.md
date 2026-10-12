@@ -32,6 +32,15 @@ is:
 
 ### Fixed
 
+- **A task cut short was reported done.** When herdr restarted, it reopened the agent's
+  session idle in the middle of a turn, and batond took the idle agent for finished:
+  ✅ came, the work was not there. A turn that ends without the end mark is now never
+  taken for done; batond asks the agent to finish, twice at most, then asks you.
+- **The event log could be broken by a race.** A task cancelled while batond watched it
+  could get batond's next events after its cancellation, and batond could then no longer
+  start. Appends that do not fit the log are now refused whole.
+- **Stopping batond waited for the turn in progress**, which can take hours; it now stops
+  at once and re-attaches at the next start. One task's fault no longer stops the loop.
 - **Claude's tool permissions other than Bash's** (reading outside the working
   directories, for example) reached Telegram without buttons, and their first choice
   changes Claude's settings for good. They now come with Approve and Deny; Approve picks

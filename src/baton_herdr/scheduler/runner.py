@@ -34,6 +34,7 @@ from baton_herdr.core.commands import complete_task, start_attempt
 from baton_herdr.core.contract import (
     DENIED_EVIDENCE,
     END_CONTRACT,
+    MISSING_EVIDENCE,
     QUESTION_EVIDENCE,
     EndStatus,
     one_line,
@@ -100,6 +101,20 @@ if TYPE_CHECKING:
 CONTINUE_NOTE = (
     "Your session was interrupted. Continue the task from where you stopped; the working "
     "directory has your changes so far."
+)
+
+# Sent when a turn ends without the end mark: the agent was interrupted (a restart, a
+# key press, herdr reopening its session) or did not say it was done. Never taken for done.
+NUDGE_NOTE = (
+    "You stopped without the end line, so the task may not be finished: your session may "
+    "have been interrupted. Check what is done in the working directory, finish the task, "
+    "and end as asked."
+)
+# Nudges per attempt before a person is asked.
+MAX_NUDGES = 2
+MISSING_NOTE = (
+    "It ended its turn without saying the task was done, also after being asked to finish. "
+    "Reply with what it should do, or cancel the task."
 )
 
 HANDOFF_NOTE = (
@@ -325,6 +340,70 @@ class TaskRunner:
         trusted = _trusts(task, self._settings.own_dirs, self._settings.trusted_dirs)
         return task.workdir if trusted else None
 
+    async def _nudges(self, attempt_id: AttemptId) -> int:
+        return sum(
+            1
+            for stored in await self._store.read()
+            if isinstance(stored.event, AttemptPrompted)
+            and stored.event.attempt_id == attempt_id
+            and stored.event.kind == "nudge"
+        )
+
+    async def _read_turn(  # noqa: PLR0913 - the attempt, where it is, and its turn so far
+        self,
+        adapter: AgentAdapter,
+        observation: PaneObservation | None,
+        pane_id: str,
+        attempt_id: AttemptId,
+        turn: TurnState,
+        *,
+        saw_agent: bool,
+    ) -> tuple[AgentState, str, datetime | None, str, str, bool]:
+        """What the agent shows now, read against its turn: the state, its evidence, a
+        limit's reset time, the screen, the agent's own words, and whether to nudge it."""
+        state, evidence, resets_at, screen = await self._classify(
+            adapter, observation, pane_id, saw_agent=saw_agent
+        )
+        state, evidence, detail = _read_end_mark(state, evidence, screen, turn)
+        state, evidence, detail, nudge = await self._unmarked_end(
+            attempt_id, turn, screen, (state, evidence, detail)
+        )
+        if state is AgentState.BLOCKED_PERMISSION:
+            detail = adapter.permission_summary(screen) or ""
+        return state, evidence, resets_at, screen, detail, nudge
+
+    async def _unmarked_end(
+        self,
+        attempt_id: AttemptId,
+        turn: TurnState,
+        screen: str,
+        seen: tuple[AgentState, str, str],
+    ) -> tuple[AgentState, str, str, bool]:
+        """A turn that ended without the end mark: nudge the agent (the last item), or after
+        ``MAX_NUDGES`` ask a person, who may answer in words."""
+        state, evidence, detail = seen
+        if state is not AgentState.IDLE or not _unmarked(turn, screen):
+            return state, evidence, detail, False
+        if await self._nudges(attempt_id) < MAX_NUDGES:
+            return state, evidence, detail, True
+        return AgentState.BLOCKED_QUESTION, MISSING_EVIDENCE, MISSING_NOTE, False
+
+    async def _nudge(self, task_id: TaskId, attempt_id: AttemptId, pane_id: str) -> TurnState:
+        """Ask the agent to finish; a new turn starts, in which it has to work again."""
+        prompt = one_line(f"{NUDGE_NOTE} {END_CONTRACT}")
+        self._log.info("turn ended without the end mark; asking the agent to finish")
+        await self._append(
+            AttemptPrompted(
+                occurred_at=self._clock.now(),
+                task_id=task_id,
+                attempt_id=attempt_id,
+                kind="nudge",
+                chars=len(prompt),
+            )
+        )
+        await self._host.send_prompt(pane_id, prompt)
+        return TurnState(prompt_sent=True)
+
     def _with_args(self, agent: AgentKind, command: str) -> str:
         args = self._settings.launch_args.get(agent)
         return f"{command} {args}" if args else command
@@ -513,7 +592,7 @@ class TaskRunner:
                 task_id, attempt_id, agent, pane_id, (_prompt(task, kind), kind)
             )
 
-    async def _supervise(  # noqa: PLR0913 - the attempt, plus where a re-attach resumes
+    async def _supervise(  # noqa: PLR0912, PLR0913 - one branch per outcome of a turn; the attempt, plus where a re-attach resumes
         self,
         task_id: TaskId,
         attempt_id: AttemptId,
@@ -558,12 +637,9 @@ class TaskRunner:
                     observation = await feed.next()
                 except PaneNotFoundError:
                     observation = None
-                state, evidence, resets_at, screen = await self._classify(
-                    adapter, observation, pane_id, saw_agent=saw_agent
+                state, evidence, resets_at, screen, detail, nudge = await self._read_turn(
+                    adapter, observation, pane_id, attempt_id, turn, saw_agent=saw_agent
                 )
-                state, evidence, detail = _read_end_mark(state, evidence, screen, turn)
-                if state is AgentState.BLOCKED_PERMISSION:
-                    detail = adapter.permission_summary(screen) or ""
                 saw_agent = saw_agent or (observation is not None and observation.agent is not None)
                 if not saw_agent and state is not AgentState.CRASHED:
                     continue  # the agent process has not started yet
@@ -578,6 +654,11 @@ class TaskRunner:
                         task_id, attempt_id, InterruptReason.STALLED, stuck, screen=screen
                     )
                 pane_for_input = await self._locate(task_id, attempt_id)
+                if nudge:  # never taken for a finished turn
+                    if pane_for_input is not None:
+                        turn = await self._nudge(task_id, attempt_id, pane_for_input)
+                        deadline = loop.time() + self._settings.turn_timeout_s
+                    continue
                 startup_keys = _startup_keys(adapter, state, evidence, screen, own_dir)
                 turn, step = next_step(
                     turn, state, startup_keys=startup_keys, can_send=pane_for_input is not None
@@ -1061,6 +1142,11 @@ _END_STATES = {
     EndStatus.QUESTION: AgentState.BLOCKED_QUESTION,
     EndStatus.BLOCKED: AgentState.BLOCKED_OTHER,
 }
+
+
+def _unmarked(turn: TurnState, screen: str) -> bool:
+    """An idle agent that worked on the prompt and left no end mark: not a finished task."""
+    return turn.prompt_sent and turn.worked and not turn.denied and parse_end(screen) is None
 
 
 def _read_end_mark(

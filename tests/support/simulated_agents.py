@@ -65,7 +65,7 @@ class SimulatedAgents(FakePaneHost):
         scripts: dict[AgentKind, str] | None = None,
         permission_after_prompt: bool = False,
         permission_screen: str = PERMISSION_SCREEN,
-        end_mark: str | None = None,
+        end_mark: str | None = "⏺ Done.\n  [[BATON:END status=done]]",
     ) -> None:
         super().__init__()
         self._clock = clock
@@ -199,6 +199,8 @@ class SimulatedAgents(FakePaneHost):
         agent, step = self._running[pane_id]
         script = fake_agent.load_script(SCRIPTS / self._scripts[pane_id])
         screen = fake_agent.render(script.steps[step].screen, now=self._clock.now(), prompt=prompt)
+        # The scripts end with a mark, as real agents do; here ``end_mark`` decides it.
+        screen = "\n".join(line for line in screen.splitlines() if "[[BATON:END" not in line)
         if step == len(HOST_STATES[agent]) - 1 and self.end_mark:
             screen = f"{self.end_mark}\n{screen}"
         self.screens[pane_id] = screen

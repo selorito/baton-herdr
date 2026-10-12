@@ -195,7 +195,8 @@ class AttemptPrompted(_AttemptEvent):
     """
 
     type: Literal["attempt.prompted"] = "attempt.prompted"
-    kind: Literal["task", "handoff", "continue"]
+    # "nudge": the turn ended without the end mark, so the agent was asked to finish.
+    kind: Literal["task", "handoff", "continue", "nudge"]
     chars: int = Field(ge=0)
 
 

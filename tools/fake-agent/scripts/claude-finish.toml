@@ -34,6 +34,8 @@ screen = """
 
 ● Added a one-line docstring to add in calc.py. All tests pass.
 
+  [[BATON:END status=done]]
+
 ────────────────────────────────────────
 ❯
 ────────────────────────────────────────

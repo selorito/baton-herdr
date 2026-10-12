@@ -7,10 +7,11 @@ Every prompt baton sends asks the agent to end its final message with one line,
     [[BATON:END status=blocked]]    the agent cannot go on, and says why just above it
 
 so that a turn that ended with a question in plain text is not mistaken for a
-finished task. The mark is an extra signal on top of screen detection: a missing
-or malformed mark means "no signal", never an error, and it never overrides a
-positive detection such as a permission dialog or a usage limit (see the design
-note in docs/research/agents.md).
+finished task. The mark never overrides a positive detection such as a permission
+dialog or a usage limit (see the design note in docs/research/agents.md). A turn that
+ends without it is not taken for done either: the agent may have been cut short (a
+restart of herdr reopens its session idle, a key press interrupts it), so batond asks it
+to finish, twice at most, and then asks a person.
 """
 
 from __future__ import annotations
@@ -33,7 +34,9 @@ END_CONTRACT = (
 # instead?"). Only these may be answered with free text (ADR 0009).
 QUESTION_EVIDENCE = "baton:end:question"
 DENIED_EVIDENCE = "baton:denied"
-ANSWERABLE_EVIDENCE = frozenset({QUESTION_EVIDENCE, DENIED_EVIDENCE})
+# Turns that kept ending without the mark: the agent waits at its prompt for words.
+MISSING_EVIDENCE = "baton:end:missing"
+ANSWERABLE_EVIDENCE = frozenset({QUESTION_EVIDENCE, DENIED_EVIDENCE, MISSING_EVIDENCE})
 
 _LINE_BREAKS = re.compile(r"[ \t]*(?:\r?\n)+[ \t]*")
 _MARK = re.compile(r"\[\[BATON:END status=(done|question|blocked)\]\]")

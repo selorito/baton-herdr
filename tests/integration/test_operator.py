@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.core.events import OperatorActed, TaskCreated
+from baton_herdr.core.events import AttemptPrompted, OperatorActed, TaskCreated
 from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
@@ -239,7 +239,7 @@ async def test_buttons_carry_their_blocker() -> None:
 
 
 async def test_a_denied_permission_waits_for_what_to_do_instead() -> None:
-    store, host, notifier, runner = await setup(permission_after_prompt=True)
+    store, host, notifier, runner = await setup(permission_after_prompt=True, end_mark=None)
     assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
     (asked,) = [n for n in notifier.notices if n.kind is NoticeKind.NEEDS_HUMAN]
 
@@ -250,5 +250,50 @@ async def test_a_denied_permission_waits_for_what_to_do_instead() -> None:
     assert after.actions == (OperatorAction.ANSWER,)
     assert "denied" in after.text
 
+    host.end_mark = DONE  # told what to do instead, it finishes and says so
     await do(store, host, OperatorAction.ANSWER, blocker_seq=after.blocker_seq, text="Skip it.")
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+
+
+class FinishesWhenNudged(SimulatedAgents):
+    """An agent cut short (a restart, a key press): it ends its turn without the mark, and
+    finishes properly once asked to."""
+
+    async def send_prompt(self, pane_id: str, text: str) -> None:
+        if "stopped without the end line" in text:
+            self.end_mark = DONE
+        await super().send_prompt(pane_id, text)
+
+
+async def test_a_turn_that_ends_without_the_mark_is_not_taken_for_done() -> None:
+    store, _, notifier, _ = await setup(end_mark=None)
+    host = FinishesWhenNudged(
+        CLOCK, scripts={AgentKind.CLAUDE: "claude-finish.toml"}, end_mark=None
+    )
+    runner = TaskRunner(
+        detector=rust_detector(),
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=notifier,
+        clock=CLOCK,
+        settings=SETTINGS,
+    )
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    prompted = [s.event for s in await store.read() if isinstance(s.event, AttemptPrompted)]
+    assert [p.kind for p in prompted] == ["task", "nudge"]
+    assert "stopped without the end line" in host.prompts[-1][1]
+
+
+async def test_turns_that_keep_ending_without_the_mark_go_to_a_person() -> None:
+    store, host, notifier, runner = await setup(end_mark=None)
+    assert await runner.run(TASK) is TaskStatus.NEEDS_HUMAN
+    prompted = [s.event for s in await store.read() if isinstance(s.event, AttemptPrompted)]
+    assert [p.kind for p in prompted] == ["task", "nudge", "nudge"]
+    (asked,) = [n for n in notifier.notices if n.kind is NoticeKind.NEEDS_HUMAN]
+    assert asked.actions == (OperatorAction.ANSWER,)
+    assert "without saying the task was done" in asked.text
+
+    host.end_mark = DONE
+    await do(store, host, OperatorAction.ANSWER, blocker_seq=asked.blocker_seq, text="Finish it.")
     assert await runner.run(TASK) is TaskStatus.COMPLETED
