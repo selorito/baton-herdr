@@ -37,21 +37,32 @@ and each one is recorded with its reason in an event log.
 
 ## Quickstart
 
-On Linux, with [uv](https://docs.astral.sh/uv/), [rustup](https://rustup.rs/),
-[herdr](https://github.com/herdrdev/herdr) ≥ 0.9.1, and the agents installed and signed in
-once by you:
+On Linux, with [uv](https://docs.astral.sh/uv/), [herdr](https://github.com/herdrdev/herdr)
+≥ 0.9.1, and the agents installed and signed in once by you:
 
 ```bash
-git clone https://github.com/selorito/baton-herdr.git && cd baton-herdr && uv tool install . && cargo install --path crates/baton-detect --locked
-herdr integration install claude && herdr integration install codex
-mkdir -p ~/.config/baton && cp baton.example.toml ~/.config/baton/baton.toml   # set agents and timezone
-baton service install && systemctl --user daemon-reload && systemctl --user enable --now baton.service
+uv tool install git+https://github.com/selorito/baton-herdr
+baton setup
+```
+
+`baton setup` walks through the rest:
+- downloads `baton-detect` if it is missing;
+- installs herdr's integrations for the agents it finds;
+- writes the config with those agents and your time zone;
+- sets up Telegram (it finds your chat once you write to the bot);
+- writes the policy;
+- installs and starts the service.
+
+It keeps what exists, so it is safe to run again. Then:
+
+```bash
 baton task add "power function" -C ~/src/calc -i "Add power(a, b) to calc.py with a test."
 ```
 
 `baton status` shows the board, `herdr --session baton` shows the agents at work, and
-`baton doctor` says what is missing and how to fix it. More detail:
-[Install](#install), [Operate](#operate).
+`baton doctor` says what is missing and how to fix it. Setting up a lab or a team:
+[docs/kurulum.md](docs/kurulum.md) (Turkish). More detail: [Install](#install),
+[Operate](#operate).
 
 ## How it works
 
@@ -345,7 +356,8 @@ cargo install --path crates/baton-detect --locked
 ```
 
 baton itself installs with `uv tool install .` from a checkout, or from the wheel attached
-to a release (`uv tool install ./baton_herdr-*.whl`). Then:
+to a release (`uv tool install ./baton_herdr-*.whl`). `baton setup` does every step below
+for you; by hand they are:
 
 ```bash
 herdr integration install claude      # and codex / opencode: baton needs the session ids

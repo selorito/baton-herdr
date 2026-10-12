@@ -13,6 +13,16 @@ is:
 
 ### Added
 
+- **`baton setup`** takes a fresh machine to a running batond in one guided pass:
+  baton-detect, herdr's integrations, the config, Telegram (it finds your chat once you
+  write to the bot), the policy and the service. It keeps what exists, so it can be run
+  again. A Turkish guide for labs and teams: `docs/kurulum.md`.
+- **Cancel from the phone.** `/cancel t-…` drops a task and closes its agent's pane;
+  `/cancel p-…` drops a whole project. A notice with nothing to press or reply to carries
+  a **Cancel task** button. `baton task cancel` and `baton project cancel` do the same.
+- **A project whose step did not complete stops** instead of waiting for ever, and says so.
+- **Folder-trust questions** are answered in a project's own directory and in the policy's
+  trusted directories, so a first task in a trusted repository does not wait for you.
 - **Projects from Telegram** (ADR 0016). `/new <request>` makes a project directory with a
   git repository and asks an agent to plan the request. The plan comes back with **Start**
   and **Cancel**; Start runs its steps one after another, as ordinary tasks. When the last
