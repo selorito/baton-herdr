@@ -32,6 +32,12 @@ is:
 
 ### Fixed
 
+- **After herdr restarted, agents ran twice.** herdr resumes every pane's agent when it
+  restores a session, so baton's resume of the same session failed and started afresh,
+  with idle copies of old agents left running. `baton service install` now runs baton's
+  herdr server with its own settings file (`~/.config/baton/herdr-server.toml`), in which
+  herdr does not resume agents; baton resumes those of its tasks. Run
+  `baton service install --force` once to get it.
 - **A task cut short was reported done.** When herdr restarted, it reopened the agent's
   session idle in the middle of a turn, and batond took the idle agent for finished:
   ✅ came, the work was not there. A turn that ends without the end mark is now never

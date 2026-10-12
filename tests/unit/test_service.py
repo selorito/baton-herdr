@@ -60,6 +60,21 @@ def test_install_writes_both_units_and_never_overwrites_silently(
     assert install_units(PLAN, force=True) == written
 
 
+def test_baton_s_herdr_does_not_resume_agents_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    config = tmp_path / "baton" / "herdr-server.toml"
+    plan = replace(PLAN, herdr_config=config)
+    herdr = render_units(plan)[HERDR_UNIT]
+    assert f'Environment="HERDR_CONFIG_PATH={config}"\n' in herdr
+    assert "HERDR_CONFIG_PATH" not in render_units(plan)[BATON_UNIT]
+
+    written = install_units(plan, force=False)
+    assert config in written
+    assert "resume_agents_on_restore = false" in config.read_text()
+
+
 def test_unit_names_follow_adr_0010() -> None:
     assert sorted(render_units(PLAN)) == ["baton-herdr.service", "baton.service"]
 

@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME
+from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind
 
@@ -39,6 +39,15 @@ if TYPE_CHECKING:
     from baton_herdr.core.config import BatonSettings
 
 HERDR_UNIT = "baton-herdr.service"
+# herdr's settings for the server baton's agents run in, beside baton's own config. Only
+# what baton needs differs from herdr's defaults; the user's own herdr is not touched.
+HERDR_SERVER_CONFIG = """\
+# herdr settings for the server baton runs its agents in (written by baton service install).
+# After a restart baton resumes the agents of its tasks itself. herdr resuming every pane's
+# agent as well would start a second, idle copy of each, holding the session baton resumes.
+[session]
+resume_agents_on_restore = false
+"""
 BATON_UNIT = "baton.service"
 _SESSION_ARGUMENT = re.compile(r"--session\s+'?([^\s']+)'?\s+server")
 _SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin")
@@ -52,6 +61,8 @@ class UnitPlan:
     path: str
     lang: str
     config: Path | None  # pinned with BATON_CONFIG when the file is not the user default
+    # herdr's settings for this server (HERDR_SERVER_CONFIG), passed as HERDR_CONFIG_PATH.
+    herdr_config: Path | None = None
 
 
 def render_units(plan: UnitPlan) -> dict[str, str]:
@@ -60,6 +71,9 @@ def render_units(plan: UnitPlan) -> dict[str, str]:
     session = shlex.quote(plan.session)
     shared_env = f'Environment="PATH={plan.path}"\nEnvironment="LANG={plan.lang}"\n'
     config_env = f'Environment="BATON_CONFIG={plan.config}"\n' if plan.config else ""
+    herdr_env = (
+        f'Environment="HERDR_CONFIG_PATH={plan.herdr_config}"\n' if plan.herdr_config else ""
+    )
     return {
         HERDR_UNIT: (
             "[Unit]\n"
@@ -69,6 +83,7 @@ def render_units(plan: UnitPlan) -> dict[str, str]:
             f"ExecStart={herdr} --session {session} server\n"
             f"ExecStop={herdr} --session {session} server stop\n"
             f"{shared_env}"
+            f"{herdr_env}"
             "Environment=TERM=xterm-256color\n"
             "Restart=on-failure\n"
             "RestartSec=5\n"
@@ -177,6 +192,7 @@ def plan_units(settings: BatonSettings, *, config: Path) -> UnitPlan:
         path=search_path([herdr, baton, str(detector) if detector else None, *agents]),
         lang=os.environ.get("LANG") or "C.UTF-8",
         config=pinned,
+        herdr_config=user_config_dir() / "herdr-server.toml",
     )
 
 
@@ -190,6 +206,10 @@ def install_units(plan: UnitPlan, *, force: bool) -> list[Path]:
         raise ServiceError(msg)
     directory.mkdir(parents=True, exist_ok=True)
     written = []
+    if plan.herdr_config is not None:  # baton's own file: always brought up to date
+        plan.herdr_config.parent.mkdir(parents=True, exist_ok=True)
+        plan.herdr_config.write_text(HERDR_SERVER_CONFIG, encoding="utf-8")
+        written.append(plan.herdr_config)
     for name, text in files.items():
         path = directory / name
         path.write_text(text, encoding="utf-8")
