@@ -86,13 +86,21 @@ wakes batond (`daemon.poke`); the CLI never runs the task itself.
 `baton daemon` (or the systemd unit from `baton service install`) runs `daemon.serve`. Each
 cycle:
 
-1. `run_pending` folds the log into the board and asks `scheduler/queue.py`,
-   `select_tasks`, which tasks may make progress now. A task is run again only when
-   something it depends on changed: its own events, or which agents are available.
-2. Tasks run one at a time, oldest first, through `TaskRunner.run`.
+1. The dispatcher (`scheduler/dispatch.py`) folds the log into the board and asks
+   `scheduler/queue.py`, `select_tasks`, which tasks may make progress now. A task is run
+   again only when something it depends on changed: its own events, or which agents are
+   available.
+2. Of those, `queue.dispatch` starts the ones that fit (ADR 0017): a free slot on an
+   available agent (`[scheduler] agent_slots`, two per agent by default), at most
+   `max_parallel_tasks` in all, never two tasks in one directory. Each runs in its own
+   asyncio worker through `TaskRunner.run`; the runner picks agents with a free slot first
+   and holds a lock from choosing an agent to recording the attempt, so tasks starting
+   together see each other's slots.
 3. Between cycles batond sleeps 30 s, or until the next limit resets (`next_wake`). It
-   wakes at once when the Telegram bot acts, or when a CLI command (`task add`,
-   `approve`, …) writes to the FIFO next to the event log (`daemon.poke`, `listening`).
+   wakes at once when a worker ends (its slot can be filled), when the Telegram bot acts,
+   or when a CLI command (`task add`, `approve`, …) writes to the FIFO next to the event
+   log (`daemon.poke`, `listening`). `baton run` (`run_pending`) dispatches the same way and
+   returns when every task it started has stopped.
 
 `daemon.open_runtime` is the composition root. It is the only place that knows which real
 implementation stands behind each port (event store, pane host, notifier, detector,

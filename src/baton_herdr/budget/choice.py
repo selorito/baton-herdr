@@ -4,6 +4,10 @@ The configured order is the preference. Budget only reorders it: an agent with
 less than the reserve left goes behind every agent that has more or whose budget
 is unknown. It never makes an agent unavailable; only a limit the agent hit does
 that (``budget.availability``), so a wrong estimate costs at most one limit.
+
+Busy agents, those running as many tasks as they have slots (ADR 0017), go behind
+every agent with a free slot, before budget is looked at. They are not refused
+either: a task that has to move on takes a busy agent rather than none.
 """
 
 from __future__ import annotations
@@ -28,17 +32,19 @@ class Choice:
     notes: tuple[BudgetNote, ...]
 
 
-def choose_agent(
+def choose_agent(  # noqa: PLR0913 - the agents, what is known of them, and what to skip
     agents: Sequence[AgentKind],
     budgets: Mapping[AgentKind, AgentBudget],
     *,
     reserve_percent: float,
     zone: tzinfo,
     tried: Collection[AgentKind] = (),
+    full: Collection[AgentKind] = (),
 ) -> Choice:
     """Pick from ``agents`` (preference order, each with an adapter), skipping ``tried``.
 
-    ``tried`` are the agents this run of the task already gave up on.
+    ``tried`` are the agents this run of the task already gave up on; ``full`` those
+    with every slot taken.
     """
     notes = tuple(_note(agent, budgets.get(agent)) for agent in agents)
 
@@ -51,6 +57,8 @@ def choose_agent(
             why = f"limited until {_clock(until, zone)}" if until is not None else "limited"
         elif note.agent in tried:
             why = "already tried for this task"
+        elif note.agent in full and not low(note):
+            why = "busy, every slot taken"
         else:
             why = f"{_standing(note)}, below the {reserve_percent:g}% reserve"
         return f"{note.agent.value} {why}"
@@ -60,7 +68,9 @@ def choose_agent(
         reasons = "; ".join(skipped(n) for n in notes) or "none configured"
         return Choice(None, f"No agent can take the task: {reasons}.", notes)
 
-    healthy = [n for n in open_ if not low(n)]
+    free = [n for n in open_ if n.agent not in full]
+    candidates = free or open_
+    healthy = [n for n in candidates if not low(n)]
     if healthy:
         chosen = healthy[0]
         passed = [skipped(n) for n in notes[: notes.index(chosen)]]
@@ -70,7 +80,7 @@ def choose_agent(
         return Choice(chosen.agent, f"{chosen.agent.value}: {order}, {_standing(chosen)}.", notes)
 
     # Every agent that could take it is short; the one with the most left goes first.
-    chosen = max(open_, key=lambda n: n.remaining_percent or 0.0)
+    chosen = max(candidates, key=lambda n: n.remaining_percent or 0.0)
     reason = (
         f"{chosen.agent.value}: every agent that could take the task has less than the "
         f"{reserve_percent:g}% reserve left; {chosen.agent.value} has the most "

@@ -173,11 +173,16 @@ CLAUDE_CAP = 600_000
 CODEX_CAP = 3_000_000
 
 
-def queue(rng: random.Random, budget: Budget) -> Setup:
+def queue(rng: random.Random, budget: Budget, scheduler: dict[str, object] | None = None) -> Setup:
     tasks = [_task(rng) for _ in range(QUEUE)]
     claude = _used(rng, CLAUDE_CAP, (0.4, 0.8), (1, 3))
     codex = _used(rng, CODEX_CAP, (0.2, 0.5), (1, 4))
-    return Setup(tasks=tasks, quotas={CLAUDE: claude, CODEX: codex}, budget=budget)
+    return Setup(
+        tasks=tasks,
+        quotas={CLAUDE: claude, CODEX: codex},
+        budget=budget,
+        scheduler=scheduler or {},
+    )
 
 
 BUDGET_MODES = (
@@ -195,3 +200,23 @@ BUDGET_MODES = (
     ),
 )
 BUDGET_WORLDS = 30
+
+
+# --- parallel work (ADR 0017) -----------------------------------------------------------
+
+# The same queue, each task in its own directory, with the learned budget: how much sooner
+# does it finish when tasks run side by side, and what does that cost?
+PARALLEL_MODES: tuple[tuple[str, str, dict[str, object]], ...] = (
+    ("one-at-a-time", "One task at a time, as baton 1.1 ran", {"max_parallel_tasks": 1}),
+    (
+        "one-per-agent",
+        "One session per agent",
+        {"agent_slots": {"claude": 1, "codex": 1}},
+    ),
+    ("default", "Two sessions per agent, four tasks at most (the default)", {}),
+    (
+        "three-per-agent",
+        "Three sessions per agent, six tasks at most",
+        {"agent_slots": {"claude": 3, "codex": 3}, "max_parallel_tasks": 6},
+    ),
+)

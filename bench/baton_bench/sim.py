@@ -55,6 +55,8 @@ class Setup:
     tasks: list[Workdir]
     quotas: dict[AgentKind, Quota]
     budget: Budget = field(default_factory=Budget)
+    # [scheduler] settings that differ from the defaults, e.g. {"max_parallel_tasks": 1}.
+    scheduler: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +143,7 @@ async def _run(setup: Setup, rng: random.Random) -> WorldResult:
     world = World(clock=clock, rng=rng, quotas=setup.quotas, workdirs=workdirs, usage=usage)
     if usage is not None:
         await _usage_so_far(usage, setup.quotas)
-    scheduler = SchedulerSettings()
+    scheduler = SchedulerSettings.model_validate(setup.scheduler)
     settings = runner_settings(
         scheduler,
         BudgetSettings(reserve_percent=setup.budget.reserve_percent),

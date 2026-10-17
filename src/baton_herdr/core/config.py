@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import (
@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 CONFIG_PATH_ENV_VAR = "BATON_CONFIG"
 DEFAULT_CONFIG_FILE = Path("baton.toml")
 DOTENV_FILE = Path(".env")
+# Sessions of one agent that run at once, unless [scheduler] agent_slots says otherwise.
+DEFAULT_AGENT_SLOTS = 2
 
 type LogLevel = Literal["debug", "info", "warning", "error", "critical"]
 
@@ -191,6 +193,13 @@ class SchedulerSettings(_Section):
     # Close an agent's pane once its attempt is over (done, handed off, resumed in a new
     # pane): an idle agent holds hundreds of MB. Its conversation stays in the agent's logs.
     close_finished_panes: bool = True
+    # Tasks run side by side (ADR 0017): at most this many sessions of one agent at once
+    # (agents not named here get DEFAULT_AGENT_SLOTS), and at most max_parallel_tasks in all.
+    # {claude = 1} keeps Claude to one task at a time.
+    agent_slots: dict[Literal["claude", "codex", "opencode"], Annotated[int, Field(ge=1)]] = Field(
+        default_factory=dict
+    )
+    max_parallel_tasks: int = Field(default=4, ge=1)
 
 
 class UsageSettings(_Section):

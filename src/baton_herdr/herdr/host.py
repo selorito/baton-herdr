@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +44,8 @@ class HerdrPaneHost:
     ) -> None:
         self._socket = socket
         self._workspace_label = workspace_label
+        # Tasks start side by side (ADR 0017); two first panes must not make two workspaces.
+        self._opening = asyncio.Lock()
 
     async def observe(self, pane_id: str) -> PaneObservation:
         pane = (await self._call("pane.get", {"pane_id": pane_id}))["pane"]
@@ -103,6 +106,10 @@ class HerdrPaneHost:
 
     async def open_pane(self, *, cwd: str, label: str | None = None) -> str:
         """Open a pane in baton's workspace, creating the workspace on first use."""
+        async with self._opening:
+            return await self._open_pane(cwd=cwd, label=label)
+
+    async def _open_pane(self, *, cwd: str, label: str | None) -> str:
         workspaces = (await self._call("workspace.list", {}))["workspaces"]
         own = next((w for w in workspaces if w.get("label") == self._workspace_label), None)
         if own is None:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from baton_herdr.budget.availability import Availability
 from baton_herdr.core.model import (
     AgentKind,
+    AgentState,
     AttemptId,
     AttemptStatus,
     InterruptReason,
@@ -13,7 +14,13 @@ from baton_herdr.core.model import (
     TaskStatus,
 )
 from baton_herdr.core.projection import AttemptView, TaskView
-from baton_herdr.scheduler.queue import next_wake, select_tasks
+from baton_herdr.scheduler.queue import (
+    agent_load,
+    dispatch,
+    full_agents,
+    next_wake,
+    select_tasks,
+)
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
 CLAUDE, CODEX = AgentKind.CLAUDE, AgentKind.CODEX
@@ -72,3 +79,95 @@ def test_next_wake_is_the_earliest_future_reset_of_a_configured_agent() -> None:
     )
     assert next_wake(availability, [CLAUDE, CODEX], NOW) == NOW + timedelta(minutes=10)
     assert next_wake(availability, [CLAUDE], NOW + timedelta(hours=1)) is None
+
+
+def on(
+    name: str,
+    agent: AgentKind,
+    *,
+    workdir: str = "",
+    status: AttemptStatus = AttemptStatus.ACTIVE,
+    state: AgentState = AgentState.WORKING,
+) -> TaskView:
+    live = AttemptView(
+        attempt_id=AttemptId(uuid4()),
+        agent=agent,
+        status=status,
+        agent_state=state,
+    )
+    return TaskView(
+        task_id=TaskId(name), title=name, workdir=workdir or f"/w/{name}", attempts=(live,)
+    )
+
+
+def pending(name: str, workdir: str = "") -> TaskView:
+    return TaskView(task_id=TaskId(name), title=name, workdir=workdir or f"/w/{name}")
+
+
+def start(
+    tasks: list[TaskView],
+    *,
+    running: tuple[str, ...] = (),
+    available: frozenset[AgentKind] = BOTH,
+    slots: dict[AgentKind, int] | None = None,
+    max_parallel: int = 4,
+) -> tuple[str, ...]:
+    return dispatch(
+        [t.task_id for t in tasks],
+        {t.task_id: t for t in tasks},
+        running=[TaskId(r) for r in running],
+        available=available,
+        slots=slots or {},
+        default_slots=2,
+        max_parallel=max_parallel,
+    )
+
+
+def test_a_slot_is_held_by_an_active_attempt_that_does_not_wait_for_a_person() -> None:
+    tasks = [
+        on("a", CLAUDE),
+        on("b", CLAUDE),
+        on("asking", CLAUDE, state=AgentState.BLOCKED_QUESTION),
+        on("limited", CODEX, status=AttemptStatus.INTERRUPTED),
+        on("c", CODEX),
+    ]
+    load = agent_load(tasks)
+    assert load == {CLAUDE: 2, CODEX: 1}
+    assert full_agents(load, {}, 2) == frozenset({CLAUDE})
+    assert full_agents(load, {CLAUDE: 3, CODEX: 1}, 2) == frozenset({CODEX})
+
+
+def test_new_tasks_start_while_an_available_agent_has_a_free_slot() -> None:
+    queue = [pending(name) for name in ("one", "two", "three", "four", "five")]
+    # Two agents with two slots each: four start at once, the fifth waits.
+    assert start(queue) == ("one", "two", "three", "four")
+    assert start(queue, slots={CLAUDE: 1, CODEX: 1}) == ("one", "two")
+    # A limited agent's slots are not counted.
+    assert start(queue, available=frozenset({CODEX})) == ("one", "two")
+    # The bound on all workers holds, and running workers count against it.
+    assert start(queue, max_parallel=3) == ("one", "two", "three")
+    busy = [on("x", CLAUDE), on("y", CODEX), *queue]
+    assert start(busy, running=("x", "y")) == ("one", "two")
+
+
+def test_two_tasks_never_start_in_one_directory() -> None:
+    queue = [
+        pending("first", "/repo"),
+        pending("same", "/repo/"),
+        pending("other", "/elsewhere"),
+    ]
+    assert start(queue) == ("first", "other")
+    # A task with a live attempt there, even one waiting for its limit, keeps it.
+    waiting = on("waiting", CLAUDE, workdir="/repo", status=AttemptStatus.INTERRUPTED)
+    assert start([waiting, *queue]) == ("waiting", "other")
+
+
+def test_active_attempts_are_reattached_whatever_the_slots_unless_a_worker_drives_them() -> None:
+    tasks = [on("a", CLAUDE), on("b", CLAUDE), on("c", CODEX), on("d", CODEX), pending("new")]
+    assert start(tasks) == ("a", "b", "c", "d")
+    assert start(tasks, running=("a", "b")) == ("c", "d")
+
+
+def test_with_no_agent_available_tasks_are_let_through_to_say_so() -> None:
+    queue = [pending("one"), pending("two"), pending("three", "/w/one")]
+    assert start(queue, available=frozenset(), max_parallel=1) == ("one", "two")

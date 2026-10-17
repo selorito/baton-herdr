@@ -250,7 +250,8 @@ on one line). File edits, wrapped Codex commands and OpenCode prompts still come
 
 ## Limitations and terms
 
-- **Linux only.** One machine, one task at a time.
+- **Linux only.** One machine. Tasks run side by side, two sessions per agent by default
+  (ADR 0017), but never two in one directory.
 - **Screen reading.** baton reads agents' screens. A new agent version can change a screen
   baton relies on; the rules are tested against recorded screens in `fixtures/`, so a
   change shows up as a failing test once recorded, not before.

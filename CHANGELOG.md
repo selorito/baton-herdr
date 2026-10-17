@@ -11,6 +11,14 @@ is:
 
 ## [Unreleased]
 
+### Added
+
+- **Tasks run side by side** (ADR 0017). batond drives several tasks at once, each in its
+  own worker: two sessions per agent and four tasks in all by default
+  (`[scheduler] agent_slots`, `max_parallel_tasks`). An agent with a free slot is chosen
+  before a busy one; a freed slot is filled at once. Two tasks never run in one directory.
+  In the benchmark a queue of ten tasks finishes about three times sooner.
+
 ## [1.1.0] - 2026-10-12
 
 For running baton unattended, and for labs and teams where each person runs their own.

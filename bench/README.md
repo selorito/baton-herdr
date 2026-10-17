@@ -85,6 +85,11 @@ Not modelled:
   - `learned`: usage collected, Claude's cap learned from a limit (the default);
   - `configured`: `claude_window_tokens` set to the true cap;
   - `configured-20`: the same, with a 20 % reserve instead of 10 %.
+- **Parallel work** runs the same queues again with the learned budget, changing only how
+  many tasks run at once (ADR 0017): one at a time as baton 1.1 did, one session per
+  agent, the default (two per agent, four in all), and three per agent. "Queue finished
+  in" is what parallel work buys; "Limits hit" and the tokens are what it costs, since
+  several sessions draw on one window at once.
 
 ## Reading the results honestly
 
@@ -93,6 +98,7 @@ answer questions such as:
 - Does a limit move the task, and how fast?
 - How much is lost per stop?
 - Does a known budget avoid limits?
+- How much sooner does a queue finish with tasks side by side?
 
 They do not say how often real agents crash or hang, or how much a real hand-off costs
 in understanding. Results from real use belong in the README's "Phase 1 results".

@@ -49,3 +49,16 @@ def test_budget_modes_play_the_same_world() -> None:
     off = simulate(lambda rng: scenarios.queue(rng, Budget(collect_usage=False)), "test/q")
     on = simulate(lambda rng: scenarios.queue(rng, Budget(configured_window=True)), "test/q")
     assert [t.steps for t in off.tasks] == [t.steps for t in on.tasks]
+
+
+def test_a_queue_finishes_sooner_with_tasks_side_by_side() -> None:
+    def finished(scheduler: dict[str, object]) -> float:
+        result = simulate(
+            lambda rng: scenarios.queue(rng, Budget(), scheduler=scheduler), "test/parallel"
+        )
+        assert all(t.status is TaskStatus.COMPLETED for t in result.tasks)
+        return result.makespan_s
+
+    one = finished({"max_parallel_tasks": 1})
+    four = finished({})
+    assert four < one / 2

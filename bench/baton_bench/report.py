@@ -132,7 +132,7 @@ def waits_table(rows: Sequence[tuple[str, Summary]]) -> list[str]:
 def budget_table(rows: Sequence[tuple[str, str, Summary]]) -> list[str]:
     base = rows[0][2]
     lines = [
-        "| Mode | Tasks done | Limits hit | Redone steps | Tokens (counted) | vs. off "
+        f"| Mode | Tasks done | Limits hit | Redone steps | Tokens (counted) | vs. {rows[0][0]} "
         "| Lost + re-reading | Queue finished in (median) |",
         "|---|---:|---:|---:|---:|---:|---:|---|",
     ]
@@ -144,3 +144,10 @@ def budget_table(rows: Sequence[tuple[str, str, Summary]]) -> list[str]:
             f"| {seconds(median(s.makespans))} |"
         )
     return lines
+
+
+def speedup_line(rows: Sequence[tuple[str, str, Summary]]) -> str:
+    """How much sooner each mode finishes the queue than the first."""
+    base = median(rows[0][2].makespans)
+    parts = [f"`{name}` {base / median(s.makespans):.1f}×" for name, _, s in rows[1:]]
+    return f"Queue finished, compared with `{rows[0][0]}`: " + ", ".join(parts) + "."

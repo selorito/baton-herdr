@@ -29,27 +29,21 @@ from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
-from baton_herdr.core.projection import project
 from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
 from baton_herdr.projects.deliver import PreviewServer, Showcase, find_browser
 from baton_herdr.projects.flow import deliver_projects, halt_stopped_projects, propose_plans
-from baton_herdr.scheduler.queue import (
-    Signature,
-    available_agents,
-    next_wake,
-    select_tasks,
-    task_positions,
-)
+from baton_herdr.scheduler.dispatch import Dispatcher
+from baton_herdr.scheduler.queue import Signature, next_wake
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import BotSettings, OperatorBot, keep_running, run_bot
 from baton_herdr.telegram.notifier import telegram_notifier
 from baton_herdr.workdir import GitWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+    from collections.abc import AsyncIterator, Iterator, Mapping
     from pathlib import Path
 
     from aiogram import Bot
@@ -61,7 +55,6 @@ if TYPE_CHECKING:
         UsageSettings,
     )
     from baton_herdr.core.detector import Detector
-    from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, UsageStore
@@ -124,6 +117,8 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
         launch_args=launch_args or {},
         own_dirs=own_dirs,
         trusted_dirs=trusted_dirs,
+        agent_slots={AgentKind(a): n for a, n in settings.agent_slots.items()},
+        max_parallel_tasks=settings.max_parallel_tasks,
     )
 
 
@@ -346,30 +341,38 @@ async def add_task(
 async def run_pending(
     runtime: Runtime, *, seen: dict[TaskId, Signature] | None = None
 ) -> dict[TaskId, TaskStatus]:
-    """Run, once and oldest first, every task that may make progress now.
+    """Run, once and oldest first, every task that may make progress now, side by side as
+    the slots allow (ADR 0017); returns once every one of them has stopped.
 
     ``seen`` remembers, across calls, the state each task was last run in, so a
     task that is waiting for the same thing is not run (and reported) again.
     """
     seen = {} if seen is None else seen
-    events = await runtime.store.read()
-    to_run = select_tasks(
-        list(project(events).tasks.values()),
-        positions=task_positions(events),
-        available=_available(runtime, events),
+    dispatcher = _dispatcher(runtime, seen)
+    results: dict[TaskId, TaskStatus] = {}
+    ran: set[TaskId] = set()
+    try:
+        while True:
+            # A task that waited for a slot, or for the task before it, may start now.
+            ran.update(await dispatcher.start_ready(skip=ran))
+            if not dispatcher.running:
+                break
+            await dispatcher.wait_any()
+            results.update(dispatcher.finished())
+    finally:
+        await dispatcher.aclose()
+    results.update(dispatcher.finished())
+    return results
+
+
+def _dispatcher(runtime: Runtime, seen: dict[TaskId, Signature]) -> Dispatcher:
+    return Dispatcher(
+        runner=runtime.runner,
+        store=runtime.store,
+        settings=runtime.settings,
+        clock=runtime.clock,
         seen=seen,
     )
-    results: dict[TaskId, TaskStatus] = {}
-    for task_id in to_run:
-        try:
-            results[task_id] = await runtime.runner.run(task_id)
-        except Exception:  # noqa: BLE001 - one task's fault must not stop the others
-            # Left out of results, and marked seen below: it is not run again until something
-            # about it changes, so a fault that repeats cannot loop batond.
-            get_logger("baton.daemon").exception("task run failed", task_id=task_id)
-        events = await runtime.store.read()
-        seen[task_id] = (task_positions(events).get(task_id, 0), _available(runtime, events))
-    return results
 
 
 async def serve(
@@ -449,29 +452,37 @@ async def _serve_loop(
 ) -> None:
     cycles = 0
     log = get_logger("baton.daemon")
-    while not stop.is_set():
-        if runtime.preview is not None:
-            runtime.preview.start()  # again each cycle until its address can be used
-        results = await run_pending(runtime, seen=seen)
-        try:
-            await advance_projects(runtime)
-        except Exception:  # the next cycle looks again
-            log.exception("advancing projects failed")
-        cycles += 1
-        if max_cycles is not None and cycles >= max_cycles:
-            break
-        if TaskStatus.COMPLETED in results.values():
-            continue  # a project's next step may start now, not after the idle time
-        availability = fold_availability(
-            await runtime.store.read(), cooldown=runtime.settings.limit_cooldown
-        )
-        now = runtime.clock.now()
-        delay = idle_s
-        if (wake_at := next_wake(availability, runtime.settings.agents, now)) is not None:
-            delay = max(0.0, min(delay, (wake_at - now).total_seconds()))
-        log.debug("sleeping", seconds=delay)
-        await _sleep(delay, stop, runtime.wake)
-        runtime.wake.clear()
+    dispatcher = _dispatcher(runtime, seen)
+    try:
+        while not stop.is_set():
+            if runtime.preview is not None:
+                runtime.preview.start()  # again each cycle until its address can be used
+            results = dispatcher.finished()
+            try:
+                await advance_projects(runtime)
+            except Exception:  # the next cycle looks again
+                log.exception("advancing projects failed")
+            await dispatcher.start_ready()
+            cycles += 1
+            if max_cycles is not None and cycles >= max_cycles:
+                await dispatcher.wait_all()  # the cycle's tasks run to their end
+                break
+            if TaskStatus.COMPLETED in results.values():
+                continue  # a project's next step may start now, not after the idle time
+            availability = fold_availability(
+                await runtime.store.read(), cooldown=runtime.settings.limit_cooldown
+            )
+            now = runtime.clock.now()
+            delay = idle_s
+            if (wake_at := next_wake(availability, runtime.settings.agents, now)) is not None:
+                delay = max(0.0, min(delay, (wake_at - now).total_seconds()))
+            log.debug("sleeping", seconds=delay, running=len(dispatcher.running))
+            # A worker that ends wakes the loop too: its slot can be filled at once.
+            await _sleep(delay, stop, runtime.wake, dispatcher.changed)
+            runtime.wake.clear()
+            dispatcher.changed.clear()
+    finally:
+        await dispatcher.aclose()
 
 
 async def advance_projects(runtime: Runtime) -> None:
@@ -503,8 +514,3 @@ async def _sleep(delay: float, *events: asyncio.Event) -> None:
     finally:
         for waiter in waiters:
             waiter.cancel()
-
-
-def _available(runtime: Runtime, events: Sequence[StoredEvent]) -> frozenset[AgentKind]:
-    availability = fold_availability(events, cooldown=runtime.settings.limit_cooldown)
-    return available_agents(availability, runtime.settings.agents, runtime.clock.now())

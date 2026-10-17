@@ -8,7 +8,8 @@ gerektiren tek yer, ajanlara verdiğin görevlerin kendisi.
 baton, kodlama ajanlarını (Claude Code, Codex CLI, OpenCode) senin yerine çalıştırır ve
 izler:
 
-- Görevleri sırayla bir ajana verir.
+- Görevleri ajanlara paralel dağıtır: varsayılan olarak her ajandan iki oturum, en fazla
+  dört görev aynı anda çalışır (aynı klasörde ise yalnızca biri).
 - Bir ajanın kullanım limiti dolunca görevi diğer ajana devreder. Limit açılınca aynı
   oturumu kaldığı yerden sürdürür.
 - Ajan takılırsa ya da çökerse oturumunu yeniden açar.

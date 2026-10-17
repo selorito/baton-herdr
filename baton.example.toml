@@ -33,6 +33,10 @@ limit_cooldown_minutes = 60
 # Close an agent's pane once its attempt is over (done, handed off, resumed elsewhere): an
 # idle agent holds hundreds of MB. Its conversation stays in the agent's own logs.
 # close_finished_panes = true
+# Tasks run side by side (ADR 0017): sessions of one agent at once (2 for each agent not
+# named), and tasks at once in all. More sessions finish sooner and spend quota faster.
+# agent_slots = { claude = 2, codex = 2 }
+# max_parallel_tasks = 4
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 

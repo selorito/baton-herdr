@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_bench import report, scenarios
-from baton_bench.sim import simulate
+from baton_bench.sim import Budget, simulate
 from baton_herdr.core.logging import configure_logging
 
 if TYPE_CHECKING:
@@ -62,13 +62,30 @@ def run(seed: int, worlds: int | None) -> str:
             )
             for name, what, budget in scenarios.BUDGET_MODES
         ]
-    return render(seed, recovery, budget)
+        parallel = [
+            (
+                name,
+                what,
+                report.summarize(
+                    _worlds(
+                        pool,
+                        functools.partial(scenarios.queue, budget=Budget(), scheduler=scheduler),
+                        "queue",  # the same worlds as above
+                        seed,
+                        worlds or scenarios.BUDGET_WORLDS,
+                    )
+                ),
+            )
+            for name, what, scheduler in scenarios.PARALLEL_MODES
+        ]
+    return render(seed, recovery, budget, parallel)
 
 
 def render(
     seed: int,
     recovery: Sequence[tuple[str, report.Summary]],
     budget: Sequence[tuple[str, str, report.Summary]],
+    parallel: Sequence[tuple[str, str, report.Summary]],
 ) -> str:
     worlds = sum(s.worlds for _, s in recovery)
     lines = [
@@ -97,6 +114,14 @@ def render(
         f"({report.tokens(scenarios.CODEX_CAP)}) is 20–50 % used. Claude is preferred.",
         "",
         *report.budget_table(budget),
+        "",
+        f"## Parallel work ({parallel[0][2].worlds} worlds, the same queues, usage learned)",
+        "",
+        "Each task in its own directory, so tasks may run side by side (ADR 0017).",
+        "",
+        *report.budget_table(parallel),
+        "",
+        report.speedup_line(parallel),
         "",
     ]
     return "\n".join(lines)

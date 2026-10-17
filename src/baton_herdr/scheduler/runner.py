@@ -31,6 +31,7 @@ from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.core.commands import complete_task, start_attempt
+from baton_herdr.core.config import DEFAULT_AGENT_SLOTS
 from baton_herdr.core.contract import (
     DENIED_EVIDENCE,
     END_CONTRACT,
@@ -80,6 +81,7 @@ from baton_herdr.scheduler.operator import (
     answered,
     find_blocker,
 )
+from baton_herdr.scheduler.queue import agent_load, full_agents
 from baton_herdr.scheduler.stall import ProgressWatch
 from baton_herdr.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
@@ -171,6 +173,10 @@ class RunnerSettings:
     # Before a task's tokens are summed, time for the usage collector to store the
     # agent's last response (it reads the logs every couple of seconds).
     usage_grace_s: float = 3
+    # Tasks side by side (ADR 0017): sessions of one agent at once, and tasks in all.
+    agent_slots: Mapping[AgentKind, int] = field(default_factory=dict)
+    default_agent_slots: int = DEFAULT_AGENT_SLOTS
+    max_parallel_tasks: int = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +233,9 @@ class TaskRunner:
         # Without usage data the budget is folded from the event log alone.
         self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
         self._log = get_logger("baton.scheduler")
+        # Held from choosing an agent until the attempt is in the log, so tasks starting
+        # side by side each see the slots the others took (ADR 0017).
+        self._starting = asyncio.Lock()
 
     async def run(self, task_id: TaskId) -> TaskStatus:
         """Drive ``task_id`` until it is done, has to wait, or needs a person.
@@ -258,12 +267,14 @@ class TaskRunner:
             if task.status.is_terminal:
                 break
             if live is None:
-                agent, reason = await self._choose_agent(task_id, tried)
-                if agent is None:
+                async with self._starting:
+                    agent, reason = await self._choose_agent(task_id, tried)
+                    started = None if agent is None else await self._start(task_id, agent)
+                if agent is None or started is None:
                     await self._deliver(notices.no_agent(task, reason))
                     break
                 tried.add(agent)
-                outcome = await self._attempt(task_id, agent, previous, reason)
+                outcome = await self._attempt(task_id, agent, started, previous, reason)
                 previous = agent
             elif live.status is AttemptStatus.INTERRUPTED:
                 outcome = await self._recover(task, live, tried)
@@ -531,12 +542,18 @@ class TaskRunner:
         now = self._clock.now()
         agents = [agent for agent in self._settings.agents if agent in self._adapters]
         budgets = await self._budget.read(agents, events, now)
+        full = full_agents(
+            agent_load(project(events).tasks.values()),
+            self._settings.agent_slots,
+            self._settings.default_agent_slots,
+        )
         choice = choose_agent(
             agents,
             budgets,
             reserve_percent=self._settings.reserve_percent,
             zone=ZoneInfo(self._settings.timezone),
             tried=tried,
+            full=full,
         )
         self._log.info("agent chosen", agent=choice.agent, reason=choice.reason)
         await self._append(
@@ -550,17 +567,29 @@ class TaskRunner:
         )
         return choice.agent, choice.reason
 
-    async def _attempt(
-        self, task_id: TaskId, agent: AgentKind, previous: AgentKind | None, reason: str
-    ) -> _Outcome:
+    async def _start(
+        self, task_id: TaskId, agent: AgentKind
+    ) -> tuple[AttemptId, AttemptInterrupted | None]:
+        """Record a new attempt on ``agent``: its id, and why the attempt before it stopped
+        (for a hand-off notice; the view of an ended attempt forgets)."""
         events = await self._store.read()
         task = project(events).tasks[task_id]
-        # Why the previous attempt stopped, for a hand-off notice; its view forgets once ended.
         before = _last_interruption(events, task.attempts[-1].attempt_id) if task.attempts else None
         head = await self._workspace.head(task.workdir) if self._workspace else None
         started = start_attempt(task, agent, at=self._clock.now(), workdir_head=head)
         await self._append(started)
-        attempt_id = started.attempt_id
+        return started.attempt_id, before
+
+    async def _attempt(
+        self,
+        task_id: TaskId,
+        agent: AgentKind,
+        started: tuple[AttemptId, AttemptInterrupted | None],
+        previous: AgentKind | None,
+        reason: str,
+    ) -> _Outcome:
+        attempt_id, before = started
+        task = (await self._board()).tasks[task_id]
         with log_context(attempt_id=str(attempt_id)):
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
             await self._append(

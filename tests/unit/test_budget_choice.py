@@ -145,3 +145,39 @@ def test_times_are_local_and_as_short_as_clear(at: datetime, text: str) -> None:
 
 def test_token_counts_are_rounded_for_reading() -> None:
     assert [tokens(n) for n in (999, 12_345, 3_100_000)] == ["999", "12k", "3.1M"]
+
+
+def test_a_busy_agent_goes_behind_one_with_a_free_slot_before_budget_counts() -> None:
+    choice = choose_agent(
+        (CLAUDE, CODEX),
+        {CLAUDE: claude(80), CODEX: codex(5)},
+        reserve_percent=10,
+        zone=ZONE,
+        full=(CLAUDE,),
+    )
+    # Codex is short, but free; Claude would only queue the task behind its own.
+    assert choice.agent is CODEX
+
+
+def test_when_every_agent_is_busy_the_task_still_gets_one() -> None:
+    choice = choose_agent(
+        (CLAUDE, CODEX),
+        {CLAUDE: claude(80), CODEX: codex(90)},
+        reserve_percent=10,
+        zone=ZONE,
+        full=(CLAUDE, CODEX),
+    )
+    assert choice.agent is CLAUDE
+
+
+def test_the_reason_names_the_busy_agent_that_was_passed() -> None:
+    choice = choose_agent(
+        (CLAUDE, CODEX),
+        {CLAUDE: claude(80), CODEX: codex(90)},
+        reserve_percent=10,
+        zone=ZONE,
+        full=(CLAUDE,),
+    )
+    assert choice.reason == (
+        "codex: next in preference order (claude busy, every slot taken), 90% left."
+    )

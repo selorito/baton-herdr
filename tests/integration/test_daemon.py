@@ -20,7 +20,7 @@ from baton_herdr.core.config import (
 )
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.fakes import FixedClock, RecordingNotifier
-from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
+from baton_herdr.core.model import AgentKind, AttemptStatus, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
 from baton_herdr.daemon import (
@@ -96,6 +96,15 @@ def test_runner_settings_come_from_the_scheduler_section() -> None:
     assert converted.agents == (AgentKind.CODEX,)
     assert converted.limit_cooldown.total_seconds() == 300
     assert converted.launch_commands == {AgentKind.CODEX: "/opt/bin/codex --profile ci"}
+
+
+def test_slots_come_from_the_scheduler_section() -> None:
+    converted = runner_settings(SchedulerSettings(agent_slots={"claude": 3}, max_parallel_tasks=5))
+    assert converted.agent_slots == {AgentKind.CLAUDE: 3}
+    assert converted.default_agent_slots == 2
+    assert converted.max_parallel_tasks == 5
+    with pytest.raises(ValueError, match="greater than or equal to 1"):
+        SchedulerSettings.model_validate({"agent_slots": {"codex": 0}})
 
 
 def test_claudes_status_line_is_set_only_while_usage_is_collected(tmp_path: Path) -> None:
@@ -194,9 +203,10 @@ async def test_the_daemon_waits_quietly_and_resumes_after_the_reset(tmp_path: Pa
         assert await run_pending(runtime, seen=seen) == {}
         assert len(notifier.notices) == notices
 
-        # A task added meanwhile is picked up; with Claude limited it waits too.
+        # A task added meanwhile, in another directory, is picked up; with Claude limited
+        # it waits too.
         later = await add_task(
-            runtime.store, title="two", instructions="do two", workdir="/w", clock=clock
+            runtime.store, title="two", instructions="do two", workdir="/v", clock=clock
         )
         assert await run_pending(runtime, seen=seen) == {later: TaskStatus.PENDING}
 
@@ -207,7 +217,9 @@ async def test_the_daemon_waits_quietly_and_resumes_after_the_reset(tmp_path: Pa
             limited: TaskStatus.COMPLETED,
             later: TaskStatus.WAITING,
         }
-    assert host.launched == ["claude", "claude --resume claude-session", "claude"]
+    # The two run side by side after the reset (ADR 0017), in either order.
+    assert host.launched[0] == "claude"
+    assert sorted(host.launched[1:]) == ["claude", "claude --resume claude-session"]
 
 
 async def test_the_task_after_a_finished_one_starts_without_the_idle_wait(
@@ -338,3 +350,100 @@ async def test_a_task_added_from_the_cli_starts_without_waiting_for_the_idle_tim
         stop.set()
         await asyncio.wait_for(serving, timeout=5)
         assert project(await runtime.store.read()).tasks[task_id].attempts
+
+
+async def test_tasks_in_different_directories_run_side_by_side_on_both_agents(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    ids = [
+        await add_task(store, title=n, instructions=f"do {n}", workdir=f"/w/{n}", clock=clock)
+        for n in ("one", "two", "three")
+    ]
+    await store.close()
+    host = SimulatedAgents(clock, scripts={AgentKind.CLAUDE: "claude-finish.toml"})
+    settings = settings_for(db, agent_slots={"claude": 1, "codex": 1})
+    async with open_runtime(
+        settings, host=host, notifier=RecordingNotifier(), clock=clock
+    ) as runtime:
+        results = await run_pending(runtime)
+        events = await runtime.store.read()
+
+    assert results == dict.fromkeys(ids, TaskStatus.COMPLETED)
+    started = {e.event.task_id: e.seq for e in events if e.event.type == "attempt.started"}
+    completed = {e.event.task_id: e.seq for e in events if e.event.type == "task.completed"}
+    board = project(events)
+    # One slot each: the first two start together, one on each agent; the third takes the
+    # first slot that frees.
+    assert {board.tasks[i].attempts[0].agent for i in ids[:2]} == {
+        AgentKind.CLAUDE,
+        AgentKind.CODEX,
+    }
+    assert max(started[ids[0]], started[ids[1]]) < min(completed.values())
+    assert started[ids[2]] > min(completed[ids[0]], completed[ids[1]])
+
+
+async def test_a_freed_slot_is_filled_without_the_idle_wait(tmp_path: Path) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    ids = [
+        await add_task(store, title=n, instructions=f"do {n}", workdir=f"/w/{n}", clock=clock)
+        for n in ("one", "two")
+    ]
+    await store.close()
+    stop = asyncio.Event()
+    async with open_runtime(
+        settings_for(db, agents=["codex"], agent_slots={"codex": 1}),
+        host=SimulatedAgents(clock),
+        notifier=RecordingNotifier(),
+        clock=clock,
+    ) as runtime:
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=3600))
+        async with asyncio.timeout(10):
+            while not all(
+                t.status is TaskStatus.COMPLETED
+                for t in project(await runtime.store.read()).tasks.values()
+            ):
+                await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(serving, timeout=5)
+        board = project(await runtime.store.read())
+    assert [board.tasks[i].status for i in ids] == [TaskStatus.COMPLETED] * 2
+
+
+class EndlessTurns(SimulatedAgents):
+    """Agents that take the prompt and work on it for ever."""
+
+    async def _finish_turn(self, pane_id: str, prompt: str) -> None:
+        await asyncio.Event().wait()
+
+
+async def test_stopping_batond_leaves_every_running_attempt_to_be_reattached(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    for n in ("one", "two"):
+        await add_task(store, title=n, instructions=f"do {n}", workdir=f"/w/{n}", clock=clock)
+    await store.close()
+    stop = asyncio.Event()
+    host = EndlessTurns(clock)
+    async with open_runtime(
+        settings_for(db, agents=["codex"], turn_timeout_seconds=60),
+        host=host,
+        notifier=RecordingNotifier(),
+        clock=clock,
+    ) as runtime:
+        serving = asyncio.create_task(serve(runtime, stop=stop, idle_s=3600))
+        async with asyncio.timeout(10):
+            while len(host.prompts) < 2:
+                await asyncio.sleep(0.02)
+        stop.set()
+        await asyncio.wait_for(serving, timeout=5)
+        board = project(await runtime.store.read())
+    lives = [t.live_attempt for t in board.tasks.values()]
+    assert [a.status for a in lives if a is not None] == [AttemptStatus.ACTIVE] * 2

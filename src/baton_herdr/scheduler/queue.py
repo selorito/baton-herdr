@@ -6,16 +6,20 @@ attempt the operator touched), or the set of agents that are available (a
 limit has reset). Without such a change running it again would only repeat the
 same notice, so it is skipped. Tasks with an active attempt are the exception:
 they are re-attached every cycle.
+
+Of those, ``dispatch`` picks the ones to start now (ADR 0017): as many as there are
+free slots on the agents that are available, never two in one directory.
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.model import AttemptStatus, TaskStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from datetime import datetime
 
     from baton_herdr.budget.availability import Availability
@@ -67,9 +71,9 @@ def _ready(task: TaskView, tasks: Mapping[TaskId, TaskView]) -> bool:
 
 
 def _active(task: TaskView) -> bool:
-    # Tasks run one at a time, so between cycles nothing drives an active attempt:
-    # batond restarted under it, or it waits for a person, who may answer at the
-    # terminal. Re-attaching is cheap and is the only way to notice either.
+    # An active attempt that no worker drives: batond restarted under it, or it waits for
+    # a person, who may answer at the terminal. Re-attaching is cheap and is the only way
+    # to notice either. ``dispatch`` leaves out the ones a worker drives.
     return task.live_attempt is not None and task.live_attempt.status is AttemptStatus.ACTIVE
 
 
@@ -83,3 +87,75 @@ def next_wake(
         if (until := availability.limited_until.get(agent)) is not None and until > now
     ]
     return min(upcoming, default=None)
+
+
+def agent_load(tasks: Iterable[TaskView]) -> dict[AgentKind, int]:
+    """Slots in use per agent: attempts that are active and not waiting for a person."""
+    load: dict[AgentKind, int] = {}
+    for task in tasks:
+        live = task.live_attempt
+        if (
+            live is not None
+            and live.status is AttemptStatus.ACTIVE
+            and not live.agent_state.needs_human
+        ):
+            load[live.agent] = load.get(live.agent, 0) + 1
+    return load
+
+
+def full_agents(
+    load: Mapping[AgentKind, int], slots: Mapping[AgentKind, int], default_slots: int
+) -> frozenset[AgentKind]:
+    """Agents running as many tasks as they have slots."""
+    return frozenset(agent for agent, n in load.items() if n >= slots.get(agent, default_slots))
+
+
+def dispatch(  # noqa: PLR0913 - the candidates, and everything that bounds them
+    candidates: Sequence[TaskId],
+    tasks: Mapping[TaskId, TaskView],
+    *,
+    running: Collection[TaskId],
+    available: Collection[AgentKind],
+    slots: Mapping[AgentKind, int],
+    default_slots: int,
+    max_parallel: int,
+) -> tuple[TaskId, ...]:
+    """Of ``candidates`` (``select_tasks``), the tasks to start now, oldest first.
+
+    ``running`` are driven by a worker already. A task whose attempt is active is always
+    started: its agent is running anyway, and only a worker notices how it goes on. Every
+    other task needs a free slot on an available agent and a place among
+    ``max_parallel`` workers, and none starts in a directory another task is using. With
+    no agent available at all, tasks are let through, to say so.
+    """
+    load = agent_load(tasks.values())
+    free = sum(max(0, slots.get(a, default_slots) - load.get(a, 0)) for a in available)
+    workers = len(running)
+    busy_dirs = {
+        _dir(task)
+        for task in tasks.values()
+        if task.task_id in running or task.live_attempt is not None
+    }
+    chosen: list[TaskId] = []
+    for task_id in candidates:
+        task = tasks[task_id]
+        if task_id in running:
+            continue
+        if _active(task):
+            chosen.append(task_id)
+            continue
+        own = task.live_attempt is not None  # its directory is in busy_dirs because of it
+        if not own and _dir(task) in busy_dirs:
+            continue
+        if available and (free <= 0 or workers >= max_parallel):
+            continue
+        chosen.append(task_id)
+        busy_dirs.add(_dir(task))
+        if available:
+            free -= 1
+            workers += 1
+    return tuple(chosen)
+
+
+def _dir(task: TaskView) -> str:
+    return os.path.normpath(task.workdir) if task.workdir else f"<none:{task.task_id}>"
