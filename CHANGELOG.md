@@ -18,6 +18,12 @@ is:
   (`[scheduler] agent_slots`, `max_parallel_tasks`). An agent with a free slot is chosen
   before a busy one; a freed slot is filled at once. Two tasks never run in one directory.
   In the benchmark a queue of ten tasks finishes about three times sooner.
+- **A project's independent steps run side by side** (ADR 0017). The planning agent marks
+  what each step builds on (`needs`); steps that do not build on each other run at the same
+  time, each in a git worktree of its own under `<root>/.worktrees/`, and are merged into
+  the project directory as they complete. A merge that conflicts becomes a merge task for an
+  agent. The plan notice shows which steps start at once. Plans without `needs` run in
+  order, as before.
 
 ## [1.1.0] - 2026-10-12
 

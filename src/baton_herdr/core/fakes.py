@@ -15,7 +15,7 @@ from baton_herdr.core.panes import (
     PaneObservation,
     PaneProcess,
 )
-from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError
+from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError, MergeResult
 from baton_herdr.core.projection import apply, project
 from baton_herdr.core.usage import RateLimitObservation, UsageRecord
 
@@ -167,6 +167,49 @@ class RecordingNotifier:
     @property
     def kinds(self) -> list[NoticeKind]:
         return [notice.kind for notice in self.notices]
+
+
+class FakeRepository:
+    """A project's repository as a list of commits per directory (ADR 0017). Branches named
+    in ``conflicts`` conflict on their first merge; a later ``finish_merge`` takes them in,
+    as if a person or an agent had resolved them."""
+
+    def __init__(self, conflicts: dict[str, tuple[str, ...]] | None = None) -> None:
+        self.conflicts = dict(conflicts or {})
+        self.commits: list[tuple[str, str]] = []  # (directory, message)
+        self.worktrees: dict[str, tuple[str, str]] = {}  # path -> (repo, branch)
+        self.merged: list[str] = []
+        # repo -> branch whose merge someone is resolving; clear it to have them give up.
+        self.resolving: dict[str, str] = {}
+        self.removed: list[str] = []
+
+    async def commit_all(self, workdir: str, message: str) -> str:
+        self.commits.append((workdir, message))
+        return f"c{len(self.commits)}"
+
+    async def add_worktree(self, repo: str, path: str, branch: str) -> str:
+        self.worktrees[path] = (repo, branch)
+        return f"c{len(self.commits)}"
+
+    async def merge(self, repo: str, branch: str, message: str) -> MergeResult:
+        if branch in self.conflicts:
+            self.resolving[repo] = branch
+            return MergeResult(conflicts=self.conflicts.pop(branch))
+        self.merged.append(branch)
+        self.commits.append((repo, message))
+        return MergeResult(commit=f"c{len(self.commits)}")
+
+    async def finish_merge(self, repo: str, message: str) -> None:
+        if (branch := self.resolving.pop(repo, None)) is not None:
+            self.merged.append(branch)
+            self.commits.append((repo, message))
+
+    async def contains(self, repo: str, branch: str) -> bool:  # noqa: ARG002 - one repository
+        return branch in self.merged
+
+    async def remove_worktree(self, repo: str, path: str) -> None:  # noqa: ARG002 - one repository
+        self.removed.append(path)
+        self.worktrees.pop(path, None)
 
 
 class InMemoryUsageStore:

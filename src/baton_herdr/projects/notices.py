@@ -26,16 +26,29 @@ def plan_choices(task: TaskView) -> tuple[tuple[str, str], ...]:
 
 
 def plan_ready(task: TaskView, plan: Plan) -> Notice:
-    steps = tuple(f"{n}. {step.title}" for n, step in enumerate(plan.steps, start=1))
+    steps = tuple(
+        f"{n}. {step.title}{_when(plan, n)}" for n, step in enumerate(plan.steps, start=1)
+    )
+    summary = plan.summary or "The plan has no summary."
+    if plan.parallel:
+        summary += " Steps that do not build on each other run at the same time."
     return Notice(
         NoticeKind.PLAN_PROPOSED,
         task.task_id,
-        plan.summary or "The plan has no summary.",
+        summary,
         title=task.request or task.title,
         details=steps,
         label=PLAN_READY,
         choices=plan_choices(task),
     )
+
+
+def _when(plan: Plan, index: int) -> str:
+    """When a step of a parallel plan starts (ADR 0017); nothing in a plan run in order."""
+    if not plan.parallel:
+        return ""
+    needs = plan.needs(index)
+    return f" (after {', '.join(str(n) for n in needs)})" if needs else " (at once)"
 
 
 def plan_unreadable(task: TaskView, reason: str) -> Notice:
@@ -83,5 +96,19 @@ def halted(plan_task: TaskView | None, stopped: TaskView, dropped: int) -> Notic
         "cancelled. What the steps before it did is still in the directory.",
         title=(plan_task.request or plan_task.title) if plan_task else stopped.title,
         details=(f"Directory: {stopped.workdir}",),
+        label=HALTED,
+    )
+
+
+def merge_failed(plan_task: TaskView, step: TaskView, reason: str, dropped: int) -> Notice:
+    """A parallel step's branch could not be merged, even by an agent (ADR 0017)."""
+    after = f" The {dropped} step(s) waiting for it were cancelled." if dropped else ""
+    return Notice(
+        NoticeKind.NEEDS_HUMAN,
+        step.task_id,
+        f"{step.title} could not be merged into the project.{after} Its work is on the "
+        f"branch {step.branch}; the project directory holds what was merged before it.",
+        title=plan_task.request or plan_task.title,
+        details=(reason, f"Directory: {plan_task.workdir}"),
         label=HALTED,
     )

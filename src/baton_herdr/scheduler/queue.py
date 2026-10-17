@@ -52,7 +52,8 @@ def select_tasks(
     seen: Mapping[TaskId, Signature],
 ) -> tuple[TaskId, ...]:
     """Tasks to run now, oldest first. A task that waits for another (``after``, a
-    project's next step) is not run until that one has completed (ADR 0016)."""
+    project's next step) is not run until that one has completed (ADR 0016); a parallel
+    step, until the steps it needs are merged and its worktree is open (ADR 0017)."""
     by_id = {task.task_id: task for task in tasks}
     return tuple(
         task.task_id
@@ -64,10 +65,19 @@ def select_tasks(
 
 
 def _ready(task: TaskView, tasks: Mapping[TaskId, TaskView]) -> bool:
-    if task.after is None:
-        return True
-    before = tasks.get(task.after)
-    return before is not None and before.status is TaskStatus.COMPLETED
+    if task.after is not None:
+        before = tasks.get(task.after)
+        if before is None or before.status is not TaskStatus.COMPLETED:
+            return False
+    # A parallel step (ADR 0017) starts once what it builds on is in the project's
+    # history, in a worktree of its own made from there.
+    for need in task.needs:
+        needed = tasks.get(need)
+        if needed is None or needed.status is not TaskStatus.COMPLETED:
+            return False
+        if needed.branch is not None and not needed.merged:
+            return False
+    return task.branch is None or task.worktree is not None
 
 
 def _active(task: TaskView) -> bool:

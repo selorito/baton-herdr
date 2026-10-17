@@ -51,11 +51,16 @@ class TaskCreated(_Event):
     title: str
     instructions: str
     workdir: str
-    # A task of a project (ADR 0016): its plan, or one of its steps. A task with
-    # ``after`` waits until that task has completed.
+    # A task of a project (ADR 0016): its plan, one of its steps, or the merge of a step
+    # whose branch conflicted (ADR 0017). A task with ``after`` waits until that task has
+    # completed.
     project: str | None = None
-    role: Literal["plan", "step"] | None = None
+    role: Literal["plan", "step", "merge"] | None = None
     after: TaskId | None = None
+    # A step of a parallel plan (ADR 0017): the steps it builds on, each completed and
+    # merged before it starts, and the branch of its own worktree, its ``workdir``.
+    needs: tuple[TaskId, ...] = ()
+    branch: str | None = None
     # On a plan task: the request as the operator wrote it.
     request: str | None = Field(default=None, max_length=4000)
 
@@ -81,6 +86,9 @@ class PlanStep(BaseModel):
 
     title: str = Field(min_length=1, max_length=120)
     instructions: str = Field(min_length=1, max_length=4000)
+    # The numbers (from 1) of the earlier steps this one builds on (ADR 0017); None: the
+    # step before it, so a plan without them runs in order.
+    needs: tuple[PositiveInt, ...] | None = None
 
 
 class PlanProposed(_Event):
@@ -114,9 +122,52 @@ class ProjectDelivered(_Event):
     preview_url: str | None = None
 
 
+class StepWorktreeOpened(_Event):
+    """A parallel step's worktree was made, from the project's ``base`` commit (ADR 0017)."""
+
+    type: Literal["step.worktree_opened"] = "step.worktree_opened"
+    path: str
+    branch: str
+    base: str
+
+
+class StepMerged(_Event):
+    """A completed step's branch is part of the project's history, at ``commit``."""
+
+    type: Literal["step.merged"] = "step.merged"
+    commit: str
+
+
+class StepMergeConflicted(_Event):
+    """Merging a completed step's branch conflicted in ``files``; the merge was aborted and
+    a merge task was added."""
+
+    type: Literal["step.merge_conflicted"] = "step.merge_conflicted"
+    files: tuple[str, ...] = Field(default=(), max_length=200)
+
+
+class StepMergeFailed(_Event):
+    """A conflicted step's merge task completed, but its branch is still not part of the
+    project's history; the project stops."""
+
+    type: Literal["step.merge_failed"] = "step.merge_failed"
+    reason: str = Field(max_length=500)
+
+
 # Notes about a task that may follow its completion: they record what happened around the
 # task, not to it.
-NOTE_TYPES = frozenset({"plan.proposed", "plan.approved", "plan.rejected", "project.delivered"})
+NOTE_TYPES = frozenset(
+    {
+        "plan.proposed",
+        "plan.approved",
+        "plan.rejected",
+        "project.delivered",
+        "step.worktree_opened",
+        "step.merged",
+        "step.merge_conflicted",
+        "step.merge_failed",
+    }
+)
 
 
 class BudgetNote(BaseModel):
@@ -270,7 +321,11 @@ type Event = Annotated[
     | PlanProposed
     | PlanApproved
     | PlanRejected
-    | ProjectDelivered,
+    | ProjectDelivered
+    | StepWorktreeOpened
+    | StepMerged
+    | StepMergeConflicted
+    | StepMergeFailed,
     Field(discriminator="type"),
 ]
 

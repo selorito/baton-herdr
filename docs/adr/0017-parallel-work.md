@@ -78,9 +78,10 @@ Chosen option: **3**.
 - **Conflicts.** A merge that conflicts is aborted (`step.merge_conflicted`) and baton adds
   a merge task (`role = "merge"`, `after` the step) in the project directory: an agent
   merges the branch and resolves the conflicts, keeping both steps' work. When that task
-  completes and the branch is part of the project's history, the step is merged. If it is
-  not, the project stops and the operator is told, as for a failed step. While a merge
-  task is open, no other merge is made.
+  completes, a merge it left uncommitted is committed, unless a file still holds a conflict
+  marker. If the branch is then part of the project's history, the step is merged; if not,
+  the steps waiting for it are cancelled and the operator is told, as for a failed step.
+  While a merge task is open, no other merge is made and no worktree is opened.
 - **Delivery** waits until every step is merged.
 - **Folder trust.** Worktrees are under `[projects] root`, so an agent's folder-trust
   question there is answered as in the project directory (ADR 0016).
@@ -92,7 +93,8 @@ Additive to the 1.x types:
   branch, default none), and `role = "merge"`.
 - the plan's steps gain `needs` (default none: the step before).
 - new notes about a step: `step.worktree_opened` (path, branch, base commit),
-  `step.merged` (commit) and `step.merge_conflicted` (files). They may follow the step's
+  `step.merged` (commit), `step.merge_conflicted` (files) and `step.merge_failed` (why: the
+  merge task completed, the branch is still not merged). They may follow the step's
   completion.
 
 ### Consequences

@@ -6,6 +6,7 @@ store); tests and dry runs use the fakes in :mod:`baton_herdr.core.fakes`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -97,4 +98,53 @@ class Workspace(Protocol):
     async def changes(self, workdir: str, since: str | None) -> Changes | None:
         """Files changed since commit ``since`` (``None``: since the last commit),
         committed or not, new files included; ``None`` when it cannot be told."""
+        ...
+
+
+class RepositoryError(Exception):
+    """A git operation on a project's repository failed; the message says which."""
+
+
+@dataclass(frozen=True, slots=True)
+class MergeResult:
+    """A merge of a step's branch: its commit, or the files that conflicted."""
+
+    commit: str | None = None
+    conflicts: tuple[str, ...] = ()
+
+    @property
+    def merged(self) -> bool:
+        return self.commit is not None
+
+
+class Repository(Protocol):
+    """A project's git repository, written to: its steps' worktrees and their merges
+    (ADR 0017). Only directories baton made for a project are written to. Failures raise
+    :class:`RepositoryError`."""
+
+    async def commit_all(self, workdir: str, message: str) -> str:
+        """Commit everything in ``workdir``, new files included; the commit checked out
+        afterwards (the same as before when there was nothing to commit)."""
+        ...
+
+    async def add_worktree(self, repo: str, path: str, branch: str) -> str:
+        """A new worktree at ``path`` on a new ``branch`` from ``repo``'s HEAD; that commit."""
+        ...
+
+    async def merge(self, repo: str, branch: str, message: str) -> MergeResult:
+        """Merge ``branch`` into ``repo``'s checked-out branch. A merge that conflicts is
+        aborted, leaving ``repo`` as it was, and its conflicts are returned."""
+        ...
+
+    async def finish_merge(self, repo: str, message: str) -> None:
+        """Commit a merge someone else resolved in ``repo``, if one is under way; a merge
+        with files still in conflict is not committed, and raises."""
+        ...
+
+    async def contains(self, repo: str, branch: str) -> bool:
+        """Whether ``branch`` is part of the history of ``repo``'s HEAD."""
+        ...
+
+    async def remove_worktree(self, repo: str, path: str) -> None:
+        """Remove the worktree at ``path``; its branch stays."""
         ...

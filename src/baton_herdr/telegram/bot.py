@@ -215,6 +215,10 @@ class OperatorBot:
         except ProjectError as err:
             return str(err)
         self._on_action()
+        board = project(await self._store.read())
+        first = [s for s in steps if board.tasks[s].branch is not None and not board.tasks[s].needs]
+        if first:  # a parallel plan (ADR 0017)
+            return f"{PLAN_STARTED} {len(steps)} steps, {len(first)} of them at once to begin with."
         return f"{PLAN_STARTED} {len(steps)} steps, one after another."
 
     async def button(self, data: str) -> str:

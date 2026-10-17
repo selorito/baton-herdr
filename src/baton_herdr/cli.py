@@ -235,7 +235,7 @@ def _plan_choice(task_id: str, *, start: bool) -> None:
 def project_start(
     task_id: Annotated[str, typer.Argument(help="The plan task whose plan to start.")],
 ) -> None:
-    """Start a proposed plan: its steps run one after another."""
+    """Start a proposed plan: its steps run in order, or side by side where the plan allows."""
     _plan_choice(task_id, start=True)
 
 

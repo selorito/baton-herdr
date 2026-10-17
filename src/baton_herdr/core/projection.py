@@ -30,6 +30,10 @@ from baton_herdr.core.events import (
     PlanRejected,
     PlanStep,
     ProjectDelivered,
+    StepMergeConflicted,
+    StepMerged,
+    StepMergeFailed,
+    StepWorktreeOpened,
     StoredEvent,
     TaskCancelled,
     TaskCompleted,
@@ -102,6 +106,14 @@ class TaskView:
     plan: PlanView | None = None
     plan_rejected: bool = False
     delivered: bool = False
+    # A step of a parallel plan (ADR 0017): the steps it needs, its branch, its worktree
+    # once opened, and whether its branch is merged, or conflicted on the way.
+    needs: tuple[TaskId, ...] = ()
+    branch: str | None = None
+    worktree: str | None = None
+    merged: bool = False
+    conflicted: bool = False
+    merge_failed: bool = False
 
     @property
     def live_attempt(self) -> AttemptView | None:
@@ -150,6 +162,8 @@ def apply(board: Board, stored: StoredEvent) -> Board:
             raise InvalidEventError(stored, "task already exists")
         if event.after is not None and event.after not in board.tasks:
             raise InvalidEventError(stored, "waits for an unknown task")
+        if any(need not in board.tasks for need in event.needs):
+            raise InvalidEventError(stored, "needs an unknown task")
         task = TaskView(
             task_id=event.task_id,
             title=event.title,
@@ -159,12 +173,24 @@ def apply(board: Board, stored: StoredEvent) -> Board:
             role=event.role,
             after=event.after,
             request=event.request,
+            needs=event.needs,
+            branch=event.branch,
         )
     else:
         existing = board.tasks.get(event.task_id)
         if existing is None:
             raise InvalidEventError(stored, "unknown task")
-        if isinstance(event, PlanProposed | PlanApproved | PlanRejected | ProjectDelivered):
+        if isinstance(
+            event,
+            PlanProposed
+            | PlanApproved
+            | PlanRejected
+            | ProjectDelivered
+            | StepWorktreeOpened
+            | StepMerged
+            | StepMergeConflicted
+            | StepMergeFailed,
+        ):
             task = _apply_note(existing, stored)
             return Board(tasks={**board.tasks, task.task_id: task}, last_seq=stored.seq)
         if existing.status.is_terminal:
@@ -236,6 +262,37 @@ def _apply_note(task: TaskView, stored: StoredEvent) -> TaskView:
             if task.status is not TaskStatus.COMPLETED or task.delivered:
                 raise InvalidEventError(stored, "not a completed step to deliver from")
             return replace(task, delivered=True)
+        case StepWorktreeOpened() | StepMerged() | StepMergeConflicted() | StepMergeFailed():
+            return _apply_step_note(task, stored)
+        case _:
+            raise InvalidEventError(stored, "not a note")
+
+
+def _apply_step_note(task: TaskView, stored: StoredEvent) -> TaskView:
+    """A parallel step's worktree and merge (ADR 0017)."""
+    event = stored.event
+    match event:
+        case StepWorktreeOpened():
+            if task.branch is None or task.worktree is not None or task.status.is_terminal:
+                raise InvalidEventError(stored, "not an open step waiting for its worktree")
+            return replace(task, worktree=event.path)
+        case StepMerged():
+            if task.branch is None or task.status is not TaskStatus.COMPLETED or task.merged:
+                raise InvalidEventError(stored, "not a completed step waiting to be merged")
+            return replace(task, merged=True)
+        case StepMergeConflicted():
+            if (
+                task.branch is None
+                or task.status is not TaskStatus.COMPLETED
+                or task.merged
+                or task.conflicted
+            ):
+                raise InvalidEventError(stored, "not a completed step waiting to be merged")
+            return replace(task, conflicted=True)
+        case StepMergeFailed():
+            if not task.conflicted or task.merged or task.merge_failed:
+                raise InvalidEventError(stored, "not a conflicted step waiting to be merged")
+            return replace(task, merge_failed=True)
         case _:
             raise InvalidEventError(stored, "not a note")
 

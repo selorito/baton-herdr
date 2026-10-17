@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -171,3 +172,30 @@ def test_active_attempts_are_reattached_whatever_the_slots_unless_a_worker_drive
 def test_with_no_agent_available_tasks_are_let_through_to_say_so() -> None:
     queue = [pending("one"), pending("two"), pending("three", "/w/one")]
     assert start(queue, available=frozenset(), max_parallel=1) == ("one", "two")
+
+
+def test_a_parallel_step_waits_for_what_it_needs_to_be_merged_and_for_its_worktree() -> None:
+    base = TaskView(
+        task_id=TaskId("base"),
+        title="base",
+        branch="baton/step-1",
+        closed_as=TaskStatus.COMPLETED,
+    )
+    step = TaskView(
+        task_id=TaskId("step"),
+        title="step",
+        needs=(TaskId("base"),),
+        branch="baton/step-2",
+        worktree="/wt/step-2",
+    )
+
+    def ready(*tasks: TaskView) -> tuple[TaskId, ...]:
+        return select_tasks(list(tasks), positions={}, available=BOTH, seen={})
+
+    assert ready(base, step) == ()  # completed, not merged yet
+    merged = replace(base, merged=True)
+    assert ready(merged, step) == (TaskId("step"),)
+    assert ready(merged, replace(step, worktree=None)) == ()
+    # Not completed: the step waits; the base itself runs once its own worktree is open.
+    open_base = replace(base, closed_as=None, worktree="/wt/step-1")
+    assert ready(open_base, step) == (TaskId("base"),)

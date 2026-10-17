@@ -34,13 +34,18 @@ from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import Policy, load_policy
 from baton_herdr.projects.deliver import PreviewServer, Showcase, find_browser
-from baton_herdr.projects.flow import deliver_projects, halt_stopped_projects, propose_plans
+from baton_herdr.projects.flow import (
+    advance_steps,
+    deliver_projects,
+    halt_stopped_projects,
+    propose_plans,
+)
 from baton_herdr.scheduler.dispatch import Dispatcher
 from baton_herdr.scheduler.queue import Signature, next_wake
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import BotSettings, OperatorBot, keep_running, run_bot
 from baton_herdr.telegram.notifier import telegram_notifier
-from baton_herdr.workdir import GitWorkspace
+from baton_herdr.workdir import GitRepository, GitWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Mapping
@@ -57,7 +62,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
-    from baton_herdr.core.ports import Clock, EventStore, UsageStore
+    from baton_herdr.core.ports import Clock, EventStore, Repository, UsageStore
 
 
 def make_detector(settings: DetectorSettings) -> Detector:
@@ -145,6 +150,8 @@ class Runtime:
     # A finished project's page: the preview batond serves, and a browser for its picture.
     preview: PreviewServer | None = None
     browser: Path | None = None
+    # Parallel steps' worktrees and merges (ADR 0017).
+    repository: Repository = field(default_factory=GitRepository)
 
 
 @asynccontextmanager
@@ -486,16 +493,18 @@ async def _serve_loop(
 
 
 async def advance_projects(runtime: Runtime) -> None:
-    """Propose the plans of finished plan tasks, and deliver finished projects (ADR 0016)."""
+    """Propose the plans of finished plan tasks, merge and open parallel steps (ADR 0017),
+    and deliver finished projects (ADR 0016)."""
     proposed = await propose_plans(runtime.store, clock=runtime.clock, read_text=_read_plan)
     halted = await halt_stopped_projects(runtime.store, clock=runtime.clock)
+    merged = await advance_steps(runtime.store, runtime.repository, clock=runtime.clock)
     delivered = await deliver_projects(
         runtime.store,
         clock=runtime.clock,
         workspace=GitWorkspace(),
         show=Showcase(runtime.preview, runtime.browser),
     )
-    for notice in [*proposed, *halted, *delivered]:
+    for notice in [*proposed, *halted, *merged, *delivered]:
         if runtime.notifier is not None:
             await runtime.notifier.notify(notice)
 

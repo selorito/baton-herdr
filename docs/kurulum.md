@@ -76,7 +76,10 @@ baton task cancel t-1a2b3c4d  # bir görevi bırak
 
 1. **📋 Plan ready** gelir: bir ajan isteği en fazla 8 adıma böler. **Start**'a basmadan
    hiçbir şey çalışmaz. Beğenmezsen **Cancel**.
-2. Adımlar sırayla yapılır, her biri bitince sessiz bir bildirim gelir.
+2. Birbirine bağlı olmayan adımlar aynı anda, farklı ajanlarda ve her biri kendi git
+   worktree'sinde yapılır; biten adım proje klasörüne birleştirilir (planda "(at once)" ve
+   "(after 1, 2)" yazar). Her adım bitince sessiz bir bildirim gelir. Birleştirme çakışırsa
+   bir ajan çakışmayı çözer; çözemezse proje durur ve sana haber verilir.
 3. **✅ Project done** gelir: değişen dosyalar, önizleme linki ve sayfanın ekran görüntüsü.
 
 Projeler `~/dev/baton-projects/` altında açılır.

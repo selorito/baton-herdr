@@ -6,10 +6,11 @@
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](Cargo.toml)
 
 baton keeps a queue of coding tasks moving across Claude Code, Codex CLI and OpenCode running
-in [herdr](https://github.com/herdrdev/herdr). When one agent hits its usage limit, crashes or
-stalls, baton resumes the task or hands it to another agent, and tells you on Telegram.
-From Telegram you can also ask for a whole project: an agent plans it, you start the plan,
-the steps run one after another, and the result comes back with a link and a screenshot.
+in [herdr](https://github.com/herdrdev/herdr), several at once. When one agent hits its usage
+limit, crashes or stalls, baton resumes the task or hands it to another agent, and tells you on
+Telegram. From Telegram you can also ask for a whole project: an agent plans it, you start the
+plan, independent steps run side by side on different agents and are merged back, and the
+result comes back with a link and a screenshot.
 
 ![baton handing a task from Claude Code to Codex in herdr](docs/assets/demo.gif)
 
@@ -271,8 +272,9 @@ on one line). File edits, wrapped Codex commands and OpenCode prompts still come
 - **Telegram** was tested live with a phone (2026-10-06) against fake agents: buttons,
   replies, hand-off, stall, `/status`, `/budget`, sounds, and updates from anyone but
   `owner_id` ignored. Real agents' screens were not part of that run.
-- **Projects** run their steps one after another, and a plan is only as good as the agent
-  that wrote it. Eight steps at most keeps it reviewable on a phone.
+- **Projects** run side by side only the steps their plan marks as independent; a merge that
+  conflicts costs a merge task. A plan is only as good as the agent that wrote it. Eight steps
+  at most keeps it reviewable on a phone.
 
 baton drives the official, unmodified agent CLIs in a terminal, and never touches their
 credentials ([ADR 0005](docs/adr/0005-automation-boundaries.md)). It does not rotate

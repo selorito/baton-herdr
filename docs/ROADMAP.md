@@ -133,6 +133,15 @@ test keeps passing throughout.
   where that is not enough.
 - Next: a live run of the resume path with a real agent (small quota), then step 2.
 
+## Parallel work ✅ (ADR 0017, 2026-10-17)
+
+- Tasks run side by side: slots per agent (two by default), at most four tasks, never two
+  in one directory. A ten-task queue finishes three times sooner in the benchmark.
+- A project's independent steps (`needs` in the plan) run at the same time in git
+  worktrees and are merged back; a conflict becomes a merge task.
+- Not yet: a live run of a parallel project with real agents, and budgets that count the
+  sessions of one agent running at once (the reserve is checked per choice).
+
 ## After v1
 
 - v1.1: Gemini CLI, once an authenticated round of captures exists and a session id can be
