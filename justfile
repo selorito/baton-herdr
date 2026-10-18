@@ -2,6 +2,10 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# The project's virtualenv decides what Python imports. A PYTHONPATH from the shell (ROS's
+# setup.bash, for one) adds another Python's packages, and pytest loads their plugins.
+export PYTHONPATH := ""
+
 default:
     @just --list
 
