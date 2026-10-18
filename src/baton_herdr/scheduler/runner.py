@@ -155,6 +155,8 @@ class RunnerSettings:
     screen_lines: int = 80
     # Overrides of the adapters' launch commands, per agent.
     launch_commands: Mapping[AgentKind, str] = field(default_factory=dict)
+    # The model per agent and kind of task ("task", "plan", "step", "merge").
+    models: Mapping[AgentKind, Mapping[str, str]] = field(default_factory=dict)
     # Appended to an agent's own launch and resume commands, not to an override: the
     # status line that reports Claude's rate limits (ADR 0015).
     launch_args: Mapping[AgentKind, str] = field(default_factory=dict)
@@ -419,9 +421,15 @@ class TaskRunner:
         await self._host.send_prompt(pane_id, prompt)
         return TurnState(prompt_sent=True)
 
-    def _with_args(self, agent: AgentKind, command: str) -> str:
-        args = self._settings.launch_args.get(agent)
-        return f"{command} {args}" if args else command
+    def _with_args(self, agent: AgentKind, command: str, task: TaskView) -> str:
+        """``command`` with baton's arguments for the agent, and the model set for this
+        kind of task, if any."""
+        parts = [command]
+        if args := self._settings.launch_args.get(agent):
+            parts.append(args)
+        if model := self._settings.models.get(agent, {}).get(task.role or "task"):
+            parts.append(self._adapters[agent].model_args(model))
+        return " ".join(parts)
 
     def _free_first(
         self, availability: Availability, own: AgentKind
@@ -458,7 +466,7 @@ class TaskRunner:
                 ),
             )
             await self._host.send_text(
-                pane_id, self._with_args(attempt.agent, adapter.resume_command(session_ref))
+                pane_id, self._with_args(attempt.agent, adapter.resume_command(session_ref), task)
             )
             await self._host.send_keys(pane_id, ["Enter"])
             await self._deliver(notices.resumed(task, attempt.agent, attempt.attempt_id))
@@ -601,7 +609,7 @@ class TaskRunner:
                 )
             )
             command = self._settings.launch_commands.get(agent) or self._with_args(
-                agent, self._adapters[agent].launch_command()
+                agent, self._adapters[agent].launch_command(), task
             )
             await self._host.send_text(pane_id, command)
             await self._host.send_keys(pane_id, ["Enter"])

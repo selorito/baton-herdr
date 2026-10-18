@@ -28,6 +28,9 @@ is:
   baton starts leave out the skills synced from claude.ai, Claude Code's bundled skills and
   the claude.ai connectors: each call reads 25.0k tokens instead of 30.7k, and a new
   session writes 2.4k to the cache instead of 8.1k (measured with Claude Code 2.1.296).
+- **A model per kind of task** (`[scheduler.models]`): e.g. a project's plan on the default
+  model and its steps on a faster one, `claude = { step = "sonnet" }`. Applied when a
+  session starts and when it is resumed.
 
 ### Changed
 

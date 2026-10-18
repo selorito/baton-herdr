@@ -488,3 +488,9 @@ def test_lean_sessions_leave_out_the_synced_and_bundled_skills_and_the_connector
     }
     # Nothing synced: nothing to name.
     assert "skillOverrides" not in lean_settings(tmp_path / "elsewhere")
+
+
+def test_every_adapter_picks_a_model_with_one_quoted_argument() -> None:
+    for adapter in ADAPTERS.values():
+        flag, model = shlex.split(adapter.model_args("vendor/model; rm -rf x"))
+        assert (flag, model) == ("--model", "vendor/model; rm -rf x")

@@ -84,6 +84,14 @@ baton task cancel t-1a2b3c4d  # bir görevi bırak
 
 Projeler `~/dev/baton-projects/` altında açılır.
 
+Adımların daha hızlı bitmesi ve limitin daha yavaş dolması için adımları daha hızlı bir
+modelle çalıştırabilirsin; planı yine varsayılan model yazar. `baton.toml` içine:
+
+```toml
+[scheduler.models]
+claude = { step = "sonnet", merge = "sonnet" }
+```
+
 ### Telegram komutları
 
 | Komut | Ne yapar |

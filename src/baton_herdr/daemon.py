@@ -136,6 +136,11 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
         trusted_dirs=trusted_dirs,
         agent_slots={AgentKind(a): n for a, n in settings.agent_slots.items()},
         max_parallel_tasks=settings.max_parallel_tasks,
+        models={
+            AgentKind(agent): {str(role): model for role, model in roles.items()}
+            for agent, roles in settings.models.items()
+            if roles
+        },
     )
 
 

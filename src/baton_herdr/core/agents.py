@@ -27,6 +27,10 @@ class AgentAdapter(Protocol):
         """Shell command that resumes ``session_ref`` directly, without a picker."""
         ...
 
+    def model_args(self, model: str) -> str:
+        """Arguments that pick ``model`` for a launched or resumed session, quoted."""
+        ...
+
     def resume_failed(self, screen: str) -> bool:
         """Whether ``screen`` shows the agent refusing to reopen a session."""
         ...

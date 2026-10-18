@@ -80,6 +80,9 @@ class ClaudeAdapter:
     def resume_command(self, session_ref: str) -> str:
         return f"claude --resume {shlex.quote(session_ref)}"
 
+    def model_args(self, model: str) -> str:
+        return f"--model {shlex.quote(model)}"
+
     def resume_failed(self, screen: str) -> bool:
         # Printed by `claude --resume <id>` before it exits (seen live, 2.1.285; also in
         # code.claude.com/docs/en/sessions).

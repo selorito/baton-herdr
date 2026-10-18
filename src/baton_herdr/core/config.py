@@ -204,6 +204,14 @@ class SchedulerSettings(_Section):
     # from claude.ai, its bundled skills and the claude.ai connectors. Less to read on every
     # call; the user's own sessions are not touched.
     lean_sessions: bool = True
+    # The model each kind of task runs on, per agent: a project's plan, its steps, the
+    # merge of a conflicted step, or a task added by hand. Unnamed: the agent's own default.
+    # {claude = {step = "sonnet", merge = "sonnet"}} plans with the default and builds with
+    # a faster model that spends the limits more slowly.
+    models: dict[
+        Literal["claude", "codex", "opencode"],
+        dict[Literal["task", "plan", "step", "merge"], Annotated[str, Field(min_length=1)]],
+    ] = Field(default_factory=dict)
 
 
 class UsageSettings(_Section):

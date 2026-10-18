@@ -41,6 +41,11 @@ limit_cooldown_minutes = 60
 # claude.ai connectors, which a coding task does not use: about 6k fewer tokens read on
 # every call. Your own Claude sessions are not touched.
 # lean_sessions = true
+# The model each kind of task runs on, per agent: "plan" (a project's plan), "step", "merge"
+# (a conflicted step), "task" (added by hand). Unnamed ones use the agent's default. A
+# faster model for the steps finishes them sooner and spends the limits more slowly.
+# [scheduler.models]
+# claude = { step = "sonnet", merge = "sonnet" }
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 

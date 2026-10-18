@@ -478,3 +478,37 @@ async def test_stopping_batond_leaves_every_running_attempt_to_be_reattached(
         board = project(await runtime.store.read())
     lives = [t.live_attempt for t in board.tasks.values()]
     assert [a.status for a in lives if a is not None] == [AttemptStatus.ACTIVE] * 2
+
+
+async def test_each_kind_of_task_runs_on_the_model_set_for_it(tmp_path: Path) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    await add_task(store, title="one", instructions="do one", workdir="/w/one", clock=clock)
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=NOW,
+                task_id=TaskId("t-step"),
+                title="1/1 Page",
+                instructions="write it",
+                workdir="/w/step",
+                project="p-1",
+                role="step",
+            )
+        ]
+    )
+    await store.close()
+    host = SimulatedAgents(clock)
+    settings = settings_for(db, agents=["codex"], models={"codex": {"step": "fast model"}})
+    async with open_runtime(settings, host=host, notifier=RecordingNotifier(), clock=clock) as rt:
+        await run_pending(rt)
+    # The task added by hand keeps the agent's default; the step gets its model.
+    assert sorted(host.launched) == ["codex", "codex --model 'fast model'"]
+
+
+def test_models_come_from_the_scheduler_section() -> None:
+    converted = runner_settings(SchedulerSettings(models={"claude": {"step": "sonnet"}}))
+    assert converted.models == {AgentKind.CLAUDE: {"step": "sonnet"}}
+    with pytest.raises(ValueError, match="Input should be"):
+        SchedulerSettings.model_validate({"models": {"claude": {"review": "x"}}})

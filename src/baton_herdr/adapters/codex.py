@@ -33,6 +33,9 @@ class CodexAdapter:
     def resume_command(self, session_ref: str) -> str:
         return f"codex resume {shlex.quote(session_ref)}"
 
+    def model_args(self, model: str) -> str:
+        return f"--model {shlex.quote(model)}"
+
     def resume_failed(self, screen: str) -> bool:
         # The wording of a failed resume has not been observed for this agent yet;
         # such a failure is handled as a crash until it is.
