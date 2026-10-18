@@ -29,6 +29,13 @@ is:
   the claude.ai connectors: each call reads 25.0k tokens instead of 30.7k, and a new
   session writes 2.4k to the cache instead of 8.1k (measured with Claude Code 2.1.296).
 
+### Changed
+
+- **A project's steps check their work without screenshots** unless their instructions ask,
+  and the last step takes two at most. In two earlier projects agents had read 41
+  screenshots, each read again on every later turn; baton takes the finished page's
+  screenshot itself.
+
 ## [1.1.0] - 2026-10-12
 
 For running baton unattended, and for labs and teams where each person runs their own.

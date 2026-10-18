@@ -113,7 +113,7 @@ async def test_a_request_is_planned_approved_and_run_step_after_step(tmp_path: P
     assert [t.after for t in steps] == [None, steps[0].task_id, steps[1].task_id]
     assert all(t.workdir == plan_task.workdir and t.project == plan_task.project for t in steps)
     assert "A one-page website for my cafe" in steps[1].instructions
-    assert steps[1].instructions.endswith("Step 2, Style: Add style.css and link it.")
+    assert "Step 2, Style: Add style.css and link it." in steps[1].instructions
 
     async def ready() -> tuple[TaskId, ...]:
         return select_tasks(

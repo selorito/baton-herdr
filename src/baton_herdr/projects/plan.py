@@ -71,6 +71,16 @@ class PlanError(Exception):
     """The plan file is missing or not a plan; the message says what is wrong."""
 
 
+# Agents checked web pages by taking screenshots and reading them, 41 times in two
+# projects; a picture is read again on every later turn. baton shows the finished page
+# itself (ADR 0016).
+CHECKING = (
+    "Check your work by reading the files and running commands rather than with "
+    "screenshots: baton takes a screenshot of the finished project itself. Take at most "
+    "two, and only if this step's instructions ask you to look at the page."
+)
+
+
 def plan_title(request: str) -> str:
     return _short(f"Plan: {request}", 80)
 
@@ -96,7 +106,9 @@ def plan_prompt(request: str) -> str:
         "that run at the same time different files to change. For a website, prefer plain "
         "HTML, CSS and JavaScript with an index.html at the top of this directory and no "
         "build step, unless the request asks for something else. Make the last step check "
-        "that the whole result works. If the request is unclear, ask before writing the plan."
+        "that the whole result works, by reading the files and running them, with at most "
+        "two screenshots; no other step takes screenshots. If the request is unclear, ask "
+        "before writing the plan."
     )
 
 
@@ -115,7 +127,7 @@ def step_prompt(request: str, plan: Plan, index: int) -> str:
         "You are doing one step of a project in this directory. "
         f"The request was: {request} The plan: {plan.summary} Its steps: {outline}. "
         f"{done if index > 1 else ''}Do step {index} now, and only this step. "
-        f"Step {index}, {step.title}: {step.instructions}"
+        f"Step {index}, {step.title}: {step.instructions} {CHECKING}"
     )
 
 
@@ -143,7 +155,7 @@ def _parallel_step_prompt(request: str, plan: Plan, index: int) -> str:
         "You are doing one step of a project in this directory. "
         f"The request was: {request} The plan: {plan.summary} Its steps: {outline}. "
         f"{done}{others}Do step {index} now, and only this step. "
-        f"Step {index}, {step.title}: {step.instructions}"
+        f"Step {index}, {step.title}: {step.instructions} {CHECKING}"
     )
 
 
