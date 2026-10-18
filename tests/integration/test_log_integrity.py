@@ -127,6 +127,7 @@ async def test_one_tasks_fault_does_not_stop_the_others(
             usage=UsageSettings(enabled=False),
             scheduler=SchedulerSettings(
                 agents=("codex",),
+                lean_sessions=False,
                 start_timeout_seconds=2,
                 turn_timeout_seconds=2,
                 poll_interval_seconds=0.05,

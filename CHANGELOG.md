@@ -24,6 +24,10 @@ is:
   the project directory as they complete. A merge that conflicts becomes a merge task for an
   agent. The plan notice shows which steps start at once. Plans without `needs` run in
   order, as before.
+- **Lean agent sessions** (`[scheduler] lean_sessions`, on by default). The Claude sessions
+  baton starts leave out the skills synced from claude.ai, Claude Code's bundled skills and
+  the claude.ai connectors: each call reads 25.0k tokens instead of 30.7k, and a new
+  session writes 2.4k to the cache instead of 8.1k (measured with Claude Code 2.1.296).
 
 ## [1.1.0] - 2026-10-12
 

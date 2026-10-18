@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import shlex
 import sys
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -25,6 +27,7 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
 from baton_herdr.daemon import (
     add_task,
+    claude_session_args,
     claude_status_line,
     open_runtime,
     run_pending,
@@ -54,7 +57,13 @@ def settings_for(
         # Never a real baton-detect here: it would read this machine's agent logs.
         usage=usage or UsageSettings(enabled=False),
         scheduler=SchedulerSettings.model_validate(
-            {"start_timeout_seconds": 2, "turn_timeout_seconds": 2, "poll_interval_seconds": 0.05}
+            {
+                "start_timeout_seconds": 2,
+                "turn_timeout_seconds": 2,
+                "poll_interval_seconds": 0.05,
+                # Lean sessions read ~/.claude; these tests must not depend on this machine's.
+                "lean_sessions": False,
+            }
             | scheduler
         ),
     )
@@ -119,6 +128,28 @@ def test_claudes_status_line_is_set_only_while_usage_is_collected(tmp_path: Path
     assert claude_status_line(on.model_copy(update={"enabled": False})) == {}
     missing = on.model_copy(update={"binary": str(tmp_path / "nowhere")})
     assert claude_status_line(missing) == {}  # nothing to run: Claude's footer stays as it is
+
+
+def test_a_lean_claude_session_gets_one_settings_with_the_status_line_in_it(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "baton-detect"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    usage = UsageSettings(binary=str(binary), claude_status_log=tmp_path / "status.jsonl")
+    (args,) = claude_session_args(usage, lean=True, claude_home=tmp_path).values()
+    flag, value = shlex.split(args)
+    settings = json.loads(value)
+    assert flag == "--settings"
+    assert settings["disableBundledSkills"] is True
+    assert settings["statusLine"]["type"] == "command"
+    # Without usage only the lean part is left; with neither, nothing is added.
+    (lean_only,) = claude_session_args(
+        usage.model_copy(update={"enabled": False}), lean=True, claude_home=tmp_path
+    ).values()
+    assert "statusLine" not in json.loads(shlex.split(lean_only)[1])
+    off = usage.model_copy(update={"enabled": False})
+    assert claude_session_args(off, lean=False) == {}
 
 
 @pytest.fixture

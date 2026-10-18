@@ -289,6 +289,7 @@ async def test_batond_runs_a_parallel_project_to_its_delivery(tmp_path: Path) ->
         usage=UsageSettings(enabled=False),
         scheduler=SchedulerSettings(
             agents=("codex",),
+            lean_sessions=False,
             start_timeout_seconds=5,
             turn_timeout_seconds=5,
             poll_interval_seconds=0.05,

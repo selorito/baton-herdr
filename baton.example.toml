@@ -37,6 +37,10 @@ limit_cooldown_minutes = 60
 # named), and tasks at once in all. More sessions finish sooner and spend quota faster.
 # agent_slots = { claude = 2, codex = 2 }
 # max_parallel_tasks = 4
+# Start Claude without the skills synced from claude.ai, its bundled skills and the
+# claude.ai connectors, which a coding task does not use: about 6k fewer tokens read on
+# every call. Your own Claude sessions are not touched.
+# lean_sessions = true
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 

@@ -19,7 +19,7 @@ import pytest
 from herdr_dialogs import HERDR_IDLE_DIALOGS
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.adapters.claude import ClaudeAdapter, status_line_args
+from baton_herdr.adapters.claude import ClaudeAdapter, lean_settings, status_line_args
 from baton_herdr.adapters.codex import CodexAdapter
 from baton_herdr.adapters.opencode import OpenCodeAdapter
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
@@ -467,3 +467,24 @@ def test_a_codex_approval_whose_title_scrolled_away_is_still_a_permission() -> N
     codex = CodexAdapter()
     assert codex.permission_keys(result.evidence, approve=True) == ("y",)
     assert codex.permission_command(screen) is None  # not one line: a person decides
+
+
+def test_lean_sessions_leave_out_the_synced_and_bundled_skills_and_the_connectors(
+    tmp_path: Path,
+) -> None:
+    synced = tmp_path / "skills" / "synced" / "account-1"
+    synced.mkdir(parents=True)
+    (synced / "manifest.json").write_text(
+        json.dumps({"skills": [{"name": "pptx"}, {"name": "morning"}, {"title": "no name"}]})
+    )
+    broken = tmp_path / "skills" / "synced" / "account-2"
+    broken.mkdir()
+    (broken / "manifest.json").write_text("not json")
+
+    assert lean_settings(tmp_path) == {
+        "disableBundledSkills": True,
+        "disableClaudeAiConnectors": True,
+        "skillOverrides": {"morning": "off", "pptx": "off"},
+    }
+    # Nothing synced: nothing to name.
+    assert "skillOverrides" not in lean_settings(tmp_path / "elsewhere")

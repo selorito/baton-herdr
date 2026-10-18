@@ -31,8 +31,43 @@ def status_line_args(binary: Path, log: Path) -> str:
     """``--settings`` for the Claude sessions baton starts: ``baton-detect statusline`` as
     their status line, logging Claude's rate limits to ``log`` (ADR 0015). Only these
     sessions get it; the user's own settings are not touched."""
+    return settings_args(status_line(binary, log))
+
+
+def status_line(binary: Path, log: Path) -> dict[str, object]:
     command = f"{shlex.quote(str(binary))} statusline --log {shlex.quote(str(log))}"
-    settings = {"statusLine": {"type": "command", "command": command}}
+    return {"statusLine": {"type": "command", "command": command}}
+
+
+def lean_settings(claude_home: Path) -> dict[str, object]:
+    """What a coding task does not use, kept out of baton's sessions: the skills synced from
+    claude.ai (documents, slides, spreadsheets, the morning brief…), Claude Code's bundled
+    skills, and the claude.ai connectors. Measured with Claude Code 2.1.296: a call's prompt
+    went from 30.7k to 25.0k tokens, and what a new session writes to the cache, counted
+    against the limits, from 8.1k to 2.4k. Skills of the task's own repository stay."""
+    settings: dict[str, object] = {"disableBundledSkills": True, "disableClaudeAiConnectors": True}
+    if synced := synced_skills(claude_home):
+        settings["skillOverrides"] = dict.fromkeys(synced, "off")
+    return settings
+
+
+def synced_skills(claude_home: Path) -> list[str]:
+    """The names of the skills Claude Code synced from claude.ai, from its manifests;
+    none when they cannot be read."""
+    names: list[str] = []
+    for manifest in sorted((claude_home / "skills" / "synced").glob("*/manifest.json")):
+        try:
+            skills = json.loads(manifest.read_text(encoding="utf-8")).get("skills", [])
+        except (OSError, ValueError, AttributeError):
+            continue
+        names.extend(
+            s["name"] for s in skills if isinstance(s, dict) and isinstance(s.get("name"), str)
+        )
+    return sorted(set(names))
+
+
+def settings_args(settings: dict[str, object]) -> str:
+    """One ``--settings`` argument, quoted for the shell the command is typed into."""
     return f"--settings {shlex.quote(json.dumps(settings, separators=(',', ':')))}"
 
 

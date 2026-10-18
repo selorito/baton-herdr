@@ -200,6 +200,10 @@ class SchedulerSettings(_Section):
         default_factory=dict
     )
     max_parallel_tasks: int = Field(default=4, ge=1)
+    # Start agents without what a coding task does not use: for Claude, the skills synced
+    # from claude.ai, its bundled skills and the claude.ai connectors. Less to read on every
+    # call; the user's own sessions are not touched.
+    lean_sessions: bool = True
 
 
 class UsageSettings(_Section):

@@ -14,10 +14,11 @@ import uuid
 from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.adapters.claude import status_line_args
+from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
@@ -49,7 +50,6 @@ from baton_herdr.workdir import GitRepository, GitWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator, Mapping
-    from pathlib import Path
 
     from aiogram import Bot
 
@@ -88,10 +88,22 @@ def make_policy(settings: PolicySettings) -> Policy | None:
 def claude_status_line(usage: UsageSettings) -> dict[AgentKind, str]:
     """Claude's status line in the sessions baton starts, while usage is collected and
     baton-detect is there to run it (ADR 0015)."""
+    return claude_session_args(usage, lean=False)
+
+
+def claude_session_args(
+    usage: UsageSettings, *, lean: bool, claude_home: Path | None = None
+) -> dict[AgentKind, str]:
+    """The settings of the Claude sessions baton starts, as one ``--settings``: the status
+    line that reports rate limits (ADR 0015) while usage is collected and baton-detect is
+    there to run it, and, with ``lean``, no skills or connectors a coding task does not use."""
+    settings: dict[str, object] = {}
+    if lean:
+        settings |= lean_settings(claude_home or Path.home() / ".claude")
     binary = detector_binary(usage.binary) if usage.enabled else None
-    if binary is None:
-        return {}
-    return {AgentKind.CLAUDE: status_line_args(binary, usage.claude_status_log)}
+    if binary is not None:
+        settings |= status_line(binary, usage.claude_status_log)
+    return {AgentKind.CLAUDE: settings_args(settings)} if settings else {}
 
 
 def runner_settings(  # noqa: PLR0913 - the settings sections and what batond adds to them
@@ -180,7 +192,7 @@ async def open_runtime(
         settings.scheduler,
         settings.budget,
         collecting_usage=settings.usage.enabled,
-        launch_args=claude_status_line(settings.usage),
+        launch_args=claude_session_args(settings.usage, lean=settings.scheduler.lean_sessions),
         own_dirs=(str(settings.projects.root),),
         trusted_dirs=tuple(str(d) for d in policy.trusted_dirs) if policy else (),
     )
