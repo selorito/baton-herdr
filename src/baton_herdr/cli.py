@@ -39,7 +39,7 @@ from baton_herdr.projects.flow import (
     reject_plan,
     start_project,
 )
-from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel
+from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel, release_agent
 from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
@@ -67,6 +67,8 @@ policy_app = typer.Typer(
     name="policy", help="Which agent commands run without asking you.", no_args_is_help=True
 )
 app.add_typer(policy_app)
+agent_app = typer.Typer(name="agent", help="The agents baton runs tasks on.", no_args_is_help=True)
+app.add_typer(agent_app)
 
 
 def _settings() -> BatonSettings:
@@ -183,6 +185,42 @@ def task_cancel(
         return f"{task_id} cancelled" + ("; its pane is closed" if closed else "")
 
     typer.echo(asyncio.run(drop()))
+    poke(settings.database.path)
+
+
+@agent_app.command("ready")
+def agent_ready(
+    agent: Annotated[
+        str, typer.Argument(help="claude, codex or opencode: the agent you have fixed.")
+    ],
+) -> None:
+    """Use an agent again that baton set aside after a limit or a sign-in (ADR 0018), once
+    you have signed it in or know its limit is over."""
+    settings = _settings()
+    try:
+        kind = AgentKind(agent)
+    except ValueError as err:
+        typer.echo(f"Unknown agent {agent!r}: claude, codex or opencode.", err=True)
+        raise typer.Exit(code=2) from err
+
+    async def release() -> str:
+        store = await open_event_store(settings.database.path)
+        try:
+            until = await release_agent(
+                store=store,
+                clock=SystemClock(),
+                agent=kind,
+                by="cli",
+                cooldown=timedelta(minutes=settings.scheduler.limit_cooldown_minutes),
+            )
+        except ActionRefusedError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(code=1) from err
+        finally:
+            await store.close()
+        return f"{kind.value} is in use again (it was set aside until {until:%Y-%m-%d %H:%M} UTC)"
+
+    typer.echo(asyncio.run(release()))
     poke(settings.database.path)
 
 

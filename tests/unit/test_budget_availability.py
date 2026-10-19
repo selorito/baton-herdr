@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from baton_herdr.budget.availability import Availability, fold_availability
-from baton_herdr.core.events import AttemptInterrupted, AttemptStarted, Event, StoredEvent
+from baton_herdr.core.events import (
+    AgentReleased,
+    AttemptInterrupted,
+    AttemptStarted,
+    Event,
+    StoredEvent,
+)
 from baton_herdr.core.model import AgentKind, AttemptId, InterruptReason, TaskId
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
@@ -93,3 +99,15 @@ def test_an_agent_that_asked_to_be_signed_in_is_unavailable_like_a_limited_one()
     )
     assert not view.is_available(AgentKind.CODEX, NOW)
     assert view.is_available(AgentKind.CODEX, later + timedelta(seconds=1))
+
+
+def test_a_released_agent_is_available_until_it_is_set_aside_again() -> None:
+    later = NOW + timedelta(hours=1)
+    aside: list[Event] = [
+        started(CODEX_ATTEMPT, AgentKind.CODEX),
+        interrupted(CODEX_ATTEMPT, InterruptReason.SIGNED_OUT, until=later),
+    ]
+    released = AgentReleased(occurred_at=NOW, task_id=T1, attempt_id=CODEX_ATTEMPT, by="cli")
+    assert fold_availability(log(*aside, released)).is_available(AgentKind.CODEX, NOW)
+    again = interrupted(CODEX_ATTEMPT, InterruptReason.RATE_LIMITED, until=later)
+    assert not fold_availability(log(*aside, released, again)).is_available(AgentKind.CODEX, NOW)

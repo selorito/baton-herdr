@@ -168,6 +168,7 @@ NOTE_TYPES = frozenset(
         "step.merged",
         "step.merge_conflicted",
         "step.merge_failed",
+        "agent.released",
     }
 )
 
@@ -305,6 +306,15 @@ class PermissionDecided(_AttemptEvent):
     reason: str = Field(min_length=1)
 
 
+class AgentReleased(_AttemptEvent):
+    """The operator says the agent this attempt ran on can be used again (ADR 0018): the
+    limit or sign-in that this attempt's interruption set it aside for is over. A note: the
+    task may have closed since."""
+
+    type: Literal["agent.released"] = "agent.released"
+    by: str = Field(min_length=1)  # "telegram:<user id>" or "cli"
+
+
 type Event = Annotated[
     TaskCreated
     | TaskCompleted
@@ -327,7 +337,8 @@ type Event = Annotated[
     | StepWorktreeOpened
     | StepMerged
     | StepMergeConflicted
-    | StepMergeFailed,
+    | StepMergeFailed
+    | AgentReleased,
     Field(discriminator="type"),
 ]
 

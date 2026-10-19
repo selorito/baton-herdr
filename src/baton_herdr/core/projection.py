@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.core.events import (
     AgentChosen,
+    AgentReleased,
     AgentStateObserved,
     AttemptEnded,
     AttemptInterrupted,
@@ -189,7 +190,8 @@ def apply(board: Board, stored: StoredEvent) -> Board:
             | StepWorktreeOpened
             | StepMerged
             | StepMergeConflicted
-            | StepMergeFailed,
+            | StepMergeFailed
+            | AgentReleased,
         ):
             task = _apply_note(existing, stored)
             return Board(tasks={**board.tasks, task.task_id: task}, last_seq=stored.seq)
@@ -264,6 +266,10 @@ def _apply_note(task: TaskView, stored: StoredEvent) -> TaskView:
             return replace(task, delivered=True)
         case StepWorktreeOpened() | StepMerged() | StepMergeConflicted() | StepMergeFailed():
             return _apply_step_note(task, stored)
+        case AgentReleased():
+            if not any(a.attempt_id == event.attempt_id for a in task.attempts):
+                raise InvalidEventError(stored, "no such attempt of this task")
+            return task  # it changes the agent's availability, not the task
         case _:
             raise InvalidEventError(stored, "not a note")
 

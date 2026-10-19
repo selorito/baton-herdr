@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from baton_herdr.core.events import AttemptInterrupted, AttemptStarted
+from baton_herdr.core.events import AgentReleased, AttemptInterrupted, AttemptStarted
 from baton_herdr.core.model import InterruptReason
 
 if TYPE_CHECKING:
@@ -56,6 +56,11 @@ def fold_availability(
             view = replace(
                 view, attempt_agents={**view.attempt_agents, event.attempt_id: event.agent}
             )
+        elif isinstance(event, AgentReleased):
+            released = view.attempt_agents.get(event.attempt_id)
+            if released is not None and released in view.limited_until:
+                rest = {a: t for a, t in view.limited_until.items() if a is not released}
+                view = replace(view, limited_until=rest)
         elif isinstance(event, AttemptInterrupted) and event.reason in _UNAVAILABLE:
             agent = view.attempt_agents.get(event.attempt_id)
             if agent is None:

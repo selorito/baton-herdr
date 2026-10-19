@@ -22,3 +22,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0015](0015-claude-limits-from-status-line.md) | Claude's own rate limits, from a status line in the sessions baton starts | accepted |
 | [0016](0016-projects-from-telegram.md) | Projects from Telegram: a request is planned, approved, run step by step, and delivered | accepted |
 | [0017](0017-parallel-work.md) | Parallel work: tasks side by side on every agent, and a project's independent steps in worktrees | accepted |
+| [0018](0018-releasing-an-agent.md) | The operator can release an agent baton set aside | accepted |

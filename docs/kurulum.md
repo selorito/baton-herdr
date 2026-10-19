@@ -175,6 +175,12 @@ sırada diğer ajana geçer. Terminalde:
 codex logout && codex login && pkill -f app-server-daemon
 ```
 
-Son komut Codex'in arka planda çalışan sunucusunu durdurur. Bu sunucu eski girişi bellekte
+Ardından baton'a Codex'i yeniden kullanmasını söyle, yoksa bir saat bekler:
+
+```bash
+baton agent ready codex
+```
+
+`pkill` komutu Codex'in arka planda çalışan sunucusunu durdurur. Bu sunucu eski girişi bellekte
 tutar ve yeniden giriş yapsan bile yeni oturumlar giriş ekranında kalır. Codex bir sonraki
 açılışta sunucuyu yeni girişle yeniden başlatır. VS Code eklentisininkine dokunmaz.

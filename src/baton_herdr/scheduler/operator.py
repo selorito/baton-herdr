@@ -11,16 +11,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from baton_herdr.budget.availability import fold_availability
 from baton_herdr.core.commands import cancel_task
 from baton_herdr.core.contract import ANSWERABLE_EVIDENCE, one_line
-from baton_herdr.core.events import AgentStateObserved, OperatorActed
-from baton_herdr.core.model import AgentState, AttemptStatus, OperatorAction
+from baton_herdr.core.events import (
+    AgentReleased,
+    AgentStateObserved,
+    AttemptInterrupted,
+    AttemptStarted,
+    OperatorActed,
+)
+from baton_herdr.core.model import AgentState, AttemptStatus, InterruptReason, OperatorAction
 from baton_herdr.core.panes import PaneHostError
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.targeting import resolve_target
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from datetime import datetime, timedelta
 
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.events import StoredEvent
@@ -204,3 +212,34 @@ async def cancel(  # noqa: PLR0913 - the ports, the task and who cancels it
     except InvalidEventError as err:
         raise ActionRefusedError(f"{task_id} has moved on; try again.") from err
     return closed
+
+
+async def release_agent(
+    *, store: EventStore, clock: Clock, agent: AgentKind, by: str, cooldown: timedelta
+) -> datetime:
+    """Use ``agent`` again (ADR 0018): note on the attempt whose limit or sign-in set it
+    aside that the operator says it is over. Returns until when it had been set aside;
+    raises ``ActionRefusedError`` when it is not set aside."""
+    events = await store.read()
+    now = clock.now()
+    until = fold_availability(events, cooldown=cooldown).limited_until.get(agent)
+    if until is None or until <= now:
+        raise ActionRefusedError(f"{agent.value} is not set aside; nothing to do.")
+    agents = {
+        e.event.attempt_id: e.event.agent for e in events if isinstance(e.event, AttemptStarted)
+    }
+    newest = next(
+        e.event
+        for e in reversed(events)
+        if isinstance(e.event, AttemptInterrupted)
+        and e.event.reason in {InterruptReason.RATE_LIMITED, InterruptReason.SIGNED_OUT}
+        and agents.get(e.event.attempt_id) is agent
+    )
+    await store.append(
+        [
+            AgentReleased(
+                occurred_at=now, task_id=newest.task_id, attempt_id=newest.attempt_id, by=by
+            )
+        ]
+    )
+    return until

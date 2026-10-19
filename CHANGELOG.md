@@ -11,6 +11,10 @@ is:
 
 ## [Unreleased]
 
+- **`baton agent ready <agent>`** uses an agent again that baton set aside after a limit
+  or a sign-in, once you have fixed it, instead of waiting out the cooldown (ADR 0018).
+  Recorded in the log as `agent.released`, with who said so.
+
 ### Fixed
 
 - **The usage collector no longer reads its own reads.** `baton-detect usage` took the
