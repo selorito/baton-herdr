@@ -35,9 +35,12 @@ class CodexAdapter:
 
     def signed_out(self, evidence: str) -> str | None:
         # Its sign-in screen (fixtures/codex/signed_out/), seen when a refresh token had
-        # been used twice; `codex login status` still said logged in.
+        # been used twice; `codex login status` still said logged in. Signing in again was
+        # not enough: Codex's background app server kept the revoked token, and every new
+        # session asked again until it was stopped (seen live). The pattern matches that
+        # server's own path, not the VS Code extension's.
         if evidence == "baton:codex_signed_out":
-            return "codex logout && codex login"
+            return "codex logout && codex login && pkill -f app-server-daemon"
         return None
 
     def model_args(self, model: str) -> str:

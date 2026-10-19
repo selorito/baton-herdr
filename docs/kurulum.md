@@ -172,5 +172,9 @@ Telegram'da "codex is signed out" bildirimi gelirse Codex'in girişi düşmüşt
 sırada diğer ajana geçer. Terminalde:
 
 ```bash
-codex logout && codex login
+codex logout && codex login && pkill -f app-server-daemon
 ```
+
+Son komut Codex'in arka planda çalışan sunucusunu durdurur. Bu sunucu eski girişi bellekte
+tutar ve yeniden giriş yapsan bile yeni oturumlar giriş ekranında kalır. Codex bir sonraki
+açılışta sunucuyu yeni girişle yeniden başlatır. VS Code eklentisininkine dokunmaz.

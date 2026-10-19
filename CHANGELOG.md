@@ -28,7 +28,9 @@ is:
   token had been used twice; `codex login status` still said logged in) used to look like
   a start that never finished. baton-detect now recognises it; the attempt is interrupted
   as `signed_out`, the task moves to another agent, the agent is not used for the limit
-  cooldown, and the notice says what to run (`codex logout && codex login`).
+  cooldown, and the notice says what to run: `codex logout && codex login && pkill -f
+  app-server-daemon`. Signing in alone was not enough: Codex's background app server kept
+  the revoked token, and new sessions asked again until it was stopped.
 - **A plan step a little long no longer loses the whole plan.** The planner is told to keep
   each step under 3,000 characters, and a step is read up to 12,000; a plan whose step
   had 4,001 characters used to be rejected after the planning turn had been spent.

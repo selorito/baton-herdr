@@ -499,7 +499,7 @@ def test_every_adapter_picks_a_model_with_one_quoted_argument() -> None:
 
 def test_only_codex_knows_its_sign_in_screen() -> None:
     assert ADAPTERS[AgentKind.CODEX].signed_out("baton:codex_signed_out") == (
-        "codex logout && codex login"
+        "codex logout && codex login && pkill -f app-server-daemon"
     )
     assert ADAPTERS[AgentKind.CODEX].signed_out("baton:codex_update_prompt") is None
     assert all(

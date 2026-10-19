@@ -650,4 +650,6 @@ async def test_a_signed_out_agent_hands_its_task_on_and_is_left_alone(tmp_path: 
     assert [a.agent for a in board.tasks[first].attempts] == [AgentKind.CODEX, AgentKind.CLAUDE]
     assert [a.agent for a in board.tasks[second].attempts] == [AgentKind.CLAUDE]
     (stopped,) = [n for n in notifier.notices if "is signed out" in n.text]
-    assert "codex logout && codex login" in " ".join([stopped.text, *stopped.details])
+    assert "codex logout && codex login && pkill -f app-server-daemon" in " ".join(
+        [stopped.text, *stopped.details]
+    )
