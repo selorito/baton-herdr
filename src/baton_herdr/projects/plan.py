@@ -72,12 +72,13 @@ class PlanError(Exception):
 
 
 # Agents checked web pages by taking screenshots and reading them, 41 times in two
-# projects; a picture is read again on every later turn. baton shows the finished page
-# itself (ADR 0016).
+# projects; a picture is read again on every later turn. Allowed two in the last step, an
+# agent wrote them where a snap browser can (~/snap/...), outside the project, and Claude
+# asked a person before reading them. baton shows the finished page itself (ADR 0016).
 CHECKING = (
-    "Check your work by reading the files and running commands rather than with "
-    "screenshots: baton takes a screenshot of the finished project itself. Take at most "
-    "two, and only if this step's instructions ask you to look at the page."
+    "Check your work by reading the files and running commands, never with screenshots "
+    "or other images: baton takes a screenshot of the finished project itself. For a web "
+    "page, read the HTML, or print the page a headless browser renders with --dump-dom."
 )
 
 
@@ -106,8 +107,8 @@ def plan_prompt(request: str) -> str:
         "that run at the same time different files to change. For a website, prefer plain "
         "HTML, CSS and JavaScript with an index.html at the top of this directory and no "
         "build step, unless the request asks for something else. Make the last step check "
-        "that the whole result works, by reading the files and running them, with at most "
-        "two screenshots; no other step takes screenshots. If the request is unclear, ask "
+        "that the whole result works, by reading the files and running them, without "
+        "screenshots: baton takes one itself. If the request is unclear, ask "
         "before writing the plan."
     )
 

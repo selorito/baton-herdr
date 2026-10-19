@@ -92,8 +92,8 @@ def test_prompts_are_one_line_and_carry_what_the_agent_has_not_seen() -> None:
     assert "1. Page; 2. Style" in second
     assert "Step 1 is done." in second
     assert second.endswith(f"Step 2, Style: Add style.css. {CHECKING}")
-    assert "rather than with screenshots" in second
-    assert "with at most two screenshots; no other step takes screenshots" in planning
+    assert "without screenshots: baton takes one itself" in planning
+    assert "never with screenshots" in second
     assert "is done" not in step_prompt(request, plan, 1)
 
 

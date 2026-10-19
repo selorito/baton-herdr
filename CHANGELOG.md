@@ -53,10 +53,11 @@ is:
 
 ### Changed
 
-- **A project's steps check their work without screenshots** unless their instructions ask,
-  and the last step takes two at most. In two earlier projects agents had read 41
-  screenshots, each read again on every later turn; baton takes the finished page's
-  screenshot itself.
+- **A project's steps check their work without screenshots**, by reading the files and
+  running them (`--dump-dom` for a page). In two earlier projects agents had read 41
+  screenshots, each read again on every later turn; allowed two in the last step, an
+  agent wrote them outside the project (a snap browser's directory) and waited for a
+  person to allow reading them. baton takes the finished page's screenshot itself.
 
 ## [1.1.0] - 2026-10-12
 
