@@ -11,6 +11,15 @@ is:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The usage collector no longer reads its own reads.** `baton-detect usage` took the
+  events Linux raises when a file is only opened or read as changes, so every read
+  caused another: about 200,000 reads a second and a CPU and a half busy for as long as
+  batond ran, slowing the agents on the same machine. It now reads a log only when it
+  was written to.
+- `baton run` kept the result of a task that ended just as the run finished.
+
 ### Added
 
 - **Tasks run side by side** (ADR 0017). batond drives several tasks at once, each in its

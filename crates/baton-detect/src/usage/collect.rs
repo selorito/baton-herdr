@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use notify::{RecursiveMode, Watcher};
+use notify::event::{AccessKind, AccessMode};
+use notify::{EventKind, RecursiveMode, Watcher};
 use time::OffsetDateTime;
 
 use super::claude::ClaudeLog;
@@ -416,11 +417,73 @@ fn jsonl_files(dir: &Path, kind: Kind, found: &mut Vec<PathBuf>) {
 }
 
 fn collect_paths(event: notify::Result<notify::Event>, paths: &mut Vec<PathBuf>) {
-    if let Ok(event) = event {
+    if let Ok(event) = event
+        && changes_content(event.kind)
+    {
         paths.extend(event.paths);
+    }
+}
+
+/// Whether an event can mean new lines. Opening, reading and closing a file without
+/// writing raise access events too: taken as changes, every read the collector made raised
+/// another read, and it kept a CPU and a half busy.
+fn changes_content(kind: EventKind) -> bool {
+    match kind {
+        EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
+        EventKind::Access(_) => false,
+        _ => true,
     }
 }
 
 fn warn(message: &str) {
     eprintln!("baton-detect: {message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use notify::event::{AccessKind, AccessMode, CreateKind, DataChange, ModifyKind};
+    use notify::{Event, EventKind};
+
+    use super::collect_paths;
+
+    fn paths_for(kind: EventKind) -> Vec<std::path::PathBuf> {
+        let mut paths = Vec::new();
+        collect_paths(
+            Ok(Event::new(kind).add_path("/logs/a.jsonl".into())),
+            &mut paths,
+        );
+        paths
+    }
+
+    #[test]
+    fn reading_a_file_is_not_a_change_to_it() {
+        assert_eq!(
+            paths_for(EventKind::Access(AccessKind::Open(AccessMode::Any))),
+            Vec::<std::path::PathBuf>::new()
+        );
+        assert_eq!(
+            paths_for(EventKind::Access(AccessKind::Close(AccessMode::Read))),
+            Vec::<std::path::PathBuf>::new()
+        );
+        assert_eq!(
+            paths_for(EventKind::Access(AccessKind::Read)),
+            Vec::<std::path::PathBuf>::new()
+        );
+    }
+
+    #[test]
+    fn writing_creating_and_closing_after_a_write_are() {
+        for kind in [
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            EventKind::Create(CreateKind::File),
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            EventKind::Any,
+        ] {
+            assert_eq!(
+                paths_for(kind),
+                [std::path::PathBuf::from("/logs/a.jsonl")],
+                "{kind:?}"
+            );
+        }
+    }
 }
