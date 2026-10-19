@@ -103,14 +103,16 @@ class Dispatcher:
             await asyncio.wait(running)
 
     async def aclose(self) -> None:
-        """Cancel every worker. Their attempts stay active in the log; the next start
-        re-attaches to them."""
-        for worker in self._workers.values():
+        """Cancel every worker still running. Their attempts stay active in the log; the
+        next start re-attaches to them. Workers that had ended stay for ``finished``."""
+        running = {t: w for t, w in self._workers.items() if not w.done()}
+        for worker in running.values():
             worker.cancel()
-        for worker in self._workers.values():
+        for task_id, worker in running.items():
             with suppress(asyncio.CancelledError):
                 await worker
-        self._workers.clear()
+            if worker.cancelled():
+                del self._workers[task_id]
 
     def available(self, events: Sequence[StoredEvent]) -> frozenset[AgentKind]:
         availability = fold_availability(events, cooldown=self._settings.limit_cooldown)

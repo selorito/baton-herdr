@@ -384,8 +384,10 @@ async def run_pending(
             await dispatcher.wait_any()
             results.update(dispatcher.finished())
     finally:
+        # A worker can end between the last collection and the check above; its result is
+        # taken before closing, which forgets every worker.
+        results.update(dispatcher.finished())
         await dispatcher.aclose()
-    results.update(dispatcher.finished())
     return results
 
 
