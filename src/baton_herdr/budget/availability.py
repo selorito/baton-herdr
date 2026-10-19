@@ -39,6 +39,10 @@ class Availability:
         return [agent for agent in agents if self.is_available(agent, now)]
 
 
+# A limit, and an agent that asked to be signed in, keep it out of use for a while.
+_UNAVAILABLE = frozenset({InterruptReason.RATE_LIMITED, InterruptReason.SIGNED_OUT})
+
+
 def fold_availability(
     events: Iterable[StoredEvent],
     *,
@@ -52,7 +56,7 @@ def fold_availability(
             view = replace(
                 view, attempt_agents={**view.attempt_agents, event.attempt_id: event.agent}
             )
-        elif isinstance(event, AttemptInterrupted) and event.reason is InterruptReason.RATE_LIMITED:
+        elif isinstance(event, AttemptInterrupted) and event.reason in _UNAVAILABLE:
             agent = view.attempt_agents.get(event.attempt_id)
             if agent is None:
                 continue

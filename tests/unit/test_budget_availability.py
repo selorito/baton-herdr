@@ -81,3 +81,15 @@ def test_a_later_report_extends_but_never_shortens_the_wait() -> None:
         start=view,
     )
     assert view.limited_until[AgentKind.CLAUDE] == late
+
+
+def test_an_agent_that_asked_to_be_signed_in_is_unavailable_like_a_limited_one() -> None:
+    later = NOW + timedelta(hours=1)
+    view = fold_availability(
+        log(
+            started(CODEX_ATTEMPT, AgentKind.CODEX),
+            interrupted(CODEX_ATTEMPT, InterruptReason.SIGNED_OUT, until=later),
+        )
+    )
+    assert not view.is_available(AgentKind.CODEX, NOW)
+    assert view.is_available(AgentKind.CODEX, later + timedelta(seconds=1))

@@ -33,6 +33,13 @@ class CodexAdapter:
     def resume_command(self, session_ref: str) -> str:
         return f"codex resume {shlex.quote(session_ref)}"
 
+    def signed_out(self, evidence: str) -> str | None:
+        # Its sign-in screen (fixtures/codex/signed_out/), seen when a refresh token had
+        # been used twice; `codex login status` still said logged in.
+        if evidence == "baton:codex_signed_out":
+            return "codex logout && codex login"
+        return None
+
     def model_args(self, model: str) -> str:
         return f"--model {shlex.quote(model)}"
 

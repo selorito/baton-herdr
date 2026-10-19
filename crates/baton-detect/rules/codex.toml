@@ -44,6 +44,14 @@ state = "blocked_other"
 region = "bottom_non_empty_trimmed(30)"
 regex = '''Update available[\s\S]*?Skip until next version'''
 
+# Codex asks to be signed in (fixtures/codex/signed_out/): nothing it is told runs. herdr
+# reports idle from its title. Seen after a refresh token had been used twice.
+[[rules]]
+id = "codex_signed_out"
+state = "blocked_other"
+region = "bottom_non_empty_trimmed(30)"
+regex = '''Sign in with ChatGPT[\s\S]*?Provide your own API key'''
+
 [[rules]]
 id = "codex_resume_picker"
 state = "blocked_other"

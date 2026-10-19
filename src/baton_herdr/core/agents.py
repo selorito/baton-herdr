@@ -27,6 +27,11 @@ class AgentAdapter(Protocol):
         """Shell command that resumes ``session_ref`` directly, without a picker."""
         ...
 
+    def signed_out(self, evidence: str) -> str | None:
+        """When ``evidence`` is the agent asking to be signed in: what a person runs to sign
+        it in again. ``None`` otherwise."""
+        ...
+
     def model_args(self, model: str) -> str:
         """Arguments that pick ``model`` for a launched or resumed session, quoted."""
         ...

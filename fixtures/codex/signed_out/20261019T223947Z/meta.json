@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "agent": "codex",
+  "agent_cli": {
+    "version": "codex-cli 0.162.1",
+    "error": null
+  },
+  "scenario": "signed_out",
+  "captured_at": "2026-10-19T22:39:47.541131+00:00",
+  "herdr_version": "0.9.1",
+  "pane_id": "w1:p1",
+  "herdr_agent": "codex",
+  "herdr_agent_status": "idle",
+  "terminal": {
+    "rows": 40,
+    "cols": null
+  },
+  "recent_lines": 200,
+  "note": "sign-in screen after the update chooser was skipped; the refresh token had been used twice (two Codex sessions started in the same second), 'codex login status' still said logged in; herdr reports idle",
+  "explain_error": null
+}

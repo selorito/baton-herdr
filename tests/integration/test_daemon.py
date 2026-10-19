@@ -7,6 +7,7 @@ import json
 import shlex
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -24,13 +25,14 @@ from baton_herdr.core.events import AttemptInterrupted, TaskCreated
 from baton_herdr.core.fakes import FixedClock, RecordingNotifier
 from baton_herdr.core.model import (
     AgentKind,
+    AgentState,
     AttemptStatus,
     InterruptReason,
     TaskId,
     TaskStatus,
 )
 from baton_herdr.core.notify import NoticeKind
-from baton_herdr.core.panes import PaneProcess
+from baton_herdr.core.panes import PaneObservation, PaneProcess
 from baton_herdr.core.projection import project
 from baton_herdr.daemon import (
     add_task,
@@ -48,7 +50,6 @@ from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from baton_herdr.scheduler.queue import Signature
 
@@ -599,3 +600,54 @@ async def test_sessions_of_one_agent_start_one_after_another(tmp_path: Path) -> 
         await run_pending(rt)
     first_up, second_typed = sorted(host.up_at)[0], sorted(host.typed_at)[1]
     assert second_typed >= first_up
+
+
+SIGN_IN = (
+    Path(__file__).parents[2] / "fixtures/codex/signed_out/20261019T223947Z/screen.detection.txt"
+)
+
+
+class CodexSignedOut(SimulatedAgents):
+    """Codex shows its sign-in screen, as it did live with a used-up refresh token."""
+
+    async def send_keys(self, pane_id: str, keys: Sequence[str]) -> None:
+        command = self._typed.get(pane_id, "")
+        if command.startswith("codex") and list(keys) == ["Enter"]:
+            self._typed.pop(pane_id)
+            self.launched.append(command)
+            self.screens[pane_id] = SIGN_IN.read_text()
+            self.set_observation(
+                PaneObservation(
+                    pane_id=pane_id,
+                    agent=AgentKind.CODEX,
+                    state=AgentState.IDLE,
+                    evidence="herdr:rule:osc_title_idle",
+                )
+            )
+            return
+        await super().send_keys(pane_id, keys)
+
+
+async def test_a_signed_out_agent_hands_its_task_on_and_is_left_alone(tmp_path: Path) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    first = await add_task(store, title="one", instructions="x", workdir="/w/1", clock=clock)
+    await store.close()
+    host = CodexSignedOut(clock, scripts={AgentKind.CLAUDE: "claude-finish.toml"})
+    notifier = RecordingNotifier()
+    settings = settings_for(db, agents=["codex", "claude"], start_timeout_seconds=60)
+    async with open_runtime(settings, host=host, notifier=notifier, clock=clock) as rt:
+        assert await asyncio.wait_for(run_pending(rt), 20) == {first: TaskStatus.COMPLETED}
+        # A task added later does not try Codex again while it waits for a sign-in.
+        second = await add_task(
+            rt.store, title="two", instructions="y", workdir="/w/2", clock=clock
+        )
+        assert await asyncio.wait_for(run_pending(rt), 20) == {second: TaskStatus.COMPLETED}
+        events = await rt.store.read()
+
+    board = project(events)
+    assert [a.agent for a in board.tasks[first].attempts] == [AgentKind.CODEX, AgentKind.CLAUDE]
+    assert [a.agent for a in board.tasks[second].attempts] == [AgentKind.CLAUDE]
+    (stopped,) = [n for n in notifier.notices if "is signed out" in n.text]
+    assert "codex logout && codex login" in " ".join([stopped.text, *stopped.details])

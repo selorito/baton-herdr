@@ -62,7 +62,7 @@ class Plan(StrEnum):
 _RESUMABLE_FAILURES = frozenset({InterruptReason.CRASHED, InterruptReason.STALLED})
 
 
-def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the situation
+def plan_recovery(  # noqa: PLR0911, PLR0913 - one return per rule; each input is a separate fact
     reason: InterruptReason,
     *,
     has_session: bool,
@@ -83,6 +83,8 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
       never came up) lost nothing: the task goes to another agent, or the same one
       starts afresh, as many times as resumes are allowed (``failed_starts_used``).
     - A session the agent can no longer reopen is restarted as a fresh session.
+    - An agent that asked to be signed in hands the task to another agent; with none,
+      a person signs it in.
     - A full context, or an operator's interruption, always goes to a person.
     """
     can_resume = has_session and agent_available
@@ -91,6 +93,9 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
         if can_resume:
             return Plan.RESUME
         return Plan.HAND_OFF if someone_available else Plan.WAIT
+    if reason is InterruptReason.SIGNED_OUT:
+        # Nothing runs on it until a person signs it in; another agent may go on.
+        return Plan.HAND_OFF if another_agent_available else Plan.ASK_HUMAN
     if reason is InterruptReason.RESUME_FAILED:
         # The session is gone; its work is in the working directory. Start afresh.
         return Plan.RESTART if someone_available else Plan.WAIT

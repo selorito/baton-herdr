@@ -114,3 +114,18 @@ def test_a_failed_start_is_tried_again_elsewhere_a_bounded_number_of_times(
         )
         is plan
     )
+
+
+def test_a_signed_out_agent_hands_the_task_on_or_asks_for_a_sign_in() -> None:
+    def plan(other: bool) -> Plan:
+        return plan_recovery(
+            InterruptReason.SIGNED_OUT,
+            has_session=False,
+            agent_available=False,
+            another_agent_available=other,
+            failure_resumes_used=0,
+            max_failure_resumes=2,
+        )
+
+    assert plan(other=True) is Plan.HAND_OFF
+    assert plan(other=False) is Plan.ASK_HUMAN

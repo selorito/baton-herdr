@@ -734,6 +734,17 @@ class TaskRunner:
                 if state is not last_state:
                     await self._observed(task_id, attempt_id, state, evidence)
                     last_state = state
+                if (login := adapter.signed_out(evidence)) is not None:
+                    # Unavailable for the cooldown, as after a limit: no task waits on it.
+                    return await self._interrupt(
+                        task_id,
+                        attempt_id,
+                        InterruptReason.SIGNED_OUT,
+                        f"{agent.value} asks to be signed in. Run `{login}`; it is used "
+                        "again after that.",
+                        resets_at=self._clock.now() + self._settings.limit_cooldown,
+                        screen=screen,
+                    )
                 stuck = await self._no_progress(
                     progress, state, turn, screen, task_id=task_id, agent=agent
                 )

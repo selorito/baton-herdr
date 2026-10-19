@@ -63,6 +63,8 @@ class InterruptReason(StrEnum):
     OPERATOR = "operator"
     # The agent could not reopen the attempt's session (e.g. "No conversation found").
     RESUME_FAILED = "resume_failed"
+    # The agent asked to be signed in; it is of no use until a person does.
+    SIGNED_OUT = "signed_out"
 
 
 class AttemptOutcome(StrEnum):

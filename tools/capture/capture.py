@@ -67,6 +67,7 @@ class Scenario(StrEnum):
     CONTEXT_FULL = "context_full"
     CRASHED = "crashed"
     RESUME_PROMPT = "resume_prompt"
+    SIGNED_OUT = "signed_out"
 
 
 class Agent(StrEnum):

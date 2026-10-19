@@ -24,6 +24,11 @@ is:
   starts afresh, up to `max_failure_resumes` times; it used to wait for a person. Seen
   live: two Codex sessions started in the same second both exited on Codex's shared app
   server. Sessions of one agent now start one after another.
+- **A signed-out agent is set aside.** Codex's sign-in screen (seen live after its refresh
+  token had been used twice; `codex login status` still said logged in) used to look like
+  a start that never finished. baton-detect now recognises it; the attempt is interrupted
+  as `signed_out`, the task moves to another agent, the agent is not used for the limit
+  cooldown, and the notice says what to run (`codex logout && codex login`).
 
 ### Added
 

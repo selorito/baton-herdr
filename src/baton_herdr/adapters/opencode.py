@@ -24,6 +24,10 @@ class OpenCodeAdapter:
     def resume_command(self, session_ref: str) -> str:
         return f"opencode --session {shlex.quote(session_ref)}"
 
+    def signed_out(self, evidence: str) -> str | None:
+        del evidence
+        return None
+
     def model_args(self, model: str) -> str:
         return f"--model {shlex.quote(model)}"
 

@@ -165,3 +165,12 @@ uv tool uninstall baton-herdr
 
 Ayarların `~/.config/baton/`, görev geçmişin `~/.local/share/baton/` altında kalır; istersen
 elle silebilirsin.
+
+### Codex "oturum kapalı" derse
+
+Telegram'da "codex is signed out" bildirimi gelirse Codex'in girişi düşmüştür; işler o
+sırada diğer ajana geçer. Terminalde:
+
+```bash
+codex logout && codex login
+```

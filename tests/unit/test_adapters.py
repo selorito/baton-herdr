@@ -94,6 +94,7 @@ EXPECTED = {
     "codex/blocked_question/20260930T075801Z": IDLE,
     "codex/crashed/20260930T075833Z": UNK,
     "codex/resume_prompt/20260930T075906Z": OTHER,
+    "codex/signed_out/20261019T223947Z": OTHER,  # sign-in screen: the agent is unavailable
     "opencode/idle/20260930T080210Z": IDLE,  # fresh start; herdr idle is a fallback
     "opencode/idle/20260930T080359Z": IDLE,  # after --continue
     "opencode/done/20260930T080234Z": IDLE,  # idle reported by herdr's OpenCode plugin
@@ -494,3 +495,14 @@ def test_every_adapter_picks_a_model_with_one_quoted_argument() -> None:
     for adapter in ADAPTERS.values():
         flag, model = shlex.split(adapter.model_args("vendor/model; rm -rf x"))
         assert (flag, model) == ("--model", "vendor/model; rm -rf x")
+
+
+def test_only_codex_knows_its_sign_in_screen() -> None:
+    assert ADAPTERS[AgentKind.CODEX].signed_out("baton:codex_signed_out") == (
+        "codex logout && codex login"
+    )
+    assert ADAPTERS[AgentKind.CODEX].signed_out("baton:codex_update_prompt") is None
+    assert all(
+        ADAPTERS[a].signed_out("baton:codex_signed_out") is None
+        for a in (AgentKind.CLAUDE, AgentKind.OPENCODE)
+    )

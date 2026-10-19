@@ -10,5 +10,8 @@ HERDR_IDLE_DIALOGS = frozenset(
         # Codex's update chooser, under herdr's osc_title_idle (catalog 2026.10.01.1,
         # herdr#4811): a prompt typed into it picks "Update now".
         "codex/blocked_permission/20261007T153746Z",
+        # Codex's sign-in screen, under the same rule: baton-detect's codex_signed_out
+        # makes it a blocker, and the runner hands the task on.
+        "codex/signed_out/20261019T223947Z",
     }
 )

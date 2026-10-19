@@ -36,6 +36,7 @@ STOPPED = {
     InterruptReason.STALLED: "stopped responding",
     InterruptReason.OPERATOR: "was stopped by the operator",
     InterruptReason.RESUME_FAILED: "could not reopen its session",
+    InterruptReason.SIGNED_OUT: "is signed out",
 }
 
 
