@@ -19,6 +19,11 @@ is:
   batond ran, slowing the agents on the same machine. It now reads a log only when it
   was written to.
 - `baton run` kept the result of a task that ended just as the run finished.
+- **An agent that exits as it starts** is noticed within seconds (only a shell is left in
+  its pane) instead of after the start timeout, and the task moves to another agent, or
+  starts afresh, up to `max_failure_resumes` times; it used to wait for a person. Seen
+  live: two Codex sessions started in the same second both exited on Codex's shared app
+  server. Sessions of one agent now start one after another.
 
 ### Added
 

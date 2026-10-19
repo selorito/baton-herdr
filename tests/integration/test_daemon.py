@@ -20,10 +20,17 @@ from baton_herdr.core.config import (
     SchedulerSettings,
     UsageSettings,
 )
-from baton_herdr.core.events import TaskCreated
+from baton_herdr.core.events import AttemptInterrupted, TaskCreated
 from baton_herdr.core.fakes import FixedClock, RecordingNotifier
-from baton_herdr.core.model import AgentKind, AttemptStatus, TaskId, TaskStatus
+from baton_herdr.core.model import (
+    AgentKind,
+    AttemptStatus,
+    InterruptReason,
+    TaskId,
+    TaskStatus,
+)
 from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.panes import PaneProcess
 from baton_herdr.core.projection import project
 from baton_herdr.daemon import (
     add_task,
@@ -40,6 +47,7 @@ from detector_binary import detector
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from baton_herdr.scheduler.queue import Signature
@@ -512,3 +520,82 @@ def test_models_come_from_the_scheduler_section() -> None:
     assert converted.models == {AgentKind.CLAUDE: {"step": "sonnet"}}
     with pytest.raises(ValueError, match="Input should be"):
         SchedulerSettings.model_validate({"models": {"claude": {"review": "x"}}})
+
+
+class CodexFailsToStart(SimulatedAgents):
+    """Codex prints an error and is gone at once, as two Codex sessions started in the
+    same second did live (its app server's socket); the shell is back in front."""
+
+    async def send_keys(self, pane_id: str, keys: Sequence[str]) -> None:
+        command = self._typed.get(pane_id, "")
+        if command.startswith("codex") and list(keys) == ["Enter"]:
+            self._typed.pop(pane_id)
+            self.launched.append(command)
+            self.screens[pane_id] = f"$ {command}\nError: remote app server transport failed\n$ "
+            self.process_lists[pane_id] = [PaneProcess(pid=7, command="/bin/bash")]
+            return
+        await super().send_keys(pane_id, keys)
+
+
+async def test_an_agent_that_exits_as_it_starts_hands_the_task_on_at_once(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    task_id = await add_task(store, title="t", instructions="do it", workdir="/w", clock=clock)
+    await store.close()
+    host = CodexFailsToStart(clock, scripts={AgentKind.CLAUDE: "claude-finish.toml"})
+    # A start timeout of a minute: the exit must be noticed long before it.
+    settings = settings_for(db, agents=["codex", "claude"], start_timeout_seconds=60)
+    async with open_runtime(settings, host=host, notifier=RecordingNotifier(), clock=clock) as rt:
+        started = asyncio.get_running_loop().time()
+        results = await asyncio.wait_for(run_pending(rt), timeout=20)
+        took = asyncio.get_running_loop().time() - started
+        events = await rt.store.read()
+
+    assert results == {task_id: TaskStatus.COMPLETED}
+    assert took < 15
+    (interrupted,) = [e.event for e in events if isinstance(e.event, AttemptInterrupted)]
+    assert interrupted.reason is InterruptReason.CRASHED
+    assert interrupted.detail == "codex exited as it started."
+    assert [a.agent for a in project(events).tasks[task_id].attempts] == [
+        AgentKind.CODEX,
+        AgentKind.CLAUDE,
+    ]
+
+
+class SlowStart(SimulatedAgents):
+    """Agents that show up a moment after their command; records when each was typed and
+    when it was up."""
+
+    def __init__(self, clock: FixedClock) -> None:
+        super().__init__(clock)
+        self.typed_at: list[float] = []
+        self.up_at: list[float] = []
+
+    async def send_keys(self, pane_id: str, keys: Sequence[str]) -> None:
+        if list(keys) == ["Enter"] and self._typed.get(pane_id, "").startswith("codex"):
+            loop = asyncio.get_running_loop()
+            self.typed_at.append(loop.time())
+            await asyncio.sleep(0.3)
+            await super().send_keys(pane_id, keys)
+            self.up_at.append(loop.time())
+            return
+        await super().send_keys(pane_id, keys)
+
+
+async def test_sessions_of_one_agent_start_one_after_another(tmp_path: Path) -> None:
+    db = tmp_path / "baton.db"
+    clock = FixedClock(NOW)
+    store = await open_event_store(db)
+    for n in ("one", "two"):
+        await add_task(store, title=n, instructions=n, workdir=f"/w/{n}", clock=clock)
+    await store.close()
+    host = SlowStart(clock)
+    async with open_runtime(
+        settings_for(db, agents=["codex"]), host=host, notifier=RecordingNotifier(), clock=clock
+    ) as rt:
+        await run_pending(rt)
+    first_up, second_typed = sorted(host.up_at)[0], sorted(host.typed_at)[1]
+    assert second_typed >= first_up

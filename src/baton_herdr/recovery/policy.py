@@ -70,6 +70,7 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
     another_agent_available: bool,
     failure_resumes_used: int,
     max_failure_resumes: int,
+    failed_starts_used: int = 0,
 ) -> Plan:
     """Decide what happens to an interrupted attempt.
 
@@ -77,7 +78,10 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
       again, which keeps the conversation; before that the task moves to another
       available agent, or waits.
     - A crash or a stall is resumed in the same session a limited number of times
-      (ADR 0005); after that, or without a session to resume, a person decides.
+      (ADR 0005); after that a person decides.
+    - A crash or a stall before the agent had a session (it exited as it started, or
+      never came up) lost nothing: the task goes to another agent, or the same one
+      starts afresh, as many times as resumes are allowed (``failed_starts_used``).
     - A session the agent can no longer reopen is restarted as a fresh session.
     - A full context, or an operator's interruption, always goes to a person.
     """
@@ -92,4 +96,14 @@ def plan_recovery(  # noqa: PLR0913 - each input is a separate fact about the si
         return Plan.RESTART if someone_available else Plan.WAIT
     if reason in _RESUMABLE_FAILURES and can_resume and failure_resumes_used < max_failure_resumes:
         return Plan.RESUME
+    failed_start = reason in _RESUMABLE_FAILURES and not has_session
+    if failed_start and failed_starts_used < max_failure_resumes:
+        return _start_again(agent_available=agent_available, other=another_agent_available)
     return Plan.ASK_HUMAN
+
+
+def _start_again(*, agent_available: bool, other: bool) -> Plan:
+    """Another agent if there is one, else the same agent afresh, else later."""
+    if other:
+        return Plan.HAND_OFF
+    return Plan.RESTART if agent_available else Plan.WAIT

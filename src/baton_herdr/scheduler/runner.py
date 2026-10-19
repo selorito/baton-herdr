@@ -175,6 +175,8 @@ class RunnerSettings:
     # Before a task's tokens are summed, time for the usage collector to store the
     # agent's last response (it reads the logs every couple of seconds).
     usage_grace_s: float = 3
+    # How long a launch of an agent may hold back the next launch of the same agent.
+    launch_settle_s: float = 15
     # Tasks side by side (ADR 0017): sessions of one agent at once, and tasks in all.
     agent_slots: Mapping[AgentKind, int] = field(default_factory=dict)
     default_agent_slots: int = DEFAULT_AGENT_SLOTS
@@ -238,6 +240,8 @@ class TaskRunner:
         # Held from choosing an agent until the attempt is in the log, so tasks starting
         # side by side each see the slots the others took (ADR 0017).
         self._starting = asyncio.Lock()
+        # One launch at a time per agent (``_launch``).
+        self._launching: dict[AgentKind, asyncio.Lock] = {}
 
     async def run(self, task_id: TaskId) -> TaskStatus:
         """Drive ``task_id`` until it is done, has to wait, or needs a person.
@@ -310,6 +314,7 @@ class TaskRunner:
             another_agent_available=await self._pick_agent(tried | {attempt.agent}) is not None,
             failure_resumes_used=_failure_resumes(events, task.task_id),
             max_failure_resumes=self._settings.max_failure_resumes,
+            failed_starts_used=_failed_starts(events, task.task_id, before=attempt.attempt_id),
         )
         self._log.info("recovery plan", plan=plan.value, reason=reason.value)
         if plan is Plan.RESUME and attempt.session_ref is not None:
@@ -465,10 +470,11 @@ class TaskRunner:
                     pane_id=pane_id,
                 ),
             )
-            await self._host.send_text(
-                pane_id, self._with_args(attempt.agent, adapter.resume_command(session_ref), task)
+            await self._launch(
+                attempt.agent,
+                pane_id,
+                self._with_args(attempt.agent, adapter.resume_command(session_ref), task),
             )
-            await self._host.send_keys(pane_id, ["Enter"])
             await self._deliver(notices.resumed(task, attempt.agent, attempt.attempt_id))
             return await self._supervise(
                 task.task_id,
@@ -522,6 +528,35 @@ class TaskRunner:
                 turn=turn,
                 last_seen=last,
             )
+
+    async def _exited(self, pane_id: str) -> bool:
+        """Whether only a shell is left in the foreground of the pane. Unknown (no process
+        list, herdr out of reach) is not taken for an exit."""
+        try:
+            processes = await self._host.processes(pane_id)
+        except PaneHostError:
+            return False
+        return bool(processes) and all(_is_shell(p.command) for p in processes)
+
+    async def _launch(self, agent: AgentKind, pane_id: str, command: str) -> None:
+        """Type ``command`` into the pane and wait until the agent is up, it exited, or a
+        while has passed. Sessions of one agent start one after another: Codex sessions
+        started in the same second failed on its shared app server (seen live)."""
+        async with self._launching.setdefault(agent, asyncio.Lock()):
+            await self._host.send_text(pane_id, command)
+            await self._host.send_keys(pane_id, ["Enter"])
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            settle = min(self._settings.launch_settle_s, self._settings.start_timeout_s)
+            while loop.time() - started < settle:
+                try:
+                    if (await self._host.observe(pane_id)).agent is not None:
+                        return
+                except PaneHostError:
+                    return
+                if loop.time() - started >= LAUNCH_GRACE_S and await self._exited(pane_id):
+                    return
+                await asyncio.sleep(min(0.5, self._settings.poll_interval_s))
 
     async def _pane_exists(self, pane_id: str) -> bool:
         try:
@@ -611,8 +646,7 @@ class TaskRunner:
             command = self._settings.launch_commands.get(agent) or self._with_args(
                 agent, self._adapters[agent].launch_command(), task
             )
-            await self._host.send_text(pane_id, command)
-            await self._host.send_keys(pane_id, ["Enter"])
+            await self._launch(agent, pane_id, command)
             if previous is None:
                 notice = notices.started(task, agent, reason, attempt_id)
             elif previous is agent:
@@ -635,7 +669,7 @@ class TaskRunner:
                 task_id, attempt_id, agent, pane_id, (_prompt(task, kind), kind)
             )
 
-    async def _supervise(  # noqa: PLR0912, PLR0913 - one branch per outcome of a turn; the attempt, plus where a re-attach resumes
+    async def _supervise(  # noqa: PLR0912, PLR0913, PLR0915 - one branch per outcome of a turn; the attempt, plus where a re-attach resumes
         self,
         task_id: TaskId,
         attempt_id: AttemptId,
@@ -665,6 +699,7 @@ class TaskRunner:
         screen = ""
         progress = ProgressWatch()
         own_dir = await self._trusted_workdir(task_id)
+        launched_at = loop.time()
         try:
             while True:
                 if loop.time() > deadline:
@@ -685,6 +720,16 @@ class TaskRunner:
                 )
                 saw_agent = saw_agent or (observation is not None and observation.agent is not None)
                 if not saw_agent and state is not AgentState.CRASHED:
+                    if loop.time() - launched_at >= LAUNCH_GRACE_S and await self._exited(pane_id):
+                        # Back at the shell: the agent exited as it started (an error, a
+                        # missing login). Waiting for the start timeout would only lose time.
+                        return await self._interrupt(
+                            task_id,
+                            attempt_id,
+                            InterruptReason.CRASHED,
+                            f"{agent.value} exited as it started.",
+                            screen=screen,
+                        )
                     continue  # the agent process has not started yet
                 if state is not last_state:
                     await self._observed(task_id, attempt_id, state, evidence)
@@ -1169,6 +1214,41 @@ class _ObservationFeed:
         self._pump_task.cancel()
         with suppress(asyncio.CancelledError):
             await self._pump_task
+
+
+# A shell still in front this long after an agent's command means the agent exited.
+LAUNCH_GRACE_S = 3
+_SHELLS = frozenset({"bash", "sh", "zsh", "fish", "dash", "ksh"})
+
+
+def _is_shell(command: str) -> bool:
+    """An interactive shell: ``/bin/bash``, ``-zsh``, ``bash -i``. A shell running a script
+    (an agent started through a wrapper) is not one."""
+    parts = command.split()
+    if not parts or Path(parts[0]).name.lstrip("-") not in _SHELLS:
+        return False
+    return all(part.startswith("-") for part in parts[1:])
+
+
+def _failed_starts(events: Sequence[StoredEvent], task_id: TaskId, *, before: AttemptId) -> int:
+    """Earlier attempts of this task that crashed or stalled before they had a session."""
+    reason: dict[AttemptId, InterruptReason] = {}
+    session: set[AttemptId] = set()
+    for stored in events:
+        event = stored.event
+        if event.task_id != task_id or not isinstance(event, AttemptInterrupted | AttemptLocated):
+            continue
+        if isinstance(event, AttemptLocated) and event.session_ref:
+            session.add(event.attempt_id)
+        elif isinstance(event, AttemptInterrupted):
+            reason[event.attempt_id] = event.reason
+    return sum(
+        1
+        for attempt_id, why in reason.items()
+        if attempt_id != before
+        and attempt_id not in session
+        and why in {InterruptReason.CRASHED, InterruptReason.STALLED}
+    )
 
 
 def _failure_resumes(events: Sequence[StoredEvent], task_id: TaskId) -> int:

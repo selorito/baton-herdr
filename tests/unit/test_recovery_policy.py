@@ -57,7 +57,7 @@ LIMIT, CRASH, STALL, FULL, OPERATOR = (
         (CRASH, True, True, False, 0, Plan.RESUME),
         (STALL, True, True, False, 1, Plan.RESUME),
         (CRASH, True, True, True, 2, Plan.ASK_HUMAN),
-        (CRASH, False, True, True, 0, Plan.ASK_HUMAN),
+        (CRASH, False, True, True, 0, Plan.HAND_OFF),  # it never got going: nothing lost
         (CRASH, True, False, True, 0, Plan.ASK_HUMAN),
         # The session is gone: start afresh, on any available agent, or wait.
         (InterruptReason.RESUME_FAILED, True, True, False, 0, Plan.RESTART),
@@ -79,6 +79,38 @@ def test_plan_recovery(  # noqa: PLR0913, PLR0917 - one parameter per table colu
             another_agent_available=other_ok,
             failure_resumes_used=used,
             max_failure_resumes=2,
+        )
+        is plan
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "agent_ok", "other_ok", "failed_starts", "plan"),
+    [
+        # An agent that exited as it started, or never came up, had no session: the task
+        # goes to another agent, else the same one starts afresh, else it waits.
+        (CRASH, True, True, 0, Plan.HAND_OFF),
+        (STALL, True, False, 1, Plan.RESTART),
+        (CRASH, False, False, 0, Plan.WAIT),
+        # As many times as resumes are allowed; then a person.
+        (CRASH, True, True, 2, Plan.ASK_HUMAN),
+        (STALL, True, False, 2, Plan.ASK_HUMAN),
+        # A limit or a full context without a session keeps its own rule.
+        (FULL, True, True, 0, Plan.ASK_HUMAN),
+    ],
+)
+def test_a_failed_start_is_tried_again_elsewhere_a_bounded_number_of_times(
+    reason: InterruptReason, agent_ok: bool, other_ok: bool, failed_starts: int, plan: Plan
+) -> None:
+    assert (
+        plan_recovery(
+            reason,
+            has_session=False,
+            agent_available=agent_ok,
+            another_agent_available=other_ok,
+            failure_resumes_used=0,
+            max_failure_resumes=2,
+            failed_starts_used=failed_starts,
         )
         is plan
     )

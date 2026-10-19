@@ -146,3 +146,15 @@ def test_a_denial_holds_until_the_operator_answers() -> None:
     assert turn_from_log(denied, A1).denied is True
     answered = _log(started, prompted, acted(OperatorAction.DENY), acted(OperatorAction.ANSWER))
     assert turn_from_log(answered, A1).denied is False
+
+
+def test_only_a_bare_shell_counts_as_the_agent_gone() -> None:
+    from baton_herdr.scheduler.runner import _is_shell  # noqa: PLC0415
+
+    assert _is_shell("/bin/bash")
+    assert _is_shell("-zsh")
+    assert _is_shell("bash -i")
+    assert not _is_shell("bash /opt/run-codex.sh")
+    assert not _is_shell("node /usr/lib/node_modules/@openai/codex/bin/codex.js")
+    assert not _is_shell("claude")
+    assert not _is_shell("")
