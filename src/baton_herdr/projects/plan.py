@@ -19,6 +19,9 @@ from baton_herdr.core.events import PlanStep
 
 PLAN_FILE = ".baton/plan.json"
 MAX_STEPS = 8
+# What the planner is asked to keep each step's instructions under; the plan is read with
+# room to spare (PlanStep), so a step a little over does not lose the whole plan.
+STEP_CHARS = 3000
 
 
 class Plan(BaseModel):
@@ -98,7 +101,8 @@ def plan_prompt(request: str) -> str:
         '"needs": [1]}]}. '
         f"Use 1 to {MAX_STEPS} steps, in an order they can be done in. Each step is done "
         "later by another agent who sees only the request, the summary, the list of step "
-        "titles and that step's instructions, so make the instructions complete. Each step "
+        "titles and that step's instructions, so make the instructions complete, in at "
+        f"most {STEP_CHARS} characters: describe what to build, not the code. Each step "
         "should leave something that can be checked on its own. "
         '"needs" lists the numbers of the earlier steps a step builds on; use [] for a step '
         "that builds on none. Steps that do not need each other are done at the same time "

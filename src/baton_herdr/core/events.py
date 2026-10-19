@@ -85,7 +85,9 @@ class PlanStep(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str = Field(min_length=1, max_length=120)
-    instructions: str = Field(min_length=1, max_length=4000)
+    # The planner is asked for at most STEP_CHARS (projects.plan); this leaves room for an
+    # overshoot, which rejected a whole plan when the bound was 4000 (seen live).
+    instructions: str = Field(min_length=1, max_length=12000)
     # The numbers (from 1) of the earlier steps this one builds on (ADR 0017); None: the
     # step before it, so a plan without them runs in order.
     needs: tuple[PositiveInt, ...] | None = None

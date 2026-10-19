@@ -28,6 +28,7 @@ from baton_herdr.projects.create import slug
 from baton_herdr.projects.plan import (
     CHECKING,
     MAX_STEPS,
+    STEP_CHARS,
     Plan,
     PlanError,
     plan_prompt,
@@ -294,3 +295,9 @@ def test_a_step_may_only_need_tasks_that_exist() -> None:
                 )
             )
         )
+
+
+def test_the_planner_is_told_the_length_of_a_step_and_a_little_over_is_read() -> None:
+    assert f"in at most {STEP_CHARS} characters" in plan_prompt("A site")
+    long_step = {"title": "Page", "instructions": "x" * (STEP_CHARS + 2000)}
+    assert read_plan(json.dumps({"steps": [long_step]})).steps[0].instructions == "x" * 5000
