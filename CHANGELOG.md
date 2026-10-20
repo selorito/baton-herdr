@@ -11,9 +11,11 @@ is:
 
 ## [Unreleased]
 
-- **`baton agent ready <agent>`** uses an agent again that baton set aside after a limit
-  or a sign-in, once you have fixed it, instead of waiting out the cooldown (ADR 0018).
-  Recorded in the log as `agent.released`, with who said so.
+## [1.2.0] - 2026-10-21
+
+Agents work side by side: a queue of tasks, and a project's independent steps, finish about
+three times sooner. Checked before release against real Claude Code and Codex sessions in a
+throwaway herdr session, with faults injected (`docs/devlog/2026-10-21-release-checks.md`).
 
 ### Fixed
 
@@ -41,6 +43,9 @@ is:
 
 ### Added
 
+- **`baton agent ready <agent>`** uses an agent again that baton set aside after a limit
+  or a sign-in, once you have fixed it, instead of waiting out the cooldown (ADR 0018).
+  Recorded in the log as `agent.released`, with who said so.
 - **Tasks run side by side** (ADR 0017). batond drives several tasks at once, each in its
   own worker: two sessions per agent and four tasks in all by default
   (`[scheduler] agent_slots`, `max_parallel_tasks`). An agent with a free slot is chosen
@@ -67,6 +72,17 @@ is:
   screenshots, each read again on every later turn; allowed two in the last step, an
   agent wrote them outside the project (a snap browser's directory) and waited for a
   person to allow reading them. baton takes the finished page's screenshot itself.
+
+### Known limitations
+
+- **Codex sessions of one account share one refresh token.** baton starts them one after
+  another, which keeps two from refreshing it at the same start (seen live before 1.2).
+  Two sessions that already run can still both refresh it when it expires during a long
+  turn; Codex then signs out. Not reproduced yet. If it happens, a session that shows the
+  sign-in screen is handed on as above, and one that only stops is resumed after
+  `stall_minutes`; sign in again with the command in the notice.
+- The reason line of a hand-off says "limited until" for an agent set aside after a
+  sign-in too; the line above it says why.
 
 ## [1.1.0] - 2026-10-12
 
@@ -244,7 +260,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/selorito/baton-herdr/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/selorito/baton-herdr/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/selorito/baton-herdr/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/selorito/baton-herdr/releases/tag/v1.0.0
