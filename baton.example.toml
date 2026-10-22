@@ -77,7 +77,9 @@ timezone = "UTC"
 # unless backend and model are set: plain messages are then answered as before. Needs
 # Ollama (ollama.com) and a model pulled with `ollama pull`.
 # backend = "ollama"
-# model = "ornith-1.5:9b"          # any model you have pulled; there is no default
+# model = "qwen3.5:4b"             # any model you have pulled; there is no default.
+#                                   # Measured: 4B leaves 3.9 GB free on a 15 GB machine,
+#                                   # 9B 1.1 GB, at about the same speed on a CPU.
 # url = "http://127.0.0.1:11434"
 # timeout_seconds = 60             # a model on the CPU may need more; see baton doctor
 # keep_alive = "5m"                # "0" unloads the model after each answer
