@@ -79,6 +79,15 @@ class TaskEscalated(_Event):
     failures: PositiveInt
 
 
+class TaskTierChanged(_Event):
+    """The operator set the task's tier (ADR 0020). It applies from the next attempt; one
+    under way runs on. Set to economy, it undoes a move up."""
+
+    type: Literal["task.tier_changed"] = "task.tier_changed"
+    tier: Tier
+    by: str = Field(min_length=1)  # "telegram:<user id>" or "cli"
+
+
 class TaskCompleted(_Event):
     type: Literal["task.completed"] = "task.completed"
 
@@ -341,6 +350,7 @@ type Event = Annotated[
     TaskCreated
     | TaskCompleted
     | TaskEscalated
+    | TaskTierChanged
     | TaskFailed
     | TaskCancelled
     | AgentChosen

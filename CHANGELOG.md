@@ -29,6 +29,13 @@ is:
   stalled after `economy_stall_minutes` (10). The step is logged as `task.escalated` and
   the notice says `⬆ Moved up to premium on claude.` A task moves up once and does not go
   back down by itself.
+- **Tiers from Telegram and the CLI** (ADR 0020). `/tier t-… economy|premium` and
+  `baton task tier` set the tier a task runs in from its next attempt (`task.tier_changed`);
+  setting economy undoes a move up. `/new … #economy` (or `#premium`) and
+  `baton project new --tier` set a whole project's tier: its plan, steps and merges.
+  `/status` marks economy tasks `(economy)` and moved-up ones `(⬆premium)`, and
+  `baton status` shows economy attempts as `claude/economy:…`; premium lines read as
+  before.
 
 ### Changed
 

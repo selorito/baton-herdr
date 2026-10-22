@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, Repository, Workspace
     from baton_herdr.core.projection import PlanView, TaskView
+    from baton_herdr.core.routing import Tier
 
 # Whoever acts for baton itself in the log.
 BATON = "baton"
@@ -81,9 +82,11 @@ def _new_task_id() -> TaskId:
 
 
 async def start_project(
-    store: EventStore, *, root: Path, request: str, clock: Clock
+    store: EventStore, *, root: Path, request: str, clock: Clock, tier: Tier | None = None
 ) -> tuple[str, TaskId, Path]:
-    """Make the project's directory and its plan task: (project id, plan task, directory)."""
+    """Make the project's directory and its plan task: (project id, plan task, directory).
+    ``tier`` is the whole project's (ADR 0020): its plan, steps and merges; unset, each
+    kind's tier from [tiers] roles."""
     request = request.strip()
     if not request:
         msg = "Say what to build: /new a one-page website for my cafe"
@@ -102,6 +105,7 @@ async def start_project(
                 project=project_id,
                 role="plan",
                 request=request,
+                tier=tier,
             )
         ]
     )
@@ -169,6 +173,7 @@ async def approve_plan(
             after=step_ids[-1] if step_ids and not parallel else None,
             needs=tuple(step_ids[n - 1] for n in plan.needs(index)) if parallel else (),
             branch=f"baton/step-{index}" if parallel else None,
+            tier=task.tier,
         )
         events.append(created)
         step_ids.append(step_id)
@@ -379,6 +384,7 @@ async def _merge_steps(
                     workdir=main,
                     project=step.project,
                     role="merge",
+                    tier=step.tier,
                     after=step.task_id,
                 ),
             ]

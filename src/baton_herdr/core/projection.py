@@ -41,6 +41,7 @@ from baton_herdr.core.events import (
     TaskCreated,
     TaskEscalated,
     TaskFailed,
+    TaskTierChanged,
 )
 from baton_herdr.core.model import (
     AgentKind,
@@ -212,6 +213,22 @@ def apply(board: Board, stored: StoredEvent) -> Board:
     return Board(tasks={**board.tasks, task.task_id: task}, last_seq=stored.seq)
 
 
+def _apply_tier(task: TaskView, stored: StoredEvent) -> TaskView:
+    """A move up to premium, or the operator setting the tier (ADR 0020)."""
+    event = stored.event
+    if isinstance(event, TaskTierChanged):
+        # The operator's word wins over a move up: economy again means economy.
+        escalated = None if event.tier is Tier.ECONOMY else task.escalated
+        return replace(task, tier=event.tier, escalated=escalated)
+    assert isinstance(event, TaskEscalated)  # noqa: S101 - the only other event routed here
+    # Between attempts: the economy attempt has ended, the premium one not begun.
+    if task.live_attempt is not None:
+        raise InvalidEventError(stored, "an attempt is still live")
+    if task.escalated is not None:
+        raise InvalidEventError(stored, "the task has moved up already")
+    return replace(task, escalated=event)
+
+
 def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
     event = stored.event
     match event:
@@ -221,13 +238,8 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "an attempt is still live")
             return replace(task, closed_as=_CLOSED_AS[event.type])
-        case TaskEscalated():
-            # Between attempts: the economy attempt has ended, the premium one not begun.
-            if task.live_attempt is not None:
-                raise InvalidEventError(stored, "an attempt is still live")
-            if task.escalated is not None:
-                raise InvalidEventError(stored, "the task has moved up already")
-            return replace(task, escalated=event)
+        case TaskEscalated() | TaskTierChanged():
+            return _apply_tier(task, stored)
         case AgentChosen():
             return task  # a scheduling decision; the attempt it leads to is its own event
         case AttemptStarted():

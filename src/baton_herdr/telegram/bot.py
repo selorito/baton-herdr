@@ -12,6 +12,7 @@ that the pane hosts the attempt before anything is typed.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction, TaskId
 from baton_herdr.core.projection import project
+from baton_herdr.core.routing import Tier
 from baton_herdr.projects.create import ProjectSetupError
 from baton_herdr.projects.flow import (
     ProjectError,
@@ -31,7 +33,14 @@ from baton_herdr.projects.flow import (
     reject_plan,
     start_project,
 )
-from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel, find_blocker
+from baton_herdr.scheduler.notices import tier_mark
+from baton_herdr.scheduler.operator import (
+    ActionRefusedError,
+    act,
+    cancel,
+    find_blocker,
+    set_tier,
+)
 from baton_herdr.telegram.notifier import parse_reference
 
 if TYPE_CHECKING:
@@ -50,12 +59,16 @@ if TYPE_CHECKING:
 
 HELP = (
     "/new <request>: start a project, e.g. /new a one-page website for my cafe. "
-    "An agent plans it; you get the plan with Start and Cancel.\n"
+    "An agent plans it; you get the plan with Start and Cancel. "
+    "Add #economy to run it on the cheaper model, #premium on the usual one.\n"
     "/status: open tasks and agents.\n"
     "/cancel <task or project>: drop it and close its agent's pane, e.g. /cancel t-1a2b3c4d.\n"
     "/budget: what each agent has left.\n"
+    "/tier <task> economy|premium: the tier it runs in from its next attempt.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
+# A word of its own: "#economy", not "cafe#economy".
+_TIER_TAG = re.compile(r"(?<!\S)#(economy|premium)(?!\S)", re.IGNORECASE)
 PLAN_STARTED = "Started."
 PLAN_CANCELLED = "Cancelled."
 TASK_CANCELLED = "Task cancelled."
@@ -110,7 +123,7 @@ class OperatorBot:
             self._log.warning("telegram update ignored", chat_id=chat_id, user_id=user_id)
         return allowed
 
-    async def command(self, text: str) -> str:
+    async def command(self, text: str) -> str:  # noqa: PLR0911 - one return per command
         name = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0] if text.strip() else ""
         if name == "/status":
             return await self.status()
@@ -122,6 +135,8 @@ class OperatorBot:
             )
         if name == "/new":
             return await self.new_project(text.split(maxsplit=1)[1] if " " in text.strip() else "")
+        if name == "/tier":
+            return await self.tier(text.split()[1:])
         if not name.startswith("/"):
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
@@ -141,6 +156,8 @@ class OperatorBot:
             if task.status.is_terminal:
                 continue
             agent = task.attempts[-1].agent.value if task.attempts else "-"
+            if mark := tier_mark(task):
+                agent = f"{agent} ({mark})"
             line = f"{task.task_id}  {task.status.value}  {agent}  {task.title}"
             blocker = find_blocker(events, task.task_id)
             if blocker is not None:
@@ -163,9 +180,14 @@ class OperatorBot:
         """``/new <request>``: a project and its plan task (ADR 0016)."""
         if self._projects_root is None:
             return "Projects are not set up."
+        request, tier = split_tier(request)
         try:
             project_id, task_id, workdir = await start_project(
-                self._store, root=self._projects_root, request=request, clock=self._clock
+                self._store,
+                root=self._projects_root,
+                request=request,
+                clock=self._clock,
+                tier=tier,
             )
         except (ProjectError, ProjectSetupError) as err:
             return str(err)
@@ -174,6 +196,25 @@ class OperatorBot:
             f"Project {project_id} in {workdir}. An agent plans it now ({task_id}); "
             "the plan comes here for you to start or cancel."
         )
+
+    async def tier(self, args: list[str]) -> str:
+        """``/tier t-… economy|premium`` (ADR 0020)."""
+        if len(args) != 2 or args[1] not in {t.value for t in Tier}:
+            return "Say which task and tier: /tier t-1a2b3c4d economy, or premium."
+        task_id, tier = TaskId(args[0]), Tier(args[1])
+        try:
+            running = await set_tier(
+                store=self._store,
+                clock=self._clock,
+                task_id=task_id,
+                tier=tier,
+                by=f"telegram:{self._settings.owner_id}",
+            )
+        except ActionRefusedError as err:
+            return str(err)
+        self._on_action()
+        later = " from its next attempt; the one under way runs on" if running else ""
+        return f"{task_id} runs {tier.value}{later}."
 
     async def cancel(self, target: str) -> str:
         """``/cancel t-…`` drops a task, ``/cancel p-…`` a whole project."""
@@ -266,6 +307,16 @@ class OperatorBot:
         return _DONE[action]
 
 
+def split_tier(request: str) -> tuple[str, Tier | None]:
+    """``#economy`` or ``#premium`` in a ``/new`` request: the project's tier, taken out of
+    the request (ADR 0020); the last one written wins. Without one the request is left as
+    it is."""
+    tags = _TIER_TAG.findall(request)
+    if not tags:
+        return request, None
+    return _TIER_TAG.sub("", request).strip(), Tier(tags[-1].lower())
+
+
 async def keep_running(
     start: Callable[[], Awaitable[None]],
     *,
@@ -309,7 +360,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     def sender(update: Message | CallbackQuery) -> int | None:
         return update.from_user.id if update.from_user else None
 
-    @router.message(Command("status", "budget", "help", "start", "new", "cancel"))
+    @router.message(Command("status", "budget", "help", "start", "new", "cancel", "tier"))
     async def on_command(message: Message) -> None:
         if operator.authorized(message.chat.id, sender(message)):
             await message.answer(await operator.command(message.text or ""))

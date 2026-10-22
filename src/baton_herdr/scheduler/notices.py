@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from baton_herdr.budget.report import tokens, when
 from baton_herdr.core.model import InterruptReason, OperatorAction
 from baton_herdr.core.notify import Notice, NoticeKind
+from baton_herdr.core.routing import Tier
 from baton_herdr.scheduler.text import screen_tail
 
 if TYPE_CHECKING:
@@ -49,6 +50,15 @@ STALLED = "⏸ Stalled"
 STOPPED_LABEL = "⚠ Stopped"
 ALL_LIMITED = "⛔ All agents limited"
 NO_AGENT = "⛔ No agent available"
+
+
+def tier_mark(task: TaskView) -> str:
+    """The task's tier where it is not the usual one (ADR 0020): "economy", "⬆premium"
+    once it moved up, or "" for premium."""
+    if task.escalated is not None:
+        return "⬆premium"
+    tier = task.attempts[-1].tier if task.attempts else task.tier
+    return "economy" if tier is Tier.ECONOMY else ""
 
 
 def local_time(at: datetime, now: datetime, zone: tzinfo) -> str:

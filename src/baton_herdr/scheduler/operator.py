@@ -20,6 +20,7 @@ from baton_herdr.core.events import (
     AttemptInterrupted,
     AttemptStarted,
     OperatorActed,
+    TaskTierChanged,
 )
 from baton_herdr.core.model import AgentState, AttemptStatus, InterruptReason, OperatorAction
 from baton_herdr.core.panes import PaneHostError
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.model import AgentKind, AttemptId, TaskId
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore
+    from baton_herdr.core.routing import Tier
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +214,26 @@ async def cancel(  # noqa: PLR0913 - the ports, the task and who cancels it
     except InvalidEventError as err:
         raise ActionRefusedError(f"{task_id} has moved on; try again.") from err
     return closed
+
+
+async def set_tier(
+    *, store: EventStore, clock: Clock, task_id: TaskId, tier: Tier, by: str
+) -> bool:
+    """Set the tier ``task_id`` runs in from its next attempt (ADR 0020). Returns whether
+    an attempt is under way, which keeps its tier; raises ``ActionRefusedError`` for a task
+    that does not exist or is closed."""
+    task = project(await store.read()).tasks.get(task_id)
+    if task is None:
+        raise ActionRefusedError(f"There is no task {task_id}.")
+    if task.status.is_terminal:
+        raise ActionRefusedError(f"{task_id} is already {task.status.value}.")
+    try:
+        await store.append(
+            [TaskTierChanged(occurred_at=clock.now(), task_id=task_id, tier=tier, by=by)]
+        )
+    except InvalidEventError as err:
+        raise ActionRefusedError(f"{task_id} has moved on; try again.") from err
+    return task.live_attempt is not None
 
 
 async def release_agent(

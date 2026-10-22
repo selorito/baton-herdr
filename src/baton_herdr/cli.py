@@ -27,7 +27,7 @@ from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
-from baton_herdr.core.routing import Tier  # noqa: TC001 - typer reads the option's type at runtime
+from baton_herdr.core.routing import Tier
 from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, local_timezone, render
 from baton_herdr.ledger import open_event_store, open_usage_store
@@ -40,7 +40,13 @@ from baton_herdr.projects.flow import (
     reject_plan,
     start_project,
 )
-from baton_herdr.scheduler.operator import ActionRefusedError, act, cancel, release_agent
+from baton_herdr.scheduler.operator import (
+    ActionRefusedError,
+    act,
+    cancel,
+    release_agent,
+    set_tier,
+)
 from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
@@ -196,6 +202,32 @@ def task_cancel(
     poke(settings.database.path)
 
 
+@task_app.command("tier")
+def task_tier(
+    task_id: Annotated[str, typer.Argument(help="The task.")],
+    tier: Annotated[Tier, typer.Argument(help="premium or economy (ADR 0020).")],
+) -> None:
+    """Set the tier a task runs in from its next attempt."""
+    settings = _settings()
+
+    async def change() -> bool:
+        store = await open_event_store(settings.database.path)
+        try:
+            return await set_tier(
+                store=store, clock=SystemClock(), task_id=TaskId(task_id), tier=tier, by="cli"
+            )
+        except ActionRefusedError as err:
+            typer.echo(str(err), err=True)
+            raise typer.Exit(code=1) from err
+        finally:
+            await store.close()
+
+    running = asyncio.run(change())
+    later = " from its next attempt; the one under way runs on" if running else ""
+    typer.echo(f"{task_id} runs {tier.value}{later}")
+    poke(settings.database.path)
+
+
 @agent_app.command("ready")
 def agent_ready(
     agent: Annotated[
@@ -235,6 +267,10 @@ def agent_ready(
 @project_app.command("new")
 def project_new(
     request: Annotated[str, typer.Argument(help="What to build, as you would say it.")],
+    tier: Annotated[
+        Tier | None,
+        typer.Option("--tier", help="The whole project's tier. Unset: [tiers] roles decides."),
+    ] = None,
 ) -> None:
     """Start a project: a new directory, and an agent to plan it (ADR 0016)."""
     settings = _settings()
@@ -243,7 +279,11 @@ def project_new(
         store = await open_event_store(settings.database.path)
         try:
             project_id, task_id, workdir = await start_project(
-                store, root=settings.projects.root, request=request, clock=SystemClock()
+                store,
+                root=settings.projects.root,
+                request=request,
+                clock=SystemClock(),
+                tier=tier,
             )
         except (ProjectError, ProjectSetupError) as err:
             typer.echo(str(err), err=True)
@@ -328,8 +368,10 @@ def status() -> None:
     if not tasks:
         typer.echo("no tasks")
     for task in tasks:
+        # An economy attempt says so (ADR 0020); premium ones read as before.
         attempts = " ".join(
-            f"{a.agent.value}:{a.outcome.value if a.outcome else a.status.value}"
+            f"{a.agent.value}{'/economy' if a.tier is Tier.ECONOMY else ''}:"
+            f"{a.outcome.value if a.outcome else a.status.value}"
             for a in task.attempts
         )
         typer.echo(f"{task.task_id}  {task.status.value:<11}  {task.title}  {attempts}".rstrip())
