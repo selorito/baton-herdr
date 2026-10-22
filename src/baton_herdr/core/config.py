@@ -323,6 +323,22 @@ class EconomyProfile(_Section):
     args: tuple[Annotated[str, Field(min_length=1)], ...] = ()
 
 
+class EscalationSettings(_Section):
+    """When an economy task moves up to premium (ADR 0020)."""
+
+    # Economy attempts of a task that stopped for a reason in ``on`` before it moves up.
+    after: int = Field(default=1, ge=1)
+    # "stalled": no progress; "crashed": the agent died after it had started (resumed in
+    # economy first, within max_failure_resumes); "failed_start": it never came up.
+    on: tuple[Literal["stalled", "crashed", "failed_start"], ...] = (
+        "stalled",
+        "crashed",
+        "failed_start",
+    )
+    # An economy attempt counts as stalled sooner than [scheduler] stall_minutes says.
+    economy_stall_minutes: float = Field(default=10, gt=0)
+
+
 class TierSettings(_Section):
     """Which tasks run in the economy tier, and how each agent runs there (ADR 0020)."""
 
@@ -335,6 +351,7 @@ class TierSettings(_Section):
     economy_fallback: Literal["premium", "wait"] = "premium"
     # Per agent; an agent not named here has no economy tier.
     economy: dict[_Agent, EconomyProfile] = Field(default_factory=dict)
+    escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
 class BatonSettings(BaseSettings):

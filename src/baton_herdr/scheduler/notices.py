@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from baton_herdr.budget.quota import AgentBudget
     from baton_herdr.core.changes import Changes
+    from baton_herdr.core.events import TaskEscalated
     from baton_herdr.core.model import AgentKind, AttemptId
     from baton_herdr.core.projection import TaskView
     from baton_herdr.core.usage import UsageTokens
@@ -84,6 +85,29 @@ def restarted(
         attempt_id,
         title=task.title,
         details=details,
+    )
+
+
+def escalated(
+    task: TaskView,
+    agent: AgentKind,
+    escalation: TaskEscalated,
+    reason: str,
+    attempt_id: AttemptId | None = None,
+) -> Notice:
+    """An economy task moved up to premium (ADR 0020)."""
+    failures = "attempt" if escalation.failures == 1 else f"{escalation.failures} attempts"
+    stopped = STOPPED.get(escalation.reason, escalation.reason.value)
+    return Notice(
+        NoticeKind.TASK_ESCALATED,
+        task.task_id,
+        f"⬆ Moved up to premium on {agent.value}.",
+        attempt_id,
+        title=task.title,
+        details=(
+            f"In economy, {escalation.agent.value} {stopped} (economy {failures}).",
+            _why(agent, reason),
+        ),
     )
 
 

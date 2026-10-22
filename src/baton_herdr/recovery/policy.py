@@ -11,6 +11,7 @@ v1 policy, deliberately small (roadmap: "policy engine" deepens it):
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 from baton_herdr.core.model import AgentState, InterruptReason
@@ -57,6 +58,21 @@ class Plan(StrEnum):
     RESTART = "restart"  # end the attempt; start a fresh session, the same agent included
     WAIT = "wait"  # nothing can run now; try again later
     ASK_HUMAN = "ask_human"
+    # end the attempt; the task moves from economy to premium, on the same agent, in a
+    # fresh session (ADR 0020)
+    ESCALATE = "escalate"
+
+
+@dataclass(frozen=True, slots=True)
+class Economy:
+    """An economy attempt's standing for escalation (ADR 0020)."""
+
+    # Whether this interruption is of a kind that counts ([tiers.escalation] on).
+    counts: bool
+    # Economy attempts of the task stopped for a reason that counts, this one included.
+    failures: int
+    # How many of them move the task up.
+    after: int
 
 
 _RESUMABLE_FAILURES = frozenset({InterruptReason.CRASHED, InterruptReason.STALLED})
@@ -71,6 +87,7 @@ def plan_recovery(  # noqa: PLR0911, PLR0913 - one return per rule; each input i
     failure_resumes_used: int,
     max_failure_resumes: int,
     failed_starts_used: int = 0,
+    economy: Economy | None = None,
 ) -> Plan:
     """Decide what happens to an interrupted attempt.
 
@@ -86,6 +103,11 @@ def plan_recovery(  # noqa: PLR0911, PLR0913 - one return per rule; each input i
     - An agent that asked to be signed in hands the task to another agent; with none,
       a person signs it in.
     - A full context, or an operator's interruption, always goes to a person.
+    - An economy attempt (``economy``) whose crash, stall or failed start counts moves the
+      task up to premium once ``after`` such failures add up. A crash with a session is
+      resumed in economy first, as above. Below the count, a stall or a crash that is not
+      resumed starts the same tier afresh: a stuck session's context is not worth keeping.
+      Limits and sign-ins never move a task up: the account is the same in both tiers.
     """
     can_resume = has_session and agent_available
     someone_available = agent_available or another_agent_available
@@ -99,6 +121,13 @@ def plan_recovery(  # noqa: PLR0911, PLR0913 - one return per rule; each input i
     if reason is InterruptReason.RESUME_FAILED:
         # The session is gone; its work is in the working directory. Start afresh.
         return Plan.RESTART if someone_available else Plan.WAIT
+    if economy is not None and economy.counts and reason in _RESUMABLE_FAILURES:
+        crash_resumable = reason is InterruptReason.CRASHED and can_resume
+        if crash_resumable and failure_resumes_used < max_failure_resumes:
+            return Plan.RESUME
+        if not someone_available:
+            return Plan.WAIT
+        return Plan.ESCALATE if economy.failures >= economy.after else Plan.RESTART
     if reason in _RESUMABLE_FAILURES and can_resume and failure_resumes_used < max_failure_resumes:
         return Plan.RESUME
     failed_start = reason in _RESUMABLE_FAILURES and not has_session

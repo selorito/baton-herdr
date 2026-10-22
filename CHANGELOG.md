@@ -22,6 +22,13 @@ is:
   `[tiers]` nothing changes. Economy shares the agent's account and limits; it spends them
   more slowly. Budget reservations (ADR 0019) are learned per tier. New fields:
   `task.created.tier`, `attempt.started.tier` and `.backend`.
+- **An economy task that fails moves up** (ADR 0020). When an economy attempt stalls,
+  crashes or fails to start (`[tiers.escalation] on`), `after` times, the task goes on in
+  premium on the same agent, in a fresh session with the hand-off prompt. A crash is
+  resumed in economy first, within `max_failure_resumes`. An economy attempt counts as
+  stalled after `economy_stall_minutes` (10). The step is logged as `task.escalated` and
+  the notice says `⬆ Moved up to premium on claude.` A task moves up once and does not go
+  back down by itself.
 
 ### Changed
 

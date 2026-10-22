@@ -55,6 +55,7 @@ from baton_herdr.core.events import (
     Event,
     PermissionDecided,
     StoredEvent,
+    TaskEscalated,
 )
 from baton_herdr.core.logging import get_logger, log_context
 from baton_herdr.core.model import (
@@ -74,7 +75,7 @@ from baton_herdr.core.redact import redact
 from baton_herdr.core.routing import LaunchProfile, ModelSpec, Tier
 from baton_herdr.core.targeting import resolve_target
 from baton_herdr.policy.rules import Verdict
-from baton_herdr.recovery.policy import Plan, plan_recovery
+from baton_herdr.recovery.policy import Economy, Plan, plan_recovery
 from baton_herdr.scheduler import notices
 from baton_herdr.scheduler.backend import DirectBackend
 from baton_herdr.scheduler.operator import (
@@ -89,7 +90,7 @@ from baton_herdr.scheduler.stall import ProgressWatch
 from baton_herdr.scheduler.turn import Action, Step, TurnState, next_step, turn_from_log
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
     from datetime import datetime
 
     from baton_herdr.budget.availability import Availability
@@ -192,6 +193,11 @@ class RunnerSettings:
     role_tiers: Mapping[str, Tier] = field(default_factory=dict)
     economy: Mapping[AgentKind, ModelSpec] = field(default_factory=dict)
     economy_fallback: Literal["premium", "wait"] = "premium"
+    # When an economy task moves up to premium ([tiers.escalation]), and how soon an
+    # economy attempt counts as stalled.
+    escalate_after: int = 1
+    escalate_on: frozenset[str] = frozenset({"stalled", "crashed", "failed_start"})
+    economy_stall_after: timedelta = field(default_factory=lambda: timedelta(minutes=10))
     # Tasks side by side (ADR 0017): sessions of one agent at once, and tasks in all.
     agent_slots: Mapping[AgentKind, int] = field(default_factory=dict)
     default_agent_slots: int = DEFAULT_AGENT_SLOTS
@@ -218,6 +224,7 @@ class _Outcome(StrEnum):
     FINISHED = "finished"
     HANDED_OFF = "handed_off"
     RESTARTED = "restarted"  # same task, fresh session; the same agent may run it
+    ESCALATED = "escalated"  # economy gave up; premium next, on the same agent (ADR 0020)
     INTERRUPTED = "interrupted"  # recorded; plan_recovery decides what follows
     STOPPED = "stopped"
 
@@ -304,7 +311,7 @@ class TaskRunner:
                 previous = agent
             elif live.status is AttemptStatus.INTERRUPTED:
                 outcome = await self._recover(task, live, tried)
-                if outcome in {_Outcome.HANDED_OFF, _Outcome.RESTARTED}:
+                if outcome in {_Outcome.HANDED_OFF, _Outcome.RESTARTED, _Outcome.ESCALATED}:
                     previous = live.agent
                     if outcome is _Outcome.HANDED_OFF:
                         tried.add(live.agent)
@@ -335,10 +342,13 @@ class TaskRunner:
             failure_resumes_used=_failure_resumes(events, task.task_id),
             max_failure_resumes=self._settings.max_failure_resumes,
             failed_starts_used=_failed_starts(events, task.task_id, before=attempt.attempt_id),
+            economy=self._economy_standing(events, task, attempt, reason),
         )
         self._log.info("recovery plan", plan=plan.value, reason=reason.value)
         if plan is Plan.RESUME and attempt.session_ref is not None:
             return await self._resume(task, attempt, attempt.session_ref)
+        if plan is Plan.ESCALATE:
+            return await self._escalate(task, attempt, reason, events)
         if plan in {Plan.HAND_OFF, Plan.RESTART}:
             await self._append(
                 AttemptEnded(
@@ -373,6 +383,63 @@ class TaskRunner:
             )
         )
         return _Outcome.STOPPED
+
+    def _economy_standing(
+        self,
+        events: Sequence[StoredEvent],
+        task: TaskView,
+        attempt: AttemptView,
+        reason: InterruptReason,
+    ) -> Economy | None:
+        """How an interrupted economy attempt stands for escalation; None in premium."""
+        if attempt.tier is not Tier.ECONOMY:
+            return None
+        on = self._settings.escalate_on
+        return Economy(
+            counts=_failure_kind(reason, has_session=attempt.session_ref is not None) in on,
+            failures=_economy_failures(events, task, on),
+            after=self._settings.escalate_after,
+        )
+
+    async def _escalate(
+        self,
+        task: TaskView,
+        attempt: AttemptView,
+        reason: InterruptReason,
+        events: Sequence[StoredEvent],
+    ) -> _Outcome:
+        """End the economy attempt and record that the task moves up (ADR 0020)."""
+        failures = _economy_failures(events, task, self._settings.escalate_on)
+        now = self._clock.now()
+        await self._append(
+            AttemptEnded(
+                occurred_at=now,
+                task_id=task.task_id,
+                attempt_id=attempt.attempt_id,
+                outcome=AttemptOutcome.ABANDONED,
+            ),
+            TaskEscalated(
+                occurred_at=now,
+                task_id=task.task_id,
+                agent=attempt.agent,
+                reason=reason,
+                failures=failures,
+            ),
+        )
+        self._log.info(
+            "task escalated",
+            agent=attempt.agent,
+            reason=reason.value,
+            failures=failures,
+            to=Tier.PREMIUM,
+        )
+        await self._release_pane(attempt)
+        return _Outcome.ESCALATED
+
+    async def _attempt_tier(self, task_id: TaskId, attempt_id: AttemptId) -> Tier:
+        task = (await self._board()).tasks.get(task_id)
+        attempts = task.attempts if task else ()
+        return next((a.tier for a in attempts if a.attempt_id == attempt_id), Tier.PREMIUM)
 
     async def _trusted_workdir(self, task_id: TaskId) -> str | None:
         """The task's directory, if its folder-trust question may be answered Yes."""
@@ -622,7 +689,10 @@ class TaskRunner:
         )
 
     def _task_tier(self, task: TaskView) -> Tier:
-        """The task's own tier, or the one its kind runs in (ADR 0020)."""
+        """The task's own tier, or the one its kind runs in; premium once it moved up
+        (ADR 0020)."""
+        if task.escalated is not None:
+            return Tier.PREMIUM
         return task.tier or self._settings.role_tiers.get(task.role or "task", Tier.PREMIUM)
 
     async def _choose_agent(
@@ -648,6 +718,10 @@ class TaskRunner:
                 return None, reason, Tier.ECONOMY
             rest = [] if self._settings.economy_fallback == "wait" else agents
             agents = [*cheap, *(a for a in rest if a not in cheap)]
+        elif task.escalated is not None and task.escalated.agent in agents:
+            # Moved up: the same agent goes on, on its premium model, if it can.
+            first = task.escalated.agent
+            agents = [first, *(a for a in agents if a is not first)]
         full = full_agents(
             agent_load(project(events).tasks.values()),
             self._slots(budgets),
@@ -738,6 +812,9 @@ class TaskRunner:
             await self._launch(agent, pane_id, command)
             if previous is None:
                 notice = notices.started(task, agent, reason, attempt_id)
+            elif _just_escalated(task):
+                assert task.escalated is not None  # noqa: S101 - _just_escalated checked it
+                notice = notices.escalated(task, agent, task.escalated, reason, attempt_id)
             elif previous is agent:
                 notice = notices.restarted(task, agent, reason, attempt_id)
             else:
@@ -788,6 +865,7 @@ class TaskRunner:
         screen = ""
         progress = ProgressWatch()
         own_dir = await self._trusted_workdir(task_id)
+        economy = await self._attempt_tier(task_id, attempt_id) is Tier.ECONOMY
         launched_at = loop.time()
         try:
             while True:
@@ -835,7 +913,7 @@ class TaskRunner:
                         screen=screen,
                     )
                 stuck = await self._no_progress(
-                    progress, state, turn, screen, task_id=task_id, agent=agent
+                    progress, state, turn, screen, task_id=task_id, agent=agent, economy=economy
                 )
                 if stuck:
                     return await self._interrupt(
@@ -973,8 +1051,10 @@ class TaskRunner:
         *,
         task_id: TaskId,
         agent: AgentKind,
+        economy: bool = False,
     ) -> str:
-        """Why a working agent counts as stuck, or "" while it makes progress (ADR 0014)."""
+        """Why a working agent counts as stuck, or "" while it makes progress (ADR 0014).
+        An economy attempt is given less time (ADR 0020)."""
         now = self._clock.now()
         if state is not AgentState.WORKING or not turn.prompt_sent:
             watch.pause()
@@ -984,6 +1064,8 @@ class TaskRunner:
         limit = (
             self._settings.stall_after if collecting else self._settings.stall_after_without_usage
         )
+        if economy:
+            limit = min(limit, self._settings.economy_stall_after)
         if not watch.quiet(now, limit):
             return ""
         if collecting:
@@ -1508,3 +1590,37 @@ def _trusts(task: TaskView, own_dirs: Sequence[str], trusted_dirs: Sequence[str]
 def _inside(workdir: str, roots: Sequence[str]) -> bool:
     where = Path(workdir).resolve()
     return any(where.is_relative_to(Path(root).resolve()) for root in roots)
+
+
+def _failure_kind(reason: InterruptReason, *, has_session: bool) -> str | None:
+    """The [tiers.escalation] name of an interruption: "failed_start" when the agent never
+    had a session, else "crashed" or "stalled"; None for other reasons."""
+    if reason not in {InterruptReason.CRASHED, InterruptReason.STALLED}:
+        return None
+    if not has_session:
+        return "failed_start"
+    return "crashed" if reason is InterruptReason.CRASHED else "stalled"
+
+
+def _economy_failures(events: Sequence[StoredEvent], task: TaskView, on: Collection[str]) -> int:
+    """Interruptions of the task's economy attempts that count towards moving it up."""
+    economy = {a.attempt_id: a for a in task.attempts if a.tier is Tier.ECONOMY}
+    session: set[AttemptId] = set()
+    count = 0
+    for stored in events:
+        event = stored.event
+        if event.task_id != task.task_id:
+            continue
+        if isinstance(event, AttemptLocated) and event.session_ref:
+            session.add(event.attempt_id)
+        elif isinstance(event, AttemptInterrupted) and event.attempt_id in economy:
+            kind = _failure_kind(event.reason, has_session=event.attempt_id in session)
+            count += kind in on
+    return count
+
+
+def _just_escalated(task: TaskView) -> bool:
+    """Whether the task's newest attempt is its first since it moved up to premium."""
+    if task.escalated is None or len(task.attempts) < 2:
+        return False
+    return task.attempts[-2].tier is Tier.ECONOMY and task.attempts[-1].tier is Tier.PREMIUM

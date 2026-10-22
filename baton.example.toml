@@ -62,6 +62,13 @@ timezone = "UTC"
 # [tiers.economy]
 # claude = { model = "haiku" }
 # codex = { model = "<a smaller Codex model>", args = ["-c", "model_reasoning_effort=low"] }
+# When an economy task moves up to premium: after this many economy attempts stopped for a
+# reason in `on`. It goes on on the same agent's usual model, in a fresh session; a crash
+# is resumed in economy first. Limits and sign-ins never move a task up.
+# [tiers.escalation]
+# after = 1
+# on = ["stalled", "crashed", "failed_start"]
+# economy_stall_minutes = 10
 
 [usage]
 # batond runs baton-detect to record the tokens agents use (ADR 0011).

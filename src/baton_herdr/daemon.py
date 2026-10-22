@@ -150,6 +150,9 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
             for agent, spec in tiers.economy.items()
         },
         economy_fallback=tiers.economy_fallback,
+        escalate_after=tiers.escalation.after,
+        escalate_on=frozenset(tiers.escalation.on),
+        economy_stall_after=timedelta(minutes=tiers.escalation.economy_stall_minutes),
     )
 
 

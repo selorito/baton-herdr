@@ -3,7 +3,14 @@ from __future__ import annotations
 import pytest
 
 from baton_herdr.core.model import AgentState, InterruptReason
-from baton_herdr.recovery.policy import Plan, Verdict, assess, interrupt_reason, plan_recovery
+from baton_herdr.recovery.policy import (
+    Economy,
+    Plan,
+    Verdict,
+    assess,
+    interrupt_reason,
+    plan_recovery,
+)
 
 
 @pytest.mark.parametrize(
@@ -129,3 +136,52 @@ def test_a_signed_out_agent_hands_the_task_on_or_asks_for_a_sign_in() -> None:
 
     assert plan(other=True) is Plan.HAND_OFF
     assert plan(other=False) is Plan.ASK_HUMAN
+
+
+def economy_plan(  # noqa: PLR0913 - one fact per argument, as plan_recovery takes them
+    reason: InterruptReason,
+    *,
+    failures: int,
+    after: int = 1,
+    counts: bool = True,
+    has_session: bool = True,
+    resumes_used: int = 0,
+    available: bool = True,
+) -> Plan:
+    return plan_recovery(
+        reason,
+        has_session=has_session,
+        agent_available=available,
+        another_agent_available=False,
+        failure_resumes_used=resumes_used,
+        max_failure_resumes=2,
+        economy=Economy(counts=counts, failures=failures, after=after),
+    )
+
+
+def test_an_economy_stall_moves_the_task_up_once_enough_failures_add_up() -> None:
+    assert economy_plan(InterruptReason.STALLED, failures=1) is Plan.ESCALATE
+    # Below the count: the same tier afresh; the stuck session is not resumed.
+    assert economy_plan(InterruptReason.STALLED, failures=1, after=2) is Plan.RESTART
+    assert economy_plan(InterruptReason.STALLED, failures=2, after=2) is Plan.ESCALATE
+
+
+def test_an_economy_crash_is_resumed_in_economy_first() -> None:
+    assert economy_plan(InterruptReason.CRASHED, failures=1) is Plan.RESUME
+    assert economy_plan(InterruptReason.CRASHED, failures=3, resumes_used=2) is Plan.ESCALATE
+
+
+def test_an_economy_start_that_failed_moves_up_at_once() -> None:
+    assert economy_plan(InterruptReason.CRASHED, failures=1, has_session=False) is Plan.ESCALATE
+
+
+def test_what_does_not_count_is_recovered_as_in_premium() -> None:
+    plan = economy_plan(InterruptReason.STALLED, failures=0, counts=False)
+    assert plan is Plan.RESUME  # a stall with a session, resumes left
+    # Limits and sign-ins never move a task up: the account is the same in both tiers.
+    assert economy_plan(InterruptReason.RATE_LIMITED, failures=5) is Plan.RESUME
+    assert economy_plan(InterruptReason.SIGNED_OUT, failures=5) is Plan.ASK_HUMAN
+
+
+def test_an_economy_failure_with_no_agent_to_go_on_waits() -> None:
+    assert economy_plan(InterruptReason.STALLED, failures=1, available=False) is Plan.WAIT

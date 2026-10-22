@@ -68,6 +68,17 @@ class TaskCreated(_Event):
     tier: Tier | None = None
 
 
+class TaskEscalated(_Event):
+    """An economy task moves up to premium after its economy attempts failed (ADR 0020).
+    Its next attempt runs on ``agent`` in premium, as a fresh session."""
+
+    type: Literal["task.escalated"] = "task.escalated"
+    agent: AgentKind
+    reason: InterruptReason
+    # Economy attempts that stopped for a reason that counts, this one included.
+    failures: PositiveInt
+
+
 class TaskCompleted(_Event):
     type: Literal["task.completed"] = "task.completed"
 
@@ -329,6 +340,7 @@ class AgentReleased(_AttemptEvent):
 type Event = Annotated[
     TaskCreated
     | TaskCompleted
+    | TaskEscalated
     | TaskFailed
     | TaskCancelled
     | AgentChosen

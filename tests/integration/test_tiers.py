@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
+
+import pytest
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.budget.reservation import expected_cost, session_costs
 from baton_herdr.core.config import SchedulerSettings, TierSettings
-from baton_herdr.core.events import AgentChosen, AttemptEnded, AttemptLocated, AttemptStarted
+from baton_herdr.core.events import (
+    AgentChosen,
+    AttemptEnded,
+    AttemptLocated,
+    AttemptStarted,
+    TaskEscalated,
+)
 from baton_herdr.core.fakes import FixedClock, InMemoryEventStore, RecordingNotifier
-from baton_herdr.core.model import AgentKind, AttemptId, AttemptOutcome, TaskStatus
-from baton_herdr.core.projection import project
+from baton_herdr.core.model import (
+    AgentKind,
+    AttemptId,
+    AttemptOutcome,
+    InterruptReason,
+    TaskStatus,
+)
+from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.routing import LaunchProfile, ModelSpec, Tier
 from baton_herdr.core.usage import UsageRecord, UsageTokens
 from baton_herdr.daemon import add_task, runner_settings
@@ -31,13 +46,15 @@ CLAUDE, CODEX = AgentKind.CLAUDE, AgentKind.CODEX
 HAIKU = {CLAUDE: ModelSpec(model="haiku")}
 
 
-async def run(
+async def run(  # noqa: PLR0913 - one switch per setting a test varies
     *,
     tier: Tier | None = None,
     role_tiers: dict[str, Tier] | None = None,
     economy: dict[AgentKind, ModelSpec] | None = None,
     fallback: Literal["premium", "wait"] = "premium",
     crash: bool = False,
+    max_failure_resumes: int = 2,
+    notifier: RecordingNotifier | None = None,
 ) -> tuple[TaskStatus, SimulatedAgents, list[Event]]:
     store = InMemoryEventStore()
     task_id = await add_task(
@@ -53,10 +70,11 @@ async def run(
         store=store,
         host=host,
         adapters=ADAPTERS,
-        notifier=RecordingNotifier(),
+        notifier=notifier or RecordingNotifier(),
         clock=CLOCK,
         settings=RunnerSettings(
             agents=(CODEX, CLAUDE),  # codex preferred
+            max_failure_resumes=max_failure_resumes,
             start_timeout_s=2,
             turn_timeout_s=2,
             poll_interval_s=0.05,
@@ -204,3 +222,69 @@ async def test_an_economy_attempt_is_expected_to_cost_what_economy_attempts_did(
     sessions = session_costs(usage)
     assert expected_cost(CLAUDE, "task", tasks, sessions, tier=Tier.ECONOMY) == 5_000
     assert expected_cost(CLAUDE, "task", tasks, sessions, tier=Tier.PREMIUM) == 80_000
+
+
+async def test_an_economy_task_that_keeps_failing_moves_up_on_the_same_agent() -> None:
+    notifier = RecordingNotifier()
+    status, host, events = await run(
+        tier=Tier.ECONOMY, economy=HAIKU, crash=True, max_failure_resumes=0, notifier=notifier
+    )
+    assert status is TaskStatus.COMPLETED
+    # Claude again, though Codex is preferred, on its premium model in a fresh session.
+    assert host.launched == ["claude --model haiku", "claude"]
+    (escalated,) = [e for e in events if isinstance(e, TaskEscalated)]
+    assert (escalated.agent, escalated.reason, escalated.failures) == (
+        CLAUDE,
+        InterruptReason.CRASHED,
+        1,
+    )
+    started = [e for e in events if isinstance(e, AttemptStarted)]
+    assert [e.tier for e in started] == [Tier.ECONOMY, Tier.PREMIUM]
+    notice = next(n for n in notifier.notices if n.kind is NoticeKind.TASK_ESCALATED)
+    assert notice.text == "⬆ Moved up to premium on claude."
+    assert notice.details[0] == "In economy, claude crashed (economy attempt)."
+
+
+async def test_a_crash_in_economy_is_resumed_there_before_anything_moves_up() -> None:
+    status, host, events = await run(tier=Tier.ECONOMY, economy=HAIKU, crash=True)
+    assert status is TaskStatus.COMPLETED
+    assert not [e for e in events if isinstance(e, TaskEscalated)]
+    assert host.launched[-1].endswith("--model haiku")
+
+
+async def test_a_task_moves_up_once_and_only_between_attempts() -> None:
+    store = InMemoryEventStore()
+    task_id = await add_task(store, title="t", instructions="-", workdir="/w", clock=CLOCK)
+    attempt = AttemptId(uuid5(NAMESPACE_URL, "live"))
+    up = TaskEscalated(
+        occurred_at=NOW, task_id=task_id, agent=CLAUDE, reason=InterruptReason.STALLED, failures=1
+    )
+    await store.append(
+        [AttemptStarted(occurred_at=NOW, task_id=task_id, attempt_id=attempt, agent=CLAUDE)]
+    )
+    with pytest.raises(InvalidEventError, match="still live"):
+        await store.append([up])
+    await store.append(
+        [
+            AttemptEnded(
+                occurred_at=NOW,
+                task_id=task_id,
+                attempt_id=attempt,
+                outcome=AttemptOutcome.ABANDONED,
+            ),
+            up,
+        ]
+    )
+    assert project(await store.read()).tasks[task_id].escalated == up
+    with pytest.raises(InvalidEventError, match="moved up already"):
+        await store.append([up.model_copy(update={"event_id": uuid4()})])
+
+
+def test_escalation_comes_from_its_own_section() -> None:
+    tiers = TierSettings.model_validate(
+        {"escalation": {"after": 2, "on": ["stalled"], "economy_stall_minutes": 5}}
+    )
+    converted = runner_settings(SchedulerSettings(), tiers=tiers)
+    assert converted.escalate_after == 2
+    assert converted.escalate_on == frozenset({"stalled"})
+    assert converted.economy_stall_after == timedelta(minutes=5)

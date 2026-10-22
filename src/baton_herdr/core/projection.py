@@ -39,6 +39,7 @@ from baton_herdr.core.events import (
     TaskCancelled,
     TaskCompleted,
     TaskCreated,
+    TaskEscalated,
     TaskFailed,
 )
 from baton_herdr.core.model import (
@@ -121,6 +122,8 @@ class TaskView:
     merge_failed: bool = False
     # Set when the task was given a tier (ADR 0020); else its kind's tier applies.
     tier: Tier | None = None
+    # Set once an economy task moved up to premium: the agent it continues on.
+    escalated: TaskEscalated | None = None
 
     @property
     def live_attempt(self) -> AttemptView | None:
@@ -218,6 +221,13 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
             if task.live_attempt is not None:
                 raise InvalidEventError(stored, "an attempt is still live")
             return replace(task, closed_as=_CLOSED_AS[event.type])
+        case TaskEscalated():
+            # Between attempts: the economy attempt has ended, the premium one not begun.
+            if task.live_attempt is not None:
+                raise InvalidEventError(stored, "an attempt is still live")
+            if task.escalated is not None:
+                raise InvalidEventError(stored, "the task has moved up already")
+            return replace(task, escalated=event)
         case AgentChosen():
             return task  # a scheduling decision; the attempt it leads to is its own event
         case AttemptStarted():
