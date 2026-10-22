@@ -19,7 +19,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
+from baton_herdr.assistant.conversation import CardContext
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.report import budget_lines, when
 from baton_herdr.core.backoff import Backoff
 from baton_herdr.core.logging import get_logger
@@ -50,9 +53,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from aiogram import Bot
-    from aiogram.types import CallbackQuery, Message
+    from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
-    from baton_herdr.assistant.conversation import Assistant
+    from baton_herdr.assistant.conversation import Assistant, Reply
     from baton_herdr.budget.load import BudgetReader
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.model import AgentKind
@@ -91,6 +94,10 @@ class BotSettings:
     limit_cooldown: timedelta
     # Zone for the times shown, as configured for the scheduler.
     timezone: str = "UTC"
+    # For the assistant's cards (ADR 0021): the reserve agent choice keeps, and the tier a
+    # project's plan runs in unless the request says (#economy).
+    reserve_percent: float = 10
+    plan_tier: str = "premium"
 
 
 class OperatorBot:
@@ -144,9 +151,35 @@ class OperatorBot:
             return await self.tier(text.split()[1:])
         if not name.startswith("/"):
             if self.assistant is not None and text.strip():
-                return await self.assistant.answer(text.strip())
+                return (await self.converse(text)).text
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
+
+    async def converse(self, text: str) -> Reply:
+        """A plain message, answered by the assistant (ADR 0021), with a card's buttons when
+        it proposes a project."""
+        assert self.assistant is not None  # noqa: S101 - only called with one
+        return await self.assistant.answer(text.strip(), context=self._card_context)
+
+    async def _card_context(self, request: str) -> CardContext:
+        where = str(self._projects_root) if self._projects_root else "-"
+        agents = list(self._settings.agents)
+        budgets = (
+            await self._budget.read(agents, await self._store.read(), self._clock.now())
+            if self._budget is not None
+            else {}
+        )
+        agent = choose_agent(
+            agents, budgets, reserve_percent=self._settings.reserve_percent, zone=self._zone
+        ).reason
+        tier = split_tier(request)[1]
+        named = tier.value if tier else self._settings.plan_tier
+        return CardContext(where=where, agent=agent, tier=named)
+
+    async def _start_from_card(self, request: str) -> tuple[bool, str]:
+        """A card's Start: exactly what /new does with the request."""
+        said = await self.new_project(request)
+        return said.startswith("Project p-"), said
 
     async def budget(self) -> str:
         if self._budget is None:
@@ -269,10 +302,14 @@ class OperatorBot:
             return f"{PLAN_STARTED} {len(steps)} steps, {len(first)} of them at once to begin with."
         return f"{PLAN_STARTED} {len(steps)} steps, one after another."
 
-    async def button(self, data: str) -> str:
+    async def button(self, data: str) -> str:  # noqa: PLR0911 - one return per kind of button
         """A press on Approve / Deny (``action:task:seq``) or on a plan's Start / Cancel."""
         if data.startswith("plan:"):
             return await self.plan_choice(data)
+        if data.startswith(CARD_PREFIX):
+            if self.assistant is None:
+                return "This card has expired; send the request again."
+            return await self.assistant.press(data, self._start_from_card)
         if data.startswith("task:cancel:"):
             return await self.cancel(data.removeprefix("task:cancel:"))
         try:
@@ -356,6 +393,17 @@ async def keep_running(
             return  # polling ended on its own: batond is stopping
 
 
+def _markup(buttons: tuple[tuple[str, str], ...]) -> InlineKeyboardMarkup | None:
+    """A card's buttons in one row; None for an answer without any."""
+    if not buttons:
+        return None
+    from aiogram.types import InlineKeyboardButton  # noqa: PLC0415 - only with Telegram
+    from aiogram.types import InlineKeyboardMarkup as Markup  # noqa: PLC0415
+
+    row = [InlineKeyboardButton(text=label, callback_data=data) for label, data in buttons]
+    return Markup(inline_keyboard=[row])
+
+
 @asynccontextmanager
 async def _typing(bot: Bot, chat_id: int) -> AsyncIterator[None]:
     """Show "typing…" while the assistant thinks: Telegram clears it after 5 s."""
@@ -408,9 +456,10 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
         if not operator.authorized(message.chat.id, sender(message)):
             return
         text = message.text or ""
-        if operator.assistant is not None and not text.startswith("/"):
+        if operator.assistant is not None and not text.startswith("/") and text.strip():
             async with _typing(bot, message.chat.id):
-                await message.answer(await operator.command(text))
+                reply = await operator.converse(text)
+            await message.answer(reply.text, reply_markup=_markup(reply.buttons))
             return
         await message.answer(await operator.command(text))
 
@@ -421,8 +470,10 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             await query.answer()
             return
         result = await operator.button(query.data or "")
-        final = result in _DONE.values() or result.startswith(
-            (PLAN_STARTED, PLAN_CANCELLED, TASK_CANCELLED, "Project ")
+        final = (
+            result in _DONE.values()
+            or result.startswith((PLAN_STARTED, PLAN_CANCELLED, TASK_CANCELLED, "Project "))
+            or (query.data or "").startswith(CARD_PREFIX)  # a card is pressed once (ADR 0021)
         )
         await query.answer(result, show_alert=not final)
         if query.message is not None and final:

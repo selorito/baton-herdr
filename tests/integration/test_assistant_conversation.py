@@ -81,8 +81,8 @@ async def test_small_talk_is_answered_and_remembered() -> None:
         intent(intent="chat", reply="Merhaba!"), intent(intent="chat", reply="Rica ederim.")
     )
     talk = assistant(fake, InMemoryEventStore())
-    assert await talk.answer("selam") == "Merhaba!"
-    assert await talk.answer("teşekkürler") == "Rica ederim."
+    assert (await talk.answer("selam")).text == "Merhaba!"
+    assert (await talk.answer("teşekkürler")).text == "Rica ederim."
     first, second = fake.turns
     # The operator's words are data in the turn, never part of the instructions.
     assert first.message == "selam"
@@ -97,7 +97,7 @@ async def test_a_plain_status_question_is_answered_from_the_log_without_the_mode
     fake = FakeAssistant()
     talk = assistant(fake, await store_with_a_stalled_task())
     for message in ("t-1a2b3c4d ne durumda?", "t-1a2b3c4d?", "status of t-1a2b3c4d"):
-        answer = await talk.answer(message)
+        answer = (await talk.answer(message)).text
         assert answer.startswith(f"{TASK}  waiting  claude, stopped: stalled  menu")
     assert fake.turns == []
 
@@ -105,9 +105,9 @@ async def test_a_plain_status_question_is_answered_from_the_log_without_the_mode
 async def test_a_plain_why_goes_straight_to_the_explanation() -> None:
     explanation = json.dumps({"answer": "It stalled.", "cites": ["#3"]})
     fake = FakeAssistant(explanation)
-    answer = await assistant(fake, await store_with_a_stalled_task()).answer(
-        "t-1a2b3c4d neden takıldı?"
-    )
+    answer = (
+        await assistant(fake, await store_with_a_stalled_task()).answer("t-1a2b3c4d neden takıldı?")
+    ).text
     assert answer == "It stalled.\n\nKaynak: #3"
     (turn,) = fake.turns  # no call to read the intent
     assert turn.digest is not None
@@ -134,7 +134,7 @@ def test_only_plain_status_questions_skip_the_model(message: str, *, plain: bool
 async def test_a_status_question_the_model_reads_needs_no_second_call() -> None:
     fake = FakeAssistant(intent(intent="status", status={"ids": [TASK]}))
     talk = assistant(fake, await store_with_a_stalled_task())
-    answer = await talk.answer("how is the menu task t-1a2b3c4d going")
+    answer = (await talk.answer("how is the menu task t-1a2b3c4d going")).text
     assert answer.startswith(f"{TASK}  waiting  claude, stopped: stalled  menu")
     assert "stopped: stalled" in answer
     assert len(fake.turns) == 1
@@ -148,9 +148,11 @@ async def test_a_why_is_explained_from_the_digest_with_only_real_citations() -> 
         }
     )
     fake = FakeAssistant(intent(intent="status", status={"ids": [TASK], "why": True}), explanation)
-    answer = await assistant(fake, await store_with_a_stalled_task()).answer(
-        "bana t-1a2b3c4d takılmasını anlat"
-    )
+    answer = (
+        await assistant(fake, await store_with_a_stalled_task()).answer(
+            "bana t-1a2b3c4d takılmasını anlat"
+        )
+    ).text
     assert answer == (
         "Claude stalled: no change on screen and no tokens for 15 minutes.\n\n"
         f"Kaynak: #3, {attempt_ref(ATTEMPT)}"  # #99 and a-deadbeef are not in the digest
@@ -164,36 +166,38 @@ async def test_an_explanation_that_does_not_fit_gives_the_facts_alone() -> None:
     fake = FakeAssistant(
         intent(intent="status", status={"ids": [TASK], "why": True}), "It is stuck, I think."
     )
-    answer = await assistant(fake, await store_with_a_stalled_task()).answer(
-        "explain t-1a2b3c4d to me"
-    )
+    answer = (
+        await assistant(fake, await store_with_a_stalled_task()).answer("explain t-1a2b3c4d to me")
+    ).text
     assert answer.startswith(f"{TASK}  waiting")
 
 
 async def test_ids_the_log_does_not_have_are_said_not_made_up() -> None:
     fake = FakeAssistant(intent(intent="status", status={"ids": ["t-00000000"], "why": True}))
-    answer = await assistant(fake, InMemoryEventStore()).answer("t-00000000 ile ilgili bilgi")
+    answer = (
+        await assistant(fake, InMemoryEventStore()).answer("t-00000000 ile ilgili bilgi")
+    ).text
     assert answer == "t-00000000: kayıtta böyle bir iş yok."
     assert len(fake.turns) == 1  # nothing to explain
 
 
 async def test_an_answer_that_does_not_fit_is_not_understood_in_the_operators_language() -> None:
     assert (
-        await assistant(FakeAssistant("not json"), InMemoryEventStore()).answer("ne oldu")
+        (await assistant(FakeAssistant("not json"), InMemoryEventStore()).answer("ne oldu")).text
     ) == "Anlayamadım; /new ya da /status ile dener misin?"
     assert (
-        await assistant(FakeAssistant("not json"), InMemoryEventStore()).answer("what now")
+        (await assistant(FakeAssistant("not json"), InMemoryEventStore()).answer("what now")).text
     ) == "I did not understand; try /new or /status."
 
 
 async def test_a_project_request_points_to_new_until_cards_exist() -> None:
     proposal = {"request": "A one-page site for my cafe", "target": {"kind": "new"}}
     fake = FakeAssistant(intent(intent="new_project", new_project=proposal))
-    answer = await assistant(fake, InMemoryEventStore()).answer("make a site for my cafe")
-    assert answer.endswith("For now: /new A one-page site for my cafe")
+    answer = (await assistant(fake, InMemoryEventStore()).answer("make a site for my cafe")).text
+    assert answer == "/new A one-page site for my cafe"  # no cards here: the command
     asking = {**proposal, "question": "Which pages should it have?"}
     fake = FakeAssistant(intent(intent="new_project", new_project=asking))
-    assert await assistant(fake, InMemoryEventStore()).answer("a site") == (
+    assert (await assistant(fake, InMemoryEventStore()).answer("a site")).text == (
         "Which pages should it have?"
     )
 
@@ -212,16 +216,16 @@ async def test_one_message_at_a_time_and_none_waits_forever() -> None:
     talk = assistant(Slow(0.3), InMemoryEventStore(), timeout_s=5)
     first = asyncio.create_task(talk.answer("hello"))
     await asyncio.sleep(0.05)
-    assert await talk.answer("are you there") == (
+    assert (await talk.answer("are you there")).text == (
         "Still thinking about your last message; ask again in a moment."
     )
-    assert await first == "late"
+    assert (await first).text == "late"
     slow = assistant(Slow(1), InMemoryEventStore(), timeout_s=0.1)
     assert (
-        await slow.answer("hello") == "The assistant did not answer. /status and /new still work."
-    )
+        await slow.answer("hello")
+    ).text == "The assistant did not answer. /status and /new still work."
     down = assistant(FakeAssistant(AssistantUnavailableError("refused")), InMemoryEventStore())
-    assert await down.answer("merhaba") == (
+    assert (await down.answer("merhaba")).text == (
         "Asistan şu an yanıt veremiyor. /status ve /new yine çalışıyor."
     )
 

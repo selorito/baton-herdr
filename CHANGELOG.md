@@ -23,6 +23,14 @@ is:
   `timeout_seconds`; Telegram shows "typing…" meanwhile. Answers in the language of the
   message (`language`). Without `[assistant]`, plain messages are answered as before;
   `baton doctor` checks Ollama and the model.
+- **Start a project in your own words** (ADR 0021). "kafem için menülü bir site yap"
+  comes back as a card: the request as `/new` would get it, where the project goes, the
+  agent a task would go to now and why, and the tier, with **Start**, **Edit** and
+  **Cancel**. Start does exactly what `/new` does, once, however often it is pressed; the
+  plan then comes for your approval as before, so nothing is coded unasked. Edit takes
+  your next message as the change and replaces the card. A request missing something gets
+  a question instead of a card. Cards can be pressed for `card_ttl_minutes` (30) and are
+  forgotten on a restart.
 
 - **Economy tier** (ADR 0020). Routine work can run on a cheaper model of the same agent:
   `[tiers] roles = { step = "economy" }` and `[tiers.economy] claude = { model = "haiku" }`

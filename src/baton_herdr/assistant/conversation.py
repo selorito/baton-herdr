@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
+from baton_herdr.assistant.cards import Card, CardState, CardStore
 from baton_herdr.assistant.digest import brief, build_digest
 from baton_herdr.core.assistant import (
     MODEL_SCHEMA,
@@ -33,6 +35,7 @@ from baton_herdr.core.assistant import (
 from baton_herdr.core.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from datetime import tzinfo
 
     from baton_herdr.assistant.digest import Digest
@@ -92,11 +95,45 @@ TEXTS: dict[str, dict[Language, str]] = {
     "unknown": {"tr": "{ids}: kayıtta böyle bir iş yok.", "en": "{ids}: no such task in the log."},
     "nothing_open": {"tr": "Açık iş yok.", "en": "No open tasks."},
     "sources": {"tr": "Kaynak", "en": "Sources"},
-    "project_later": {
-        "tr": "Mesajla proje başlatma bir sonraki sürümde geliyor. Şimdilik: /new {request}",
-        "en": "Starting a project from a message comes in the next release. For now: /new "
-        "{request}",
+    "existing_later": {
+        "tr": "Var olan bir klasörde iş başlatmak henüz yok; şimdilik: baton task add",
+        "en": "Work in an existing directory is not here yet; for now: baton task add",
     },
+    "card": {
+        "tr": "📝 Proje önerisi\n{request}\n\n"
+        "Nerede: {where}/… (klasörü baton açar)\n"
+        "Ajan (şu an): {agent}\n"
+        "Katman: {tier}\n"
+        "Önce bir ajan planlar; plan onayına gelir, onaylamadan kod yazılmaz.\n"
+        "Kart {minutes} dakika geçerli.",
+        "en": "📝 Project proposal\n{request}\n\n"
+        "Where: {where}/… (baton makes the directory)\n"
+        "Agent (now): {agent}\n"
+        "Tier: {tier}\n"
+        "An agent plans it first; the plan comes to you, and nothing is coded before you "
+        "start it.\n"
+        "This card can be pressed for {minutes} minutes.",
+    },
+    "edit": {
+        "tr": "Neyi değiştireyim? Bir sonraki mesajını değişiklik olarak alacağım.",
+        "en": "What should change? I will take your next message as the change.",
+    },
+    "cancelled": {
+        "tr": "İptal edildi; hiçbir şey başlatılmadı.",
+        "en": "Cancelled; nothing was started.",
+    },
+    "expired": {
+        "tr": "Bu kartın süresi dolmuş; isteği yeniden yaz.",
+        "en": "This card has expired; send the request again.",
+    },
+    "already_started": {"tr": "Zaten başlatıldı. {result}", "en": "Already started. {result}"},
+    "starting": {"tr": "Başlatılıyor…", "en": "Starting…"},
+    "was_cancelled": {"tr": "Bu kart iptal edilmişti.", "en": "This card was cancelled."},
+    "superseded": {
+        "tr": "Bu kartın yerine yenisi geldi.",
+        "en": "A newer card replaced this one.",
+    },
+    "buttons": {"tr": "Başlat|Düzenle|İptal", "en": "Start|Edit|Cancel"},
 }
 
 # Letters only Turkish writes, among the languages the bot speaks, and common Turkish
@@ -146,6 +183,28 @@ EXPLANATION_SCHEMA = model_schema(Explanation)
 
 
 @dataclass(frozen=True, slots=True)
+class Reply:
+    """What the operator is sent: text, and the buttons of a card when there is one."""
+
+    text: str
+    buttons: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CardContext:
+    """What a card says besides the request, from the bot: where the project would be made,
+    the agent a task would go to now and why, and the tier its plan runs in."""
+
+    where: str
+    agent: str
+    tier: str
+
+
+type CardContextFor = Callable[[str], Awaitable[CardContext]]
+type StartProject = Callable[[str], Awaitable[tuple[bool, str]]]
+
+
+@dataclass(frozen=True, slots=True)
 class AssistantConfig:
     timeout_s: float
     min_confidence: float
@@ -156,37 +215,65 @@ class AssistantConfig:
 
 class Assistant:
     def __init__(
-        self, *, backend: AssistantBackend, store: EventStore, config: AssistantConfig
+        self,
+        *,
+        backend: AssistantBackend,
+        store: EventStore,
+        config: AssistantConfig,
+        cards: CardStore | None = None,
     ) -> None:
         self._backend = backend
         self._store = store
         self._config = config
+        # Proposed projects waiting for a press (A3); None: the bot shows no cards.
+        self._cards = cards
         self._busy = asyncio.Lock()
         self._history: deque[ChatMessage] = deque(maxlen=config.history_messages)
         self._log = get_logger("baton.assistant")
 
-    async def answer(self, message: str) -> str:
-        """The answer to one plain message from the operator."""
+    async def answer(self, message: str, context: CardContextFor | None = None) -> Reply:
+        """The answer to one plain message from the operator. ``context`` fills a card in,
+        when the message proposes a project."""
         language = self._language(message)
         if self._busy.locked():
-            return TEXTS["busy"][language]
+            return Reply(TEXTS["busy"][language])
         async with self._busy:
             try:
-                reply = await self._answer(message, language)
+                reply = await self._answer(message, language, context)
             except (TimeoutError, AssistantUnavailableError) as err:
                 self._log.warning("assistant unavailable", error=str(err) or "timed out")
-                return TEXTS["unavailable"][language]
+                return Reply(TEXTS["unavailable"][language])
             self._history.extend(
-                (ChatMessage("operator", message), ChatMessage("assistant", reply))
+                (ChatMessage("operator", message), ChatMessage("assistant", reply.text))
             )
             return reply
 
-    async def _answer(self, message: str, language: Language) -> str:
+    async def press(self, data: str, start: StartProject) -> str:
+        """A press on a card's button (``as:<action>:<card>``). ``start`` makes the project
+        the way /new does; it runs at most once per card."""
+        _, action, card_id = [*data.split(":", 2), "", ""][:3]
+        if self._cards is None:
+            return TEXTS["expired"]["en"]
+        pressed = await self._cards.press(card_id, action, start)
+        card = pressed.card
+        if card is None:
+            return TEXTS["expired"]["en"]
+        language: Language = "tr" if card.language == "tr" else "en"
+        self._log.info("assistant card", card=card.card_id, action=action, state=card.state)
+        return _press_text(card, acted=pressed.acted, language=language)
+
+    async def _answer(
+        self, message: str, language: Language, context: CardContextFor | None
+    ) -> Reply:
+        editing = self._cards.editing() if self._cards is not None else None
         if (known := plain_status(message)) is not None:
             # The intent is plain without the model: a call saved, the slowest part.
             self._log.info("assistant intent", intent="status", why=known.why, model=False)
             interpretation = Interpretation(intent="status", reply="", confidence=1.0, status=known)
-            return await self._act(interpretation, message, language)
+            return Reply(await self._act(interpretation, message, language))
+        if editing is not None:
+            # The operator pressed Edit: this message is the change to that request.
+            message = EDIT_FRAME.format(request=editing.request, change=message)
         raw = await self._ask(
             AssistantTurn(
                 instructions=self._instructions(INTENT_INSTRUCTIONS),
@@ -200,8 +287,33 @@ class Assistant:
             "assistant intent", intent=parsed.interpretation.intent, rejected=parsed.rejected
         )
         if parsed.rejected is not None:
-            return TEXTS["not_understood"][language]
-        return await self._act(parsed.interpretation, message, language)
+            return Reply(TEXTS["not_understood"][language])
+        proposal = parsed.interpretation.new_project
+        if proposal is not None and not proposal.question and self._cards is not None:
+            if proposal.target.kind != "new":
+                return Reply(TEXTS["existing_later"][language])
+            if editing is not None:
+                self._cards.supersede(editing.card_id)
+            return await self._card(proposal.request, language, context)
+        return Reply(await self._act(parsed.interpretation, message, language))
+
+    async def _card(
+        self, request: str, language: Language, context: CardContextFor | None
+    ) -> Reply:
+        assert self._cards is not None  # noqa: S101 - the caller checked
+        card = self._cards.propose(request, language=language)
+        about = await context(request) if context is not None else CardContext("-", "-", "-")
+        minutes = int(self._cards.ttl.total_seconds() // 60)
+        text = TEXTS["card"][language].format(
+            request=request, where=about.where, agent=about.agent, tier=about.tier, minutes=minutes
+        )
+        labels = TEXTS["buttons"][language].split("|")
+        actions = ("start", "edit", "cancel")
+        buttons = tuple(
+            (label, f"{CARD_PREFIX}{action}:{card.card_id}")
+            for label, action in zip(labels, actions, strict=True)
+        )
+        return Reply(text, buttons)
 
     async def _act(self, interpretation: Interpretation, message: str, language: Language) -> str:
         if interpretation.status is not None:
@@ -215,7 +327,7 @@ class Assistant:
             proposal = interpretation.new_project
             if proposal.question:
                 return proposal.question
-            return TEXTS["project_later"][language].format(request=proposal.request)
+            return f"/new {proposal.request}"  # no cards: the command that would do it
         return interpretation.reply or TEXTS["not_understood"][language]
 
     async def _explain(self, message: str, digest: Digest, language: Language) -> str:
@@ -310,6 +422,36 @@ _BUILD = frozenset(
 )
 MAX_IDS = 5
 MAX_OPEN_WORDS = 6
+
+
+# An edit, put to the model as one message: the request as it stood, and what changes.
+EDIT_FRAME = (
+    "Revise this project request and propose it again as new_project.\n"
+    "Request: {request}\nChange: {change}"
+)
+
+
+def _press_text(card: Card, *, acted: bool, language: Language) -> str:  # noqa: PLR0911 - one per state
+    """What a press is answered with: what it did, or the state that kept it from acting."""
+    match card.state:
+        case CardState.STARTED:
+            return (
+                card.result
+                if acted
+                else TEXTS["already_started"][language].format(result=card.result)
+            )
+        case CardState.FAILED:
+            return card.result
+        case CardState.EDITING:
+            return TEXTS["edit"][language]
+        case CardState.CANCELLED:
+            return TEXTS["cancelled" if acted else "was_cancelled"][language]
+        case CardState.STARTING:
+            return TEXTS["starting"][language]
+        case CardState.SUPERSEDED:
+            return TEXTS["superseded"][language]
+        case _:
+            return TEXTS["expired"][language]
 
 
 def _brief(digest: Digest, language: Language) -> str:

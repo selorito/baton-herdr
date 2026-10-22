@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
+from baton_herdr.assistant.cards import CardStore
 from baton_herdr.assistant.conversation import Assistant, AssistantConfig
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
@@ -159,7 +160,7 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
     )
 
 
-def assistant_for(settings: BatonSettings, store: EventStore) -> Assistant | None:
+def assistant_for(settings: BatonSettings, store: EventStore, clock: Clock) -> Assistant | None:
     """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model."""
     config = settings.assistant
     if not config.enabled or config.model is None:
@@ -180,6 +181,7 @@ def assistant_for(settings: BatonSettings, store: EventStore) -> Assistant | Non
             language=config.language,
             zone=ZoneInfo(settings.scheduler.timezone),
         ),
+        cards=CardStore(clock=clock, ttl=timedelta(minutes=config.card_ttl_minutes)),
     )
 
 
@@ -276,11 +278,13 @@ async def open_runtime(
                     agents=scheduling.agents,
                     limit_cooldown=scheduling.limit_cooldown,
                     timezone=scheduling.timezone,
+                    reserve_percent=settings.budget.reserve_percent,
+                    plan_tier=settings.tiers.roles.get("plan", "premium"),
                 ),
                 budget=budget,
                 on_action=wake.set,
                 projects_root=settings.projects.root,
-                assistant=assistant_for(settings, store),
+                assistant=assistant_for(settings, store, clock),
             )
         yield Runtime(
             store=store,
