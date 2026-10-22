@@ -55,8 +55,10 @@ Chosen option: **3**.
 ```python
 class AssistantBackend(Protocol):
     name: str
+
     async def interpret(self, turn: AssistantTurn) -> str:
         """The model's raw JSON text for this turn; raises AssistantUnavailableError."""
+
     async def health(self) -> AssistantHealth: ...
 ```
 
