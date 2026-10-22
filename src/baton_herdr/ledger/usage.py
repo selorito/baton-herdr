@@ -22,7 +22,7 @@ from baton_herdr.ledger.schema import rate_limit_observations, usage_records
 from baton_herdr.ledger.store import create_engine
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Coroutine, Sequence
     from pathlib import Path
 
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -44,11 +44,26 @@ class SqliteUsageStore:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
         self._reads = engine.execution_options(isolation_level="AUTOCOMMIT")
+        # Operations under way, as in the event store: cancelling a caller (batond stopping
+        # while the dispatcher reads the budget) does not cut one short, and closing the
+        # store waits for it, so no connection is left open.
+        self._inflight: set[asyncio.Future[Any]] = set()
 
     async def close(self) -> None:
+        if self._inflight:
+            await asyncio.gather(*self._inflight, return_exceptions=True)
         await self._engine.dispose()
 
+    async def _guarded[T](self, operation: Coroutine[Any, Any, T]) -> T:
+        future = asyncio.ensure_future(operation)
+        self._inflight.add(future)
+        future.add_done_callback(self._inflight.discard)
+        return await asyncio.shield(future)
+
     async def record(self, events: Sequence[UsageEvent]) -> int:
+        return await self._guarded(self._record(events))
+
+    async def _record(self, events: Sequence[UsageEvent]) -> int:
         new = 0
         async with self._engine.begin() as conn:
             for item in events:
@@ -65,6 +80,9 @@ class SqliteUsageStore:
         return new
 
     async def latest_at(self) -> datetime | None:
+        return await self._guarded(self._latest_at())
+
+    async def _latest_at(self) -> datetime | None:
         times = union_all(
             select(func.max(usage_records.c.at).label("at")),
             select(func.max(rate_limit_observations.c.at).label("at")),
@@ -74,6 +92,9 @@ class SqliteUsageStore:
         return datetime.fromisoformat(latest) if latest else None
 
     async def usage(self, *, since: datetime | None = None) -> Sequence[UsageRecord]:
+        return await self._guarded(self._usage(since))
+
+    async def _usage(self, since: datetime | None) -> Sequence[UsageRecord]:
         query = select(usage_records).order_by(usage_records.c.at, usage_records.c.record_id)
         if since is not None:
             query = query.where(usage_records.c.at >= _text(since))
@@ -82,6 +103,9 @@ class SqliteUsageStore:
         return [_usage(row) for row in rows]
 
     async def rate_limits(self, *, since: datetime | None = None) -> Sequence[RateLimitObservation]:
+        return await self._guarded(self._rate_limits(since))
+
+    async def _rate_limits(self, since: datetime | None) -> Sequence[RateLimitObservation]:
         table = rate_limit_observations
         query = select(table).order_by(table.c.at, table.c.id)
         if since is not None:

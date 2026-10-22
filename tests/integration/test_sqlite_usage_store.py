@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import gc
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -112,3 +114,18 @@ async def test_usage_tables_are_append_only_and_apart_from_the_events(tmp_path: 
                 conn.execute(statement)
     assert [s.event.task_id for s in await events.read()] == [TaskId("t")]
     await events.close()
+
+
+async def test_a_read_cut_short_by_its_caller_still_returns_its_connection(tmp_path: Path) -> None:
+    """batond stopping cancels the dispatcher while it reads the budget (ADR 0019): the
+    read completes and closing waits for it, so no connection is left to the garbage
+    collector (which warns, and the warning fails the test)."""
+    store = await open_usage_store(tmp_path / "baton.db")
+    await store.record([usage(f"claude:{n}", AT + timedelta(seconds=n)) for n in range(200)])
+    readers = [asyncio.create_task(store.usage(since=AT)) for _ in range(20)]
+    await asyncio.sleep(0)
+    for reader in readers:
+        reader.cancel()
+    await asyncio.gather(*readers, return_exceptions=True)
+    await store.close()
+    gc.collect()
