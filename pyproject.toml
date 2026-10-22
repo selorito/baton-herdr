@@ -61,6 +61,8 @@ ignore = ["PLR2004"]
 "tools/**" = ["S603", "S607"]
 # The benchmark draws simulated timings from a seeded generator and prints agent glyphs.
 "bench/**" = ["S311", "RUF001"]
+# The assistant answers in Turkish too, and Turkish writes the dotless i (U+0131).
+"src/baton_herdr/assistant/conversation.py" = ["RUF001", "RUF003"]
 
 [tool.ruff.lint.flake8-type-checking]
 # pydantic evaluates annotations at runtime; keep their imports out of TYPE_CHECKING blocks.
@@ -122,7 +124,7 @@ forbidden_modules = [
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
   "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
-  "baton_herdr.policy",
+  "baton_herdr.policy", "baton_herdr.assistant", "baton_herdr.ollama",
 ]
 
 [[tool.importlinter.contracts]]
@@ -133,8 +135,8 @@ containers = ["baton_herdr"]
 exhaustive = true
 layers = [
   "api : telegram : cli : daemon : doctor : service : setup",
-  "recovery : budget : scheduler : policy : projects",
-  "herdr | adapters | ledger | collector | detector | workdir",
+  "recovery : budget : scheduler : policy : projects : assistant",
+  "herdr | adapters | ledger | collector | detector | workdir | ollama",
   "core",
 ]
 
@@ -153,7 +155,7 @@ source_modules = [
   "baton_herdr.recovery", "baton_herdr.budget", "baton_herdr.scheduler",
   "baton_herdr.api", "baton_herdr.telegram", "baton_herdr.cli", "baton_herdr.daemon",
   "baton_herdr.collector", "baton_herdr.detector", "baton_herdr.workdir",
-  "baton_herdr.policy",
+  "baton_herdr.policy", "baton_herdr.assistant", "baton_herdr.ollama",
 ]
 forbidden_modules = ["sqlalchemy", "aiosqlite", "alembic", "sqlite3"]
 # Using baton_herdr.ledger is the point; importing the libraries directly is what is forbidden.

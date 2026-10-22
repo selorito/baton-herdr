@@ -145,7 +145,12 @@ def _without(schema: Any, keys: frozenset[str]) -> Any:
 # its instructions, as Ollama advises. Without ``maxLength``: Ollama 0.34 cannot turn a
 # long one (2000 characters) into a grammar and refuses the request. The lengths still
 # hold, as parse_intent checks the answer against INTENT_SCHEMA.
-MODEL_SCHEMA: Mapping[str, Any] = _without(INTENT_SCHEMA, frozenset({"maxLength"}))
+def model_schema(model: type[BaseModel]) -> Mapping[str, Any]:
+    """``model``'s JSON Schema as a model is given it."""
+    return _without(model.model_json_schema(), frozenset({"maxLength"}))  # type: ignore[no-any-return]
+
+
+MODEL_SCHEMA: Mapping[str, Any] = model_schema(Interpretation)
 
 
 def not_understood() -> Interpretation:

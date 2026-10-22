@@ -27,6 +27,7 @@ from pydantic import ValidationError
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.config import (
     HERDR_SOCKET_PATH_ENV_VAR,
+    AssistantSettings,
     BatonSettings,
     HerdrSettings,
     config_file,
@@ -35,6 +36,7 @@ from baton_herdr.core.config import (
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.ollama.client import OllamaAssistant
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.deliver import find_browser, local_address
 from baton_herdr.service import installed_session
@@ -42,6 +44,7 @@ from baton_herdr.service import installed_session
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
 
+    from baton_herdr.core.assistant import AssistantHealth
     from baton_herdr.core.config import TelegramSettings
 
 
@@ -148,6 +151,16 @@ def local_timezone() -> str | None:
     return os.environ.get("TZ")
 
 
+async def _assistant_health(settings: AssistantSettings) -> AssistantHealth:
+    backend = OllamaAssistant(
+        url=settings.url,
+        model=settings.model or "",
+        timeout_s=settings.timeout_seconds,
+        keep_alive=settings.keep_alive,
+    )
+    return await backend.health()
+
+
 @dataclass(frozen=True, slots=True)
 class Probes:
     which: Callable[[str], str | None] = shutil.which
@@ -166,6 +179,7 @@ class Probes:
     local_address: Callable[[], str] = local_address
     can_bind: Callable[[str], bool] = _can_bind
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
+    assistant_health: Callable[[AssistantSettings], Awaitable[AssistantHealth]] = _assistant_health
 
 
 async def diagnose(probes: Probes | None = None) -> list[Check]:
@@ -206,7 +220,23 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     checks.extend(_projects(settings, probes))
     checks.append(_timezone(settings, probes))
     checks.append(await _telegram(settings, probes))
+    if settings.assistant.enabled:
+        checks.append(await _assistant(settings, probes))
     return checks
+
+
+async def _assistant(settings: BatonSettings, probes: Probes) -> Check:
+    """Ollama answers, and has the model (ADR 0021). Without it the bot still works; plain
+    messages get "the assistant did not answer"."""
+    health = await probes.assistant_health(settings.assistant)
+    if health.up:
+        return Check("assistant", Level.OK, health.detail)
+    return Check(
+        "assistant",
+        Level.WARN,
+        health.detail,
+        f"Start Ollama (ollama serve) and pull the model: ollama pull {settings.assistant.model}",
+    )
 
 
 async def _database(settings: BatonSettings, probes: Probes) -> Check:

@@ -16,9 +16,11 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
+from baton_herdr.assistant.conversation import Assistant, AssistantConfig
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
@@ -34,6 +36,7 @@ from baton_herdr.core.routing import ModelSpec, Tier
 from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
+from baton_herdr.ollama.client import OllamaAssistant
 from baton_herdr.policy.load import Policy, load_policy
 from baton_herdr.projects.deliver import PreviewServer, Showcase, find_browser
 from baton_herdr.projects.flow import (
@@ -156,6 +159,30 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
     )
 
 
+def assistant_for(settings: BatonSettings, store: EventStore) -> Assistant | None:
+    """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model."""
+    config = settings.assistant
+    if not config.enabled or config.model is None:
+        return None
+    backend = OllamaAssistant(
+        url=config.url,
+        model=config.model,
+        timeout_s=config.timeout_seconds,
+        keep_alive=config.keep_alive,
+    )
+    return Assistant(
+        backend=backend,
+        store=store,
+        config=AssistantConfig(
+            timeout_s=config.timeout_seconds,
+            min_confidence=config.min_confidence,
+            history_messages=config.history_messages,
+            language=config.language,
+            zone=ZoneInfo(settings.scheduler.timezone),
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Runtime:
     store: EventStore
@@ -253,6 +280,7 @@ async def open_runtime(
                 budget=budget,
                 on_action=wake.set,
                 projects_root=settings.projects.root,
+                assistant=assistant_for(settings, store),
             )
         yield Runtime(
             store=store,

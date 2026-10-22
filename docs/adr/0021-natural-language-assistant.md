@@ -72,6 +72,9 @@ class AssistantBackend(Protocol):
   response then matches the schema, and that the schema should also be stated in the
   prompt. A hosted backend (for example a small Claude model) is added later as another
   implementation selected in `[assistant] backend`.
+- **The schema the model sees** leaves out `maxLength`. Ollama 0.34 turns the schema into
+  a grammar and refuses a long `maxLength` (2000 characters) as one it cannot parse (seen
+  in A1). `parse_intent` still checks every length against the full schema.
 - **Configuration.** The model name and address come only from configuration. There is no
   default model. The example configuration shows `ornith-1.5:9b`, the model this was
   first measured with.
@@ -134,6 +137,17 @@ messages (notices, commands) stay in English in v1.
   instructions, screens, notices' blocks, environment, paths outside the projects root,
   settings or tokens.
 - **Paths.** The model never names a path. A new project's directory is made by baton.
+
+### Speed (measured in A2, `docs/devlog/2026-10-22-assistant-on-ollama.md`)
+
+- The model is asked for no hidden chain of thought (`think: false`, only for a model whose
+  `/api/show` lists `thinking`) and for the same reading each time (`temperature: 0`).
+- The instructions describe the answer's shape in words. The schema goes to Ollama as the
+  answer's grammar (`format`) only: in the prompt as well, it doubled the prompt.
+- **Status questions that need no model** are read by baton itself: a message that names
+  tasks or projects and asks how they stand ("t-1a2b3c4d ne durumda?") or why, with no word
+  asking for work, and a short "what is running?". A plain status answer is then instant;
+  a "why" takes one call (the explanation) instead of two.
 
 ### Resources
 

@@ -70,6 +70,21 @@ timezone = "UTC"
 # on = ["stalled", "crashed", "failed_start"]
 # economy_stall_minutes = 10
 
+[assistant]
+# Plain messages in Telegram, read by a model on this machine (ADR 0021): ask "why is
+# t-1a2b3c4d stuck?" or "what is running?" in your own words. The model only interprets;
+# answers come from baton's log, and nothing starts without a command or a button. Off
+# unless backend and model are set: plain messages are then answered as before. Needs
+# Ollama (ollama.com) and a model pulled with `ollama pull`.
+# backend = "ollama"
+# model = "ornith-1.5:9b"          # any model you have pulled; there is no default
+# url = "http://127.0.0.1:11434"
+# timeout_seconds = 60             # a model on the CPU may need more; see baton doctor
+# keep_alive = "5m"                # "0" unloads the model after each answer
+# language = "auto"                # your message's language; or "tr", "en"
+# min_confidence = 0.5
+# history_messages = 6
+
 [usage]
 # batond runs baton-detect to record the tokens agents use (ADR 0011).
 # enabled = true

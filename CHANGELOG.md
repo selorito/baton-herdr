@@ -13,6 +13,17 @@ is:
 
 ### Added
 
+- **Ask baton in your own words** (ADR 0021). With `[assistant]` set to a model Ollama
+  serves on this machine, a plain message in Telegram is read by it: "t-1a2b3c4d neden
+  takıldı?", "what is running?". The model only interprets the message; the answer comes
+  from baton's log. A "why" is explained by the model from a digest of the log, citing the
+  events it relied on (`Sources: #12, a-1a2b3c4d`); a citation the digest does not hold is
+  dropped, and the digest never holds instructions, screens, directories or secrets.
+  Other questions get the facts in a fixed form. One message at a time, within
+  `timeout_seconds`; Telegram shows "typing…" meanwhile. Answers in the language of the
+  message (`language`). Without `[assistant]`, plain messages are answered as before;
+  `baton doctor` checks Ollama and the model.
+
 - **Economy tier** (ADR 0020). Routine work can run on a cheaper model of the same agent:
   `[tiers] roles = { step = "economy" }` and `[tiers.economy] claude = { model = "haiku" }`
   build a project's pages on Haiku and plan them on the default model. An economy task goes

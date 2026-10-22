@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -44,13 +45,14 @@ from baton_herdr.scheduler.operator import (
 from baton_herdr.telegram.notifier import parse_reference
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
     from datetime import timedelta
     from pathlib import Path
 
     from aiogram import Bot
     from aiogram.types import CallbackQuery, Message
 
+    from baton_herdr.assistant.conversation import Assistant
     from baton_herdr.budget.load import BudgetReader
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.model import AgentKind
@@ -103,6 +105,7 @@ class OperatorBot:
         budget: BudgetReader | None = None,
         on_action: Callable[[], None] | None = None,
         projects_root: Path | None = None,
+        assistant: Assistant | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -115,6 +118,8 @@ class OperatorBot:
         self._on_action = on_action or (lambda: None)
         # Where /new makes projects (ADR 0016); None: /new is not offered.
         self._projects_root = projects_root
+        # Plain messages, understood by a local model (ADR 0021); None: answered as before.
+        self.assistant = assistant
         self._log = get_logger("baton.telegram")
 
     def authorized(self, chat_id: int | None, user_id: int | None) -> bool:
@@ -138,6 +143,8 @@ class OperatorBot:
         if name == "/tier":
             return await self.tier(text.split()[1:])
         if not name.startswith("/"):
+            if self.assistant is not None and text.strip():
+                return await self.assistant.answer(text.strip())
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
 
@@ -349,6 +356,25 @@ async def keep_running(
             return  # polling ended on its own: batond is stopping
 
 
+@asynccontextmanager
+async def _typing(bot: Bot, chat_id: int) -> AsyncIterator[None]:
+    """Show "typing…" while the assistant thinks: Telegram clears it after 5 s."""
+
+    async def keep() -> None:
+        while True:
+            with suppress(Exception):  # a cosmetic signal; the answer still goes out
+                await bot.send_chat_action(chat_id, "typing")
+            await asyncio.sleep(4)
+
+    task = asyncio.create_task(keep())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     """Long-poll Telegram and hand authorised updates to ``operator`` until cancelled."""
     from aiogram import Dispatcher, F, Router  # noqa: PLC0415 - only with Telegram
@@ -377,9 +403,16 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
 
     @router.message()
     async def on_other(message: Message) -> None:
-        # Plain text or an unknown command: say where answers go instead of dropping it.
-        if operator.authorized(message.chat.id, sender(message)):
-            await message.answer(await operator.command(message.text or ""))
+        # Plain text or an unknown command: the assistant's, when there is one (ADR 0021);
+        # else say where answers go instead of dropping it.
+        if not operator.authorized(message.chat.id, sender(message)):
+            return
+        text = message.text or ""
+        if operator.assistant is not None and not text.startswith("/"):
+            async with _typing(bot, message.chat.id):
+                await message.answer(await operator.command(text))
+            return
+        await message.answer(await operator.command(text))
 
     @router.callback_query()
     async def on_button(query: CallbackQuery) -> None:
