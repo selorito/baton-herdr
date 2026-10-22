@@ -274,6 +274,44 @@ a kind of task. The built-in `DirectBackend` starts the agents as installed. A g
 local model would be another backend, without changes to the scheduler
 ([ADR 0020](docs/adr/0020-task-tiers-and-provider-backends.md)).
 
+## Ask in your own words
+
+With a model on this machine ([Ollama](https://ollama.com)), the Telegram bot reads plain
+messages too ([ADR 0021](docs/adr/0021-natural-language-assistant.md)):
+
+```
+you:   t-1a2b3c4d neden takıldı?
+baton: Claude 15 dakika boyunca ekranda değişiklik ve token olmadan durdu.
+       Kaynak: #4, a-3c88babd
+
+you:   kafem için menülü tek sayfalık bir site yap
+baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] [Düzenle] [İptal]
+```
+
+- **The model only interprets.** It has no files, shell or herdr. Its answer must fit a
+  JSON schema of three intents (small talk, status, a project), or it is treated as small
+  talk saying it did not understand. Nothing it writes is acted on by itself.
+- **Status comes from the log.** A "why" is explained from a digest of the log, citing the
+  events it relied on; a citation the digest does not hold is dropped. The digest never
+  holds instructions, screens, directories or secrets. A plain question ("t-… ne
+  durumda?", "what is running?") is answered by baton itself, at once.
+- **Projects come as a card.** **Start** does exactly what `/new` does, once; the plan then
+  comes for your approval as usual. **Edit** takes your next message as the change. A
+  request missing something gets a question instead.
+- **One message at a time**, within `timeout_seconds`; Telegram shows "typing…".
+  Answers in the language you write in.
+
+```toml
+[assistant]
+backend = "ollama"
+model = "qwen3.5:4b"   # ollama pull qwen3.5:4b
+```
+
+Measured on a 15 GB laptop without a GPU (`docs/devlog/2026-10-22-assistant-on-ollama.md`):
+12 of 12 test messages read right; about 10 s a model answer; `qwen3.5:4b` holds 3.8 GB
+while loaded, a 9B model 6.7 GB. Without `[assistant]` the bot answers plain messages as
+before. `baton doctor` checks Ollama and the model.
+
 ## Policy
 
 Agents ask before running shell commands. baton answers the harmless ones itself and sends

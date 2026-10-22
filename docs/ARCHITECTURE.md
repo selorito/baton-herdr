@@ -283,6 +283,19 @@ it:
 
 The bot accepts commands from one owner only (`/status`, `/budget`, replies, buttons).
 
+A plain message goes to the assistant when `[assistant]` is set
+([ADR 0021](adr/0021-natural-language-assistant.md)):
+
+1. `assistant/conversation.py`, `Assistant.answer`: one message at a time, within the
+   timeout. `plain_status` answers a plain status question without the model.
+2. Otherwise `ollama/client.py`, `OllamaAssistant`, asks the model, with the answer's JSON
+   Schema as Ollama's `format` and the message framed as data. `core/assistant.py`,
+   `parse_intent`, holds the answer to the schema; anything else is small talk.
+3. A status question is answered from `assistant/digest.py`, `build_digest`: baton's own
+   facts from the log, redacted, each with what cites it (`#12`, `a-1a2b3c4d`).
+4. A project proposal becomes a card (`assistant/cards.py`, `CardStore`). Its Start calls
+   `OperatorBot.new_project`, the function `/new` calls, once per card under a lock.
+
 ## Where to look next
 
 | Question | File |

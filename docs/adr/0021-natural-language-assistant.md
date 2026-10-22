@@ -76,8 +76,8 @@ class AssistantBackend(Protocol):
   a grammar and refuses a long `maxLength` (2000 characters) as one it cannot parse (seen
   in A1). `parse_intent` still checks every length against the full schema.
 - **Configuration.** The model name and address come only from configuration. There is no
-  default model. The example configuration shows `ornith-1.5:9b`, the model this was
-  first measured with.
+  default model. The example configuration shows `qwen3.5:4b`: measured beside `ornith-1.5:9b`, it
+  reads as well and leaves 3.9 GB free instead of 1.1 GB on a 15 GB machine.
 
 ### Intents (v1)
 

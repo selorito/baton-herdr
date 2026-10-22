@@ -123,6 +123,7 @@ claude = { model = "haiku" }
 | `/budget` | Her ajanın kalan kullanım hakkı |
 | `/tier t-… economy` | Görevi ucuz modele alır (`premium`: normal modele) |
 | `/new <istek> #economy` | Projeyi baştan sona ucuz modelle çalıştırır |
+| (düz mesaj) | `[assistant]` açıksa asistan cevaplar; kapalıysa bot yanıtlamanın nasıl yapılacağını hatırlatır |
 | `/cancel t-…` | Bir görevi bırakır, ajanını kapatır |
 | `/cancel p-…` | Bir projenin tamamını bırakır |
 | `/help` | Bu liste |
@@ -143,6 +144,38 @@ Yalnızca senden bir şey bekleyen mesajlar **sesli** gelir; diğerleri sessizdi
 | ⚠ Project stopped | Bir proje adımı tamamlanamadı | Klasöre bak; gerekirse isteği yeniden gönder |
 
 Yanıtla demeden düz mesaj yazarsan mesaj hiçbir ajana gitmez; bot bunu hatırlatır.
+
+## Kendi cümlelerinle sormak (isteğe bağlı)
+
+Bilgisayarında çalışan bir model ([Ollama](https://ollama.com)) ile bot düz mesajları da
+anlar: "t-1a2b3c4d neden takıldı?", "açık işler neler?", "kafem için menülü bir site yap".
+Model yalnızca mesajı yorumlar; dosyalara, terminale, ajanlara erişimi yoktur. Cevaplar
+baton'un kaydından gelir. Proje isteği bir kart olarak gelir: **Başlat**'a basmadan hiçbir
+şey başlamaz, sonra plan yine senin onayına gelir.
+
+1. Ollama'yı kur: `sudo snap install ollama` (ya da ollama.com'daki yöntem).
+2. Modeli indir: `ollama pull qwen3.5:4b` (3,3 GB). 15 GB RAM'li bir dizüstünde
+   yüklüyken 3,8 GB tutar; 9B'lik bir model 6,7 GB tutar ve tarayıcı ile ajanlar açıkken
+   belleği bitirebilir.
+3. `~/.config/baton/baton.toml` içine:
+
+   ```toml
+   [assistant]
+   backend = "ollama"
+   model = "qwen3.5:4b"
+   ```
+
+4. `systemctl --user restart baton` ve `baton doctor` ("assistant: OK" görmelisin).
+
+Bilmen gerekenler:
+
+- Ekran kartı olmayan bir bilgisayarda bir cevap ~10 saniye sürer; bu sırada Telegram'da
+  "yazıyor…" görünür. Model belleğe ilk yüklenirken birkaç saniye daha.
+- Aynı anda tek mesaja bakılır; arada gelen mesaja "bir öncekini düşünüyorum" denir.
+- Model, cevaptan sonra 5 dakika bellekte kalır (`keep_alive = "5m"`). Belleği hemen
+  boşaltmak için `keep_alive = "0"` yaz; her cevap ~10 saniye uzar.
+- "Düzenle"ye basarsan bir sonraki mesajın isteğe yapılacak değişiklik olarak alınır.
+- Kart 30 dakika geçerlidir; baton yeniden başlarsa açık kartlar düşer.
 
 ## Gözetimsiz çalıştırma için öneriler
 

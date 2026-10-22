@@ -152,12 +152,17 @@ test keeps passing throughout.
   agent (`task.escalated`).
 - `/tier`, `#economy` on `/new`, `baton task tier`, and tiers in `/status`.
 
-## Next: a natural-language assistant (ADR 0021, proposed)
+## A natural-language assistant ✅ (ADR 0021)
 
 - A1: the `AssistantBackend` interface, the intent schema, a fake, settings.
-- A2: status questions answered from the log, on Ollama; measured for schema fit, reply
-  time and memory, idle and with agents running.
-- A3–A5: projects described in words and confirmed on a card, plan first; documentation.
+- A2: status questions answered from the log, on Ollama. Measured: 12/12 messages read
+  right, idle and with agents at work; ~10 s an answer on a CPU after `think: false`, a
+  short prompt and `temperature: 0`; plain status questions skip the model.
+- A3–A4: projects described in words, confirmed on a card, planned before anything is
+  coded.
+- A5: documentation, and a demo scenario (`docs/devlog/2026-10-22-assistant-demo.md`).
+- Not yet: work in an existing directory from words (the schema has it already), more
+  than one allowed user, `cancel` and `set_tier` as intents.
 
 ## After v1
 
