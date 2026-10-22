@@ -19,6 +19,7 @@ For one task it:
 from __future__ import annotations
 
 import asyncio
+import shlex
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
@@ -70,10 +71,12 @@ from baton_herdr.core.model import (
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.redact import redact
+from baton_herdr.core.routing import Tier
 from baton_herdr.core.targeting import resolve_target
 from baton_herdr.policy.rules import Verdict
 from baton_herdr.recovery.policy import Plan, plan_recovery
 from baton_herdr.scheduler import notices
+from baton_herdr.scheduler.backend import DirectBackend
 from baton_herdr.scheduler.operator import (
     ActionRefusedError,
     act,
@@ -98,6 +101,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.panes import PaneHost, PaneObservation
     from baton_herdr.core.ports import Clock, EventStore, Workspace
     from baton_herdr.core.projection import AttemptView, Board, TaskView
+    from baton_herdr.core.routing import ProviderBackend
     from baton_herdr.policy.load import Policy
     from baton_herdr.scheduler.operator import Blocker
 
@@ -140,6 +144,10 @@ POLICY_ACTOR = "policy"
 
 # Evidence attached to an observation where the agent refused to reopen the session.
 RESUME_FAILED_EVIDENCE = "baton:resume-failed"
+
+
+class LaunchProfileError(Exception):
+    """The backend gave no way to start the agent, or one the runner cannot apply."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +230,7 @@ class TaskRunner:
         budget: BudgetReader | None = None,
         workspace: Workspace | None = None,
         policy: Policy | None = None,
+        backend: ProviderBackend | None = None,
     ) -> None:
         self._store = store
         self._host = host
@@ -237,6 +246,8 @@ class TaskRunner:
         self._policy = policy
         # Without usage data the budget is folded from the event log alone.
         self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
+        # Gives the model and flags each agent starts with (ADR 0020).
+        self._backend: ProviderBackend = backend or DirectBackend(self._settings.models)
         self._log = get_logger("baton.scheduler")
         # Held from choosing an agent until the attempt is in the log, so tasks starting
         # side by side each see the slots the others took (ADR 0017).
@@ -428,13 +439,24 @@ class TaskRunner:
         return TurnState(prompt_sent=True)
 
     def _with_args(self, agent: AgentKind, command: str, task: TaskView) -> str:
-        """``command`` with baton's arguments for the agent, and the model set for this
-        kind of task, if any."""
+        """``command`` with baton's arguments for the agent, and the model and flags of
+        its launch profile (ADR 0020)."""
+        profile = self._backend.profile(agent, Tier.PREMIUM, task.role or "task")
+        if profile is None:
+            msg = f"backend {self._backend.name} cannot start {agent.value}"
+            raise LaunchProfileError(msg)
+        if profile.env:
+            # No backend needs the pane's environment yet; PaneHost.open_pane gains it with
+            # the first that does (ADR 0020).
+            msg = f"backend {profile.backend} needs a pane environment, which is not supported"
+            raise LaunchProfileError(msg)
         parts = [command]
         if args := self._settings.launch_args.get(agent):
             parts.append(args)
-        if model := self._settings.models.get(agent, {}).get(task.role or "task"):
-            parts.append(self._adapters[agent].model_args(model))
+        if profile.model:
+            parts.append(self._adapters[agent].model_args(profile.model))
+        if profile.args:
+            parts.append(shlex.join(profile.args))
         return " ".join(parts)
 
     def _free_first(
@@ -456,6 +478,7 @@ class TaskRunner:
         """Continue the attempt's own agent session in a fresh pane (ADR 0006)."""
         adapter = self._adapters[attempt.agent]
         with log_context(attempt_id=str(attempt.attempt_id)):
+            command = self._with_args(attempt.agent, adapter.resume_command(session_ref), task)
             # The old pane may still hold the session (an agent idle after its limit).
             await self._release_pane(attempt)
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
@@ -471,11 +494,7 @@ class TaskRunner:
                     pane_id=pane_id,
                 ),
             )
-            await self._launch(
-                attempt.agent,
-                pane_id,
-                self._with_args(attempt.agent, adapter.resume_command(session_ref), task),
-            )
+            await self._launch(attempt.agent, pane_id, command)
             await self._deliver(notices.resumed(task, attempt.agent, attempt.attempt_id))
             return await self._supervise(
                 task.task_id,
@@ -649,6 +668,10 @@ class TaskRunner:
         attempt_id, before = started
         task = (await self._board()).tasks[task_id]
         with log_context(attempt_id=str(attempt_id)):
+            # Before the pane: a profile the runner cannot apply leaves nothing open.
+            command = self._settings.launch_commands.get(agent) or self._with_args(
+                agent, self._adapters[agent].launch_command(), task
+            )
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
             await self._append(
                 AttemptLocated(
@@ -657,9 +680,6 @@ class TaskRunner:
                     attempt_id=attempt_id,
                     pane_id=pane_id,
                 )
-            )
-            command = self._settings.launch_commands.get(agent) or self._with_args(
-                agent, self._adapters[agent].launch_command(), task
             )
             await self._launch(agent, pane_id, command)
             if previous is None:

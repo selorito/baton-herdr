@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.events import Event, StoredEvent
-from baton_herdr.core.model import AgentState
+from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.core.panes import (
     AgentBlockedError,
     AgentNotRunningError,
@@ -17,6 +17,7 @@ from baton_herdr.core.panes import (
 )
 from baton_herdr.core.ports import ConcurrencyError, DuplicateEventError, MergeResult
 from baton_herdr.core.projection import apply, project
+from baton_herdr.core.routing import BackendHealth, LaunchProfile, Tier
 from baton_herdr.core.usage import RateLimitObservation, UsageRecord
 
 if TYPE_CHECKING:
@@ -251,3 +252,32 @@ class InMemoryUsageStore:
         return sorted(
             (o for o in self.limits if since is None or o.at >= since), key=lambda o: o.at
         )
+
+
+class FakeBackend:
+    """:class:`baton_herdr.core.routing.ProviderBackend` with set profiles (ADR 0020).
+
+    ``profiles`` maps ``(agent, tier, role)`` to a profile; anything else gets an empty
+    premium profile, or none in another tier. Every request is kept in ``asked``.
+    """
+
+    name = "fake"
+
+    def __init__(
+        self,
+        profiles: dict[tuple[AgentKind, Tier, str], LaunchProfile | None] | None = None,
+        *,
+        up: bool = True,
+    ) -> None:
+        self.profiles = dict(profiles or {})
+        self.up = up
+        self.asked: list[tuple[AgentKind, Tier, str]] = []
+
+    def profile(self, agent: AgentKind, tier: Tier, role: str) -> LaunchProfile | None:
+        self.asked.append((agent, tier, role))
+        if (agent, tier, role) in self.profiles:
+            return self.profiles[agent, tier, role]
+        return LaunchProfile(backend=self.name) if tier is Tier.PREMIUM else None
+
+    async def health(self) -> BackendHealth:
+        return BackendHealth(up=self.up, detail="fake")
