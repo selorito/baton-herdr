@@ -25,4 +25,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0018](0018-releasing-an-agent.md) | The operator can release an agent baton set aside | accepted |
 | [0019](0019-budget-for-parallel-sessions.md) | Budget with parallel sessions: reserve what running attempts are expected to spend | accepted |
 | [0020](0020-task-tiers-and-provider-backends.md) | Task tiers: economy runs the same agents on a cheaper model, behind a provider backend | accepted |
-| [0021](0021-natural-language-assistant.md) | A natural-language assistant in Telegram: a local model that proposes, the operator who starts | proposed |
+| [0021](0021-natural-language-assistant.md) | A natural-language assistant in Telegram: a local model that proposes, the operator who starts | accepted |

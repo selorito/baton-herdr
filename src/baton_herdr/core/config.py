@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -354,6 +354,42 @@ class TierSettings(_Section):
     escalation: EscalationSettings = Field(default_factory=EscalationSettings)
 
 
+class AssistantSettings(_Section):
+    """The natural-language assistant in Telegram (ADR 0021). Off unless a backend and a
+    model are set: the bot then answers plain messages as before."""
+
+    # "ollama": a model served by Ollama on this machine. Unset: no assistant.
+    backend: Literal["ollama"] | None = None
+    # Ollama's own default address.
+    url: str = "http://127.0.0.1:11434"
+    # The model, as Ollama names it. No default: e.g. "ornith-1.5:9b".
+    model: str | None = Field(default=None, min_length=1)
+    # One answer at a time, at most this long; then the bot says so and moves on.
+    timeout_seconds: float = Field(default=60, gt=0)
+    # A status or project proposal the model is less sure of is taken as small talk.
+    min_confidence: float = Field(default=0.5, ge=0, le=1)
+    # How long a confirmation card can be pressed.
+    card_ttl_minutes: float = Field(default=30, gt=0)
+    # How long Ollama keeps the model loaded after an answer, in Ollama's form ("5m", "0"
+    # to unload at once and leave the memory to the agents).
+    keep_alive: str = "5m"
+    # Earlier messages of the conversation sent with each new one.
+    history_messages: int = Field(default=6, ge=0, le=40)
+    # The language of the assistant's answers and cards: the operator's, or always one.
+    language: Literal["auto", "tr", "en"] = "auto"
+
+    @model_validator(mode="after")
+    def _model_with_backend(self) -> AssistantSettings:
+        if self.backend is not None and self.model is None:
+            msg = '[assistant] backend needs a model, e.g. model = "ornith-1.5:9b"'
+            raise ValueError(msg)
+        return self
+
+    @property
+    def enabled(self) -> bool:
+        return self.backend is not None
+
+
 class BatonSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BATON_",
@@ -374,6 +410,7 @@ class BatonSettings(BaseSettings):
     policy: PolicySettings = Field(default_factory=PolicySettings)
     projects: ProjectsSettings = Field(default_factory=ProjectsSettings)
     tiers: TierSettings = Field(default_factory=TierSettings)
+    assistant: AssistantSettings = Field(default_factory=AssistantSettings)
 
     @classmethod
     def settings_customise_sources(

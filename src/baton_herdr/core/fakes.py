@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from baton_herdr.core.assistant import AssistantHealth, AssistantTurn, AssistantUnavailableError
 from baton_herdr.core.events import Event, StoredEvent
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.core.panes import (
@@ -281,3 +282,28 @@ class FakeBackend:
 
     async def health(self) -> BackendHealth:
         return BackendHealth(up=self.up, detail="fake")
+
+
+class FakeAssistant:
+    """:class:`baton_herdr.core.assistant.AssistantBackend` that gives set answers in turn
+    (ADR 0021). An answer that is an exception is raised instead; with none left, the
+    backend is unavailable. Every turn it was given is kept in ``turns``."""
+
+    name = "fake"
+
+    def __init__(self, *answers: str | Exception, up: bool = True) -> None:
+        self.answers = list(answers)
+        self.up = up
+        self.turns: list[AssistantTurn] = []
+
+    async def interpret(self, turn: AssistantTurn) -> str:
+        self.turns.append(turn)
+        if not self.answers:
+            raise AssistantUnavailableError("no answer left")
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    async def health(self) -> AssistantHealth:
+        return AssistantHealth(up=self.up, detail="fake")
