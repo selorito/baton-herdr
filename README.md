@@ -148,8 +148,9 @@ message that is not a reply reaches no agent, and the bot says so.
 Only what needs you makes a sound: permission prompts, questions, and every agent being
 limited. The other notices arrive silently.
 `/new <request>` starts a project (below), `/status` lists open tasks and agents, and
-`/budget` shows what each agent has left. `baton task cancel <task>` drops a task you no
-longer want.
+`/budget` shows what each agent has left. `/tier <task> economy|premium` sets the tier a
+task runs in ([Tiers](#tiers-routine-work-on-a-cheaper-model)). `baton task cancel <task>`
+drops a task you no longer want.
 
 Two safeguards:
 - Messages from anyone but `owner_id`, or from another chat, are ignored.
@@ -212,6 +213,66 @@ The scheduler keeps your preference order. An agent with less than `reserve_perc
 (default 10) left goes behind the others. A low budget never stops a task; only a limit the
 agent actually hits does. Every choice is logged as `task.agent_chosen`, with its reason
 ([ADR 0012](docs/adr/0012-remaining-budget.md)).
+
+Limits belong to an account, and the figures above move only once responses are written.
+So tasks started side by side would all see the same "12% left". Each running attempt
+therefore reserves what it is expected to spend still: the median of its agent's last
+finished attempts of the same kind and tier, less what its session has spent. The reserve
+is compared with what is left after that, and an agent below it runs one task at a time.
+`/budget` and the reason line show it: `62% left, ~41% after 2 running`
+([ADR 0019](docs/adr/0019-budget-for-parallel-sessions.md)).
+
+## Tiers: routine work on a cheaper model
+
+Most of a project is routine: a page, a test, a rename. The **economy** tier runs that work
+on the same agents with a cheaper model or flags, and moves a task up to **premium** (the
+agent's usual model) when the cheap run fails. Without a `[tiers]` section every task is
+premium and nothing changes.
+
+```toml
+[tiers]
+roles = { step = "economy" }      # plan on the usual model, build on the cheaper one
+economy_fallback = "premium"      # no agent has an economy profile: "premium" or "wait"
+
+[tiers.economy]
+claude = { model = "haiku" }      # a model, flags (args = [...]), or both
+
+[tiers.escalation]                # the defaults
+after = 1                         # economy failures before premium
+on = ["stalled", "crashed", "failed_start"]
+economy_stall_minutes = 10
+```
+
+```mermaid
+flowchart LR
+    T[task] --> K{tier}
+    K -->|"its own (/tier, #economy, --tier)"| C
+    K -->|"else its kind's ([tiers] roles)"| C
+    C[choose_agent<br/>economy: agents with an<br/>economy profile first] --> P[ProviderBackend.profile<br/>agent, tier, kind]
+    P --> L["launch: claude --model haiku<br/>attempt.started tier=economy"]
+    L --> X{stalled, crashed,<br/>failed to start?}
+    X -->|"crash: resume in economy first"| L
+    X -->|"after N: task.escalated"| U["same agent, premium,<br/>fresh session + hand-off prompt"]
+```
+
+- **Choice.** An economy task goes first to an agent with an economy profile, in your
+  preference order. The reason line ends with `Economy: haiku.`, or with `Premium: codex has
+  no economy profile.` when it runs premium instead.
+- **Moving up.** An economy attempt that stalls, crashes or fails to start counts. A crash
+  is resumed in economy first. After `after` of them the task goes on in premium on the
+  same agent, in a fresh session, and the notice says **⬆ Moved up to premium on claude**.
+  Limits and sign-ins never move a task up: both tiers use the same account.
+- **By hand.** `/tier t-… economy|premium` or `baton task tier` apply from the next attempt;
+  economy undoes a move up. `/new … #economy` (or `#premium`) and
+  `baton project new --tier` set a whole project's tier. `/status` marks `(economy)` and
+  `(⬆premium)`.
+- **Budget.** Economy shares the agent's account and limits; it spends them more slowly.
+  Reservations are learned per tier.
+
+Agents start from a launch profile that a `ProviderBackend` gives for an agent, a tier and
+a kind of task. The built-in `DirectBackend` starts the agents as installed. A gateway or a
+local model would be another backend, without changes to the scheduler
+([ADR 0020](docs/adr/0020-task-tiers-and-provider-backends.md)).
 
 ## Policy
 
@@ -287,7 +348,9 @@ governed by its vendor's terms; read them before you let baton run unattended:
 ## Roadmap
 
 - **Next:**
-  - run a project's independent steps at once, each in its own git worktree;
+  - a natural-language assistant in Telegram on a local model (Ollama): ask "why is t-42
+    stuck?", or describe a project in words and confirm it on a card
+    ([ADR 0021](docs/adr/0021-natural-language-assistant.md), proposed);
   - record Codex 0.160's working screen, so baton tells its idle without herdr's help.
 - **After v1:** Gemini CLI; a web panel and REST API, each with its own ADR.
 

@@ -120,6 +120,16 @@ policy).
   `reserve_percent` moves behind the others, and a limited agent is skipped. It returns
   the agent and the reason in words.
 
+What is left is counted after the reservations of the agent's running attempts
+(`budget/reservation.py`, `reserve`, [ADR 0019](adr/0019-budget-for-parallel-sessions.md)):
+each holds the median cost of its agent's finished attempts of the same kind and tier, less
+what its session has spent. An agent below the reserve that way runs one task at a time
+(`choice.slots`), and the dispatcher counts its free slots with the same figure.
+
+For an economy task (`_task_tier`: its own tier, else its kind's from `[tiers] roles`,
+premium once it moved up), agents with an economy profile go first. The attempt's tier is
+recorded on `attempt.started` ([ADR 0020](adr/0020-task-tiers-and-provider-backends.md)).
+
 The choice is logged as `task.agent_chosen` before the attempt starts, so "why did it go to
 Codex?" is always answerable from the log.
 
@@ -137,7 +147,12 @@ own tables (`ledger/usage.py`).
 2. `herdr/host.py`, `HerdrPaneHost.open_pane`, opens a pane in baton's own herdr
    workspace. The pane id is recorded as `attempt.located`.
 3. The agent's launch command is typed into the pane (`send_text`, `send_keys`), the way
-   a person would (ADR 0005). baton never touches the agents' credentials.
+   a person would (ADR 0005). baton never touches the agents' credentials. The command is
+   the adapter's, plus the launch profile a `ProviderBackend` (`core/routing.py`) gives
+   for the agent, the attempt's tier and the kind of task: `DirectBackend`
+   (`scheduler/backend.py`) adds `[scheduler.models]` in premium and `[tiers.economy]` in
+   economy. It is built before the pane opens, so a profile that cannot be applied leaves
+   nothing behind. A resumed session gets the same profile.
 4. Telegram gets "Started on claude", with the scheduler's reason.
 
 The pane and the agent session are *locations* of the attempt, not its identity
@@ -221,6 +236,9 @@ flowchart TD
     C -->|no| P[ASK a person]
     R -->|session cannot be reopened| RS[RESTART fresh,<br/>same or another agent]
     R -->|context full / operator| P
+    R -->|"economy: crash / hang / failed start"| E{"failures ≥ [tiers.escalation] after?"}
+    E -->|"no (a crash: resume first)"| RS
+    E -->|yes| ESC["ESCALATE: task.escalated,<br/>same agent, premium, fresh session"]
 ```
 
 - **Resume** (`_resume`): a new pane, the agent's own resume command
@@ -230,6 +248,9 @@ flowchart TD
   when the limit lifts, in local time.
 - **Wait**: the run ends. batond sleeps until `next_wake`, then the same `plan_recovery`
   resumes the session.
+- **Escalate** (`_escalate`): an economy attempt that failed often enough ends, the task is
+  marked `task.escalated`, and the next attempt runs premium on the same agent with the
+  hand-off prompt. Economy attempts count as stalled after `economy_stall_minutes`.
 - **A hang** has no screen of its own. `_no_progress` (`scheduler/stall.py`) interrupts a
   working agent as `stalled` when, for `stall_minutes` (15), its screen has not changed
   (counters and spinners aside) and no tokens were recorded for its session

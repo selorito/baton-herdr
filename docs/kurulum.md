@@ -92,6 +92,28 @@ modelle çalıştırabilirsin; planı yine varsayılan model yazar. `baton.toml`
 claude = { step = "sonnet", merge = "sonnet" }
 ```
 
+### Ucuz modelde çalıştırmak (economy)
+
+Bir projenin çoğu rutin iştir: bir sayfa, bir test, bir isim değişikliği. **Economy**
+katmanı bu işleri aynı ajanlarda daha ucuz bir modelle çalıştırır. Ucuz model takılırsa,
+çökerse ya da açılamazsa iş kendiliğinden **premium**'a (ajanın normal modeline) geçer.
+`[tiers]` bölümünü eklemezsen hiçbir şey değişmez. `baton.toml` içine:
+
+```toml
+[tiers]
+roles = { step = "economy" }   # planı normal model yazar, adımlar ucuz modelle yapılır
+
+[tiers.economy]
+claude = { model = "haiku" }
+```
+
+- Economy ayrı bir kota değildir: aynı hesabın limitini daha yavaş harcar.
+- Takılan bir economy işi 10 dakika sonra premium'a geçer; Telegram'a
+  **⬆ Moved up to premium** gelir. Çöken bir oturum önce economy'de sürdürülür.
+- Tek bir proje için: `/new kafem için bir sayfa #economy` (ya da `#premium`).
+- Tek bir görev için: `/tier t-1a2b3c4d economy` ya da `baton task tier t-1a2b3c4d premium`.
+  Yeni katman bir sonraki denemeden itibaren geçerlidir.
+
 ### Telegram komutları
 
 | Komut | Ne yapar |
@@ -99,6 +121,8 @@ claude = { step = "sonnet", merge = "sonnet" }
 | `/new <istek>` | Yeni proje başlatır |
 | `/status` | Açık görevler ve ajanların durumu |
 | `/budget` | Her ajanın kalan kullanım hakkı |
+| `/tier t-… economy` | Görevi ucuz modele alır (`premium`: normal modele) |
+| `/new <istek> #economy` | Projeyi baştan sona ucuz modelle çalıştırır |
 | `/cancel t-…` | Bir görevi bırakır, ajanını kapatır |
 | `/cancel p-…` | Bir projenin tamamını bırakır |
 | `/help` | Bu liste |
@@ -115,6 +139,7 @@ Yalnızca senden bir şey bekleyen mesajlar **sesli** gelir; diğerleri sessizdi
 | 📋 Plan ready | Proje planı hazır | **Start** ya da **Cancel** |
 | ⏸ Stalled | Ajan 15 dakikadır kımıldamıyor | Bir şey yapman gerekmez; baton oturumu yeniden açar |
 | ⛔ All agents limited | Bütün ajanların limiti dolu | Bir şey yapman gerekmez; limit açılınca devam eder |
+| ⬆ Moved up to premium | Ucuz model işi bitiremedi, normal modele geçildi | Bir şey yapman gerekmez |
 | ⚠ Project stopped | Bir proje adımı tamamlanamadı | Klasöre bak; gerekirse isteği yeniden gönder |
 
 Yanıtla demeden düz mesaj yazarsan mesaj hiçbir ajana gitmez; bot bunu hatırlatır.

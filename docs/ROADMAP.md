@@ -139,8 +139,25 @@ test keeps passing throughout.
   in one directory. A ten-task queue finishes three times sooner in the benchmark.
 - A project's independent steps (`needs` in the plan) run at the same time in git
   worktrees and are merged back; a conflict becomes a merge task.
-- Not yet: a live run of a parallel project with real agents, and budgets that count the
-  sessions of one agent running at once (the reserve is checked per choice).
+- Run live with real Claude and Codex sessions side by side (1.2.0), with faults injected
+  before the release (`docs/devlog/2026-10-21-release-checks.md`).
+- Budgets count the sessions of one agent running at once: each running attempt reserves
+  its expected cost (ADR 0019).
+
+## Tiers ✅ (ADR 0020)
+
+- An economy tier runs routine tasks on a cheaper model of the same agent, behind a
+  `ProviderBackend` (`DirectBackend` for now).
+- An economy task that stalls, crashes or fails to start moves up to premium on the same
+  agent (`task.escalated`).
+- `/tier`, `#economy` on `/new`, `baton task tier`, and tiers in `/status`.
+
+## Next: a natural-language assistant (ADR 0021, proposed)
+
+- A1: the `AssistantBackend` interface, the intent schema, a fake, settings.
+- A2: status questions answered from the log, on Ollama; measured for schema fit, reply
+  time and memory, idle and with agents running.
+- A3–A5: projects described in words and confirmed on a card, plan first; documentation.
 
 ## After v1
 
