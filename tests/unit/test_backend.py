@@ -67,7 +67,7 @@ async def test_the_agent_starts_with_the_profiles_model_and_flags() -> None:
 
     assert await runner.run(TASK) is TaskStatus.COMPLETED
     assert host.launched == ["codex --model 'small one' -c model_reasoning_effort=low"]
-    assert backend.asked == [(CODEX, Tier.PREMIUM, "task")]
+    assert set(backend.asked) == {(CODEX, Tier.PREMIUM, "task"), (CODEX, Tier.ECONOMY, "task")}
 
 
 @pytest.mark.parametrize(

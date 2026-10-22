@@ -23,13 +23,14 @@ from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
-from baton_herdr.core.config import BudgetSettings, DetectorSettings
+from baton_herdr.core.config import BudgetSettings, DetectorSettings, TierSettings
 from baton_herdr.core.detector import HostDetector
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import LoggingNotifier
+from baton_herdr.core.routing import ModelSpec, Tier
 from baton_herdr.detector import FallbackDetector, ProcessDetector
 from baton_herdr.herdr import connect
 from baton_herdr.ledger import open_event_store, open_usage_store
@@ -110,12 +111,14 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
     settings: SchedulerSettings,
     budget: BudgetSettings | None = None,
     *,
+    tiers: TierSettings | None = None,
     collecting_usage: bool = False,
     launch_args: Mapping[AgentKind, str] | None = None,
     own_dirs: tuple[str, ...] = (),
     trusted_dirs: tuple[str, ...] = (),
 ) -> RunnerSettings:
     budget = budget or BudgetSettings()
+    tiers = tiers or TierSettings()
     return RunnerSettings(
         agents=tuple(AgentKind(agent) for agent in settings.agents),
         limit_cooldown=timedelta(minutes=settings.limit_cooldown_minutes),
@@ -141,6 +144,12 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
             for agent, roles in settings.models.items()
             if roles
         },
+        role_tiers={role: Tier(tier) for role, tier in tiers.roles.items()},
+        economy={
+            AgentKind(agent): ModelSpec(model=spec.model, args=spec.args)
+            for agent, spec in tiers.economy.items()
+        },
+        economy_fallback=tiers.economy_fallback,
     )
 
 
@@ -196,6 +205,7 @@ async def open_runtime(
     scheduling = runner_settings(
         settings.scheduler,
         settings.budget,
+        tiers=settings.tiers,
         collecting_usage=settings.usage.enabled,
         launch_args=claude_session_args(settings.usage, lean=settings.scheduler.lean_sessions),
         own_dirs=(str(settings.projects.root),),
@@ -338,13 +348,14 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
         os.close(fd)
 
 
-async def add_task(
+async def add_task(  # noqa: PLR0913 - the store and each field of the task
     store: EventStore,
     *,
     title: str,
     instructions: str,
     workdir: str,
     clock: Clock | None = None,
+    tier: Tier | None = None,
 ) -> TaskId:
     task_id = TaskId(f"t-{uuid.uuid4().hex[:8]}")
     now = (clock or SystemClock()).now()
@@ -356,6 +367,7 @@ async def add_task(
                 title=title,
                 instructions=instructions,
                 workdir=workdir,
+                tier=tier,
             )
         ]
     )

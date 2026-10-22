@@ -49,6 +49,20 @@ limit_cooldown_minutes = 60
 # Zone for reading times agents print ("resets 3:45pm"). Set it to your own.
 timezone = "UTC"
 
+[tiers]
+# Routine work on a cheaper model (ADR 0020). Without this section every task runs as
+# above. A tier per kind of task ("plan", "step", "merge", "task"); unnamed: premium.
+# `baton task add --tier economy` sets it for one task.
+# roles = { step = "economy" }
+# An economy task when no agent that may take it has an economy profile: "premium" runs it
+# on the agent's usual model, "wait" keeps it until one has.
+# economy_fallback = "premium"
+# How each agent runs in economy: a model, flags, or both. It shares the agent's account
+# and limits, and spends them more slowly. An agent not named has no economy tier.
+# [tiers.economy]
+# claude = { model = "haiku" }
+# codex = { model = "<a smaller Codex model>", args = ["-c", "model_reasoning_effort=low"] }
+
 [usage]
 # batond runs baton-detect to record the tokens agents use (ADR 0011).
 # enabled = true

@@ -20,6 +20,7 @@ from baton_herdr.core.events import (
     TaskFailed,
 )
 from baton_herdr.core.model import AttemptOutcome, new_attempt_id
+from baton_herdr.core.routing import Tier
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,13 +34,15 @@ class CommandRejectedError(Exception):
     """The command does not make sense for the task as it is now."""
 
 
-def start_attempt(
+def start_attempt(  # noqa: PLR0913 - the task, its agent, and what the attempt records
     task: TaskView,
     agent: AgentKind,
     *,
     at: datetime,
     new_id: Callable[[], AttemptId] = new_attempt_id,
     workdir_head: str | None = None,
+    tier: Tier = Tier.PREMIUM,
+    backend: str = "direct",
 ) -> AttemptStarted:
     """Begin a new attempt with an identity baton generates.
 
@@ -58,6 +61,8 @@ def start_attempt(
         attempt_id=new_id(),
         agent=agent,
         workdir_head=workdir_head,
+        tier=tier,
+        backend=backend,
     )
 
 

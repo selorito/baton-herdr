@@ -312,6 +312,31 @@ class TelegramSettings(_Section):
     owner_id: int | None = None
 
 
+_Agent = Literal["claude", "codex", "opencode"]
+_Role = Literal["task", "plan", "step", "merge"]
+
+
+class EconomyProfile(_Section):
+    """How an agent runs in the economy tier: a cheaper model, extra flags, or both."""
+
+    model: str | None = Field(default=None, min_length=1)
+    args: tuple[Annotated[str, Field(min_length=1)], ...] = ()
+
+
+class TierSettings(_Section):
+    """Which tasks run in the economy tier, and how each agent runs there (ADR 0020)."""
+
+    # The tier of each kind of task: a project's plan, its steps, the merge of a conflicted
+    # step, a task added by hand. Unnamed kinds, and everything without this section:
+    # premium. {step = "economy"} builds a project's pages on the cheaper model.
+    roles: dict[_Role, Literal["premium", "economy"]] = Field(default_factory=dict)
+    # An economy task when no agent that may take it has an economy profile: run it in
+    # premium, or wait until one does.
+    economy_fallback: Literal["premium", "wait"] = "premium"
+    # Per agent; an agent not named here has no economy tier.
+    economy: dict[_Agent, EconomyProfile] = Field(default_factory=dict)
+
+
 class BatonSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BATON_",
@@ -331,6 +356,7 @@ class BatonSettings(BaseSettings):
     detector: DetectorSettings = Field(default_factory=DetectorSettings)
     policy: PolicySettings = Field(default_factory=PolicySettings)
     projects: ProjectsSettings = Field(default_factory=ProjectsSettings)
+    tiers: TierSettings = Field(default_factory=TierSettings)
 
     @classmethod
     def settings_customise_sources(

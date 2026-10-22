@@ -11,6 +11,18 @@ is:
 
 ## [Unreleased]
 
+### Added
+
+- **Economy tier** (ADR 0020). Routine work can run on a cheaper model of the same agent:
+  `[tiers] roles = { step = "economy" }` and `[tiers.economy] claude = { model = "haiku" }`
+  build a project's pages on Haiku and plan them on the default model. An economy task goes
+  first to an agent with an economy profile, and runs premium when none has one, or waits
+  (`economy_fallback`). The reason line says which: `… Economy: haiku.` A resumed session
+  keeps its tier. `baton task add --tier economy|premium` sets it for one task. Without
+  `[tiers]` nothing changes. Economy shares the agent's account and limits; it spends them
+  more slowly. Budget reservations (ADR 0019) are learned per tier. New fields:
+  `task.created.tier`, `attempt.started.tier` and `.backend`.
+
 ### Changed
 
 - **Tasks started at once no longer pile onto an agent near its limit** (ADR 0019). Every

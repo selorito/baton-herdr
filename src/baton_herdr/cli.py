@@ -27,6 +27,7 @@ from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.projection import TaskView, project
+from baton_herdr.core.routing import Tier  # noqa: TC001 - typer reads the option's type at runtime
 from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, local_timezone, render
 from baton_herdr.ledger import open_event_store, open_usage_store
@@ -139,6 +140,13 @@ def task_add(
     workdir: Annotated[
         Path, typer.Option("--workdir", "-C", exists=True, file_okay=False)
     ] = Path(),
+    tier: Annotated[
+        Tier | None,
+        typer.Option(
+            "--tier",
+            help="premium or economy (ADR 0020). Unset: the tier [tiers] roles gives a task.",
+        ),
+    ] = None,
 ) -> None:
     """Add a task. Prints its id."""
     if (instructions is None) == (instructions_file is None):
@@ -151,7 +159,7 @@ def task_add(
         store = await open_event_store(settings.database.path)
         try:
             return await add_task(
-                store, title=title, instructions=text, workdir=str(workdir.resolve())
+                store, title=title, instructions=text, workdir=str(workdir.resolve()), tier=tier
             )
         finally:
             await store.close()

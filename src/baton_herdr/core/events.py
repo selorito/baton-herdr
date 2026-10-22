@@ -36,6 +36,7 @@ from baton_herdr.core.model import (
     PermissionDecision,
     TaskId,
 )
+from baton_herdr.core.routing import Tier
 
 
 class _Event(BaseModel):
@@ -63,6 +64,8 @@ class TaskCreated(_Event):
     branch: str | None = None
     # On a plan task: the request as the operator wrote it.
     request: str | None = Field(default=None, max_length=4000)
+    # The tier the task runs in (ADR 0020); None: the one [tiers] roles gives its kind.
+    tier: Tier | None = None
 
 
 class TaskCompleted(_Event):
@@ -214,6 +217,10 @@ class AttemptStarted(_AttemptEvent):
     # The commit checked out in the task's directory when the attempt started, if any;
     # what the task changed is measured from its first attempt's commit.
     workdir_head: str | None = None
+    # The tier the attempt runs in and the backend that started it (ADR 0020); absent in
+    # logs from before 1.3: premium, direct.
+    tier: Tier | None = None
+    backend: str | None = None
 
 
 class AttemptLocated(_AttemptEvent):

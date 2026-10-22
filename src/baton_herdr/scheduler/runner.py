@@ -71,7 +71,7 @@ from baton_herdr.core.model import (
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.redact import redact
-from baton_herdr.core.routing import Tier
+from baton_herdr.core.routing import LaunchProfile, ModelSpec, Tier
 from baton_herdr.core.targeting import resolve_target
 from baton_herdr.policy.rules import Verdict
 from baton_herdr.recovery.policy import Plan, plan_recovery
@@ -186,6 +186,12 @@ class RunnerSettings:
     usage_grace_s: float = 3
     # How long a launch of an agent may hold back the next launch of the same agent.
     launch_settle_s: float = 15
+    # The tier of each kind of task ([tiers] roles; unnamed: premium), how each agent runs
+    # in economy, and what an economy task does when no agent has an economy profile:
+    # "premium" or "wait" (ADR 0020).
+    role_tiers: Mapping[str, Tier] = field(default_factory=dict)
+    economy: Mapping[AgentKind, ModelSpec] = field(default_factory=dict)
+    economy_fallback: Literal["premium", "wait"] = "premium"
     # Tasks side by side (ADR 0017): sessions of one agent at once, and tasks in all.
     agent_slots: Mapping[AgentKind, int] = field(default_factory=dict)
     default_agent_slots: int = DEFAULT_AGENT_SLOTS
@@ -247,7 +253,9 @@ class TaskRunner:
         # Without usage data the budget is folded from the event log alone.
         self._budget = budget or BudgetReader(usage=None, cooldown=self._settings.limit_cooldown)
         # Gives the model and flags each agent starts with (ADR 0020).
-        self._backend: ProviderBackend = backend or DirectBackend(self._settings.models)
+        self._backend: ProviderBackend = backend or DirectBackend(
+            self._settings.models, self._settings.economy
+        )
         self._log = get_logger("baton.scheduler")
         # Held from choosing an agent until the attempt is in the log, so tasks starting
         # side by side each see the slots the others took (ADR 0017).
@@ -286,8 +294,8 @@ class TaskRunner:
                 break
             if live is None:
                 async with self._starting:
-                    agent, reason = await self._choose_agent(task_id, tried)
-                    started = None if agent is None else await self._start(task_id, agent)
+                    agent, reason, tier = await self._choose_agent(task_id, tried)
+                    started = None if agent is None else await self._start(task_id, agent, tier)
                 if agent is None or started is None:
                     await self._deliver(notices.no_agent(task, reason))
                     break
@@ -438,10 +446,10 @@ class TaskRunner:
         await self._host.send_prompt(pane_id, prompt)
         return TurnState(prompt_sent=True)
 
-    def _with_args(self, agent: AgentKind, command: str, task: TaskView) -> str:
+    def _with_args(self, agent: AgentKind, command: str, task: TaskView, tier: Tier) -> str:
         """``command`` with baton's arguments for the agent, and the model and flags of
-        its launch profile (ADR 0020)."""
-        profile = self._backend.profile(agent, Tier.PREMIUM, task.role or "task")
+        its launch profile in ``tier`` (ADR 0020)."""
+        profile = self._backend.profile(agent, tier, task.role or "task")
         if profile is None:
             msg = f"backend {self._backend.name} cannot start {agent.value}"
             raise LaunchProfileError(msg)
@@ -478,7 +486,9 @@ class TaskRunner:
         """Continue the attempt's own agent session in a fresh pane (ADR 0006)."""
         adapter = self._adapters[attempt.agent]
         with log_context(attempt_id=str(attempt.attempt_id)):
-            command = self._with_args(attempt.agent, adapter.resume_command(session_ref), task)
+            command = self._with_args(
+                attempt.agent, adapter.resume_command(session_ref), task, attempt.tier
+            )
             # The old pane may still hold the session (an agent idle after its limit).
             await self._release_pane(attempt)
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
@@ -611,14 +621,33 @@ class TaskRunner:
             reserve_percent=self._settings.reserve_percent,
         )
 
+    def _task_tier(self, task: TaskView) -> Tier:
+        """The task's own tier, or the one its kind runs in (ADR 0020)."""
+        return task.tier or self._settings.role_tiers.get(task.role or "task", Tier.PREMIUM)
+
     async def _choose_agent(
         self, task_id: TaskId, tried: set[AgentKind]
-    ) -> tuple[AgentKind | None, str]:
-        """Pick the agent for the task's next attempt and record why (ADR 0012)."""
+    ) -> tuple[AgentKind | None, str, Tier]:
+        """Pick the agent for the task's next attempt, and the tier it runs in, and record
+        why (ADR 0012, ADR 0020)."""
         events = await self._store.read()
         now = self._clock.now()
+        task = project(events).tasks[task_id]
         agents = [agent for agent in self._settings.agents if agent in self._adapters]
         budgets = await self._budget.read(agents, events, now)
+        # An economy task goes to an agent with an economy profile first, in preference
+        # order; then, unless it is to wait for one, to the others in premium.
+        economy = self._task_tier(task) is Tier.ECONOMY
+        cheap = [a for a in agents if self._economy_profile(a, task) is not None]
+        if economy:
+            if not cheap and self._settings.economy_fallback == "wait":
+                reason = "No agent has an economy profile ([tiers.economy]); the task waits."
+                await self._append(
+                    AgentChosen(occurred_at=now, task_id=task_id, agent=None, reason=reason)
+                )
+                return None, reason, Tier.ECONOMY
+            rest = [] if self._settings.economy_fallback == "wait" else agents
+            agents = [*cheap, *(a for a in rest if a not in cheap)]
         full = full_agents(
             agent_load(project(events).tasks.values()),
             self._slots(budgets),
@@ -632,20 +661,36 @@ class TaskRunner:
             tried=tried,
             full=full,
         )
-        self._log.info("agent chosen", agent=choice.agent, reason=choice.reason)
+        tier = Tier.ECONOMY if economy and choice.agent in cheap else Tier.PREMIUM
+        reason = choice.reason
+        if economy and choice.agent is not None:
+            reason += " " + self._tier_note(choice.agent, task, tier)
+        self._log.info("agent chosen", agent=choice.agent, reason=reason, tier=tier)
         await self._append(
             AgentChosen(
                 occurred_at=now,
                 task_id=task_id,
                 agent=choice.agent,
-                reason=choice.reason,
+                reason=reason,
                 budgets=choice.notes,
             )
         )
-        return choice.agent, choice.reason
+        return choice.agent, reason, tier
+
+    def _economy_profile(self, agent: AgentKind, task: TaskView) -> LaunchProfile | None:
+        return self._backend.profile(agent, Tier.ECONOMY, task.role or "task")
+
+    def _tier_note(self, agent: AgentKind, task: TaskView, tier: Tier) -> str:
+        """What an economy task runs on, for the reason line."""
+        if tier is Tier.PREMIUM:
+            return f"Premium: {agent.value} has no economy profile."
+        profile = self._economy_profile(agent, task)
+        how = [profile.model] if profile and profile.model else []
+        how += [shlex.join(profile.args)] if profile and profile.args else []
+        return f"Economy: {', '.join(how) or 'as configured'}."
 
     async def _start(
-        self, task_id: TaskId, agent: AgentKind
+        self, task_id: TaskId, agent: AgentKind, tier: Tier = Tier.PREMIUM
     ) -> tuple[AttemptId, AttemptInterrupted | None]:
         """Record a new attempt on ``agent``: its id, and why the attempt before it stopped
         (for a hand-off notice; the view of an ended attempt forgets)."""
@@ -653,7 +698,15 @@ class TaskRunner:
         task = project(events).tasks[task_id]
         before = _last_interruption(events, task.attempts[-1].attempt_id) if task.attempts else None
         head = await self._workspace.head(task.workdir) if self._workspace else None
-        started = start_attempt(task, agent, at=self._clock.now(), workdir_head=head)
+        profile = self._backend.profile(agent, tier, task.role or "task")
+        started = start_attempt(
+            task,
+            agent,
+            at=self._clock.now(),
+            workdir_head=head,
+            tier=tier,
+            backend=profile.backend if profile else self._backend.name,
+        )
         await self._append(started)
         return started.attempt_id, before
 
@@ -667,10 +720,11 @@ class TaskRunner:
     ) -> _Outcome:
         attempt_id, before = started
         task = (await self._board()).tasks[task_id]
+        tier = next(a.tier for a in task.attempts if a.attempt_id == attempt_id)
         with log_context(attempt_id=str(attempt_id)):
             # Before the pane: a profile the runner cannot apply leaves nothing open.
             command = self._settings.launch_commands.get(agent) or self._with_args(
-                agent, self._adapters[agent].launch_command(), task
+                agent, self._adapters[agent].launch_command(), task, tier
             )
             pane_id = await self._host.open_pane(cwd=task.workdir, label=task.title)
             await self._append(

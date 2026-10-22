@@ -41,6 +41,14 @@ class LaunchProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class ModelSpec:
+    """A model and flags for one agent in one tier, as configured."""
+
+    model: str | None = None
+    args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class BackendHealth:
     up: bool
     detail: str

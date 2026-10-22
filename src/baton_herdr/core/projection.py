@@ -51,6 +51,7 @@ from baton_herdr.core.model import (
     TaskId,
     TaskStatus,
 )
+from baton_herdr.core.routing import Tier
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -77,6 +78,9 @@ class AttemptView:
     interrupt_reason: InterruptReason | None = None
     resume_not_before: datetime | None = None
     outcome: AttemptOutcome | None = None
+    # The tier and backend it was started in (ADR 0020).
+    tier: Tier = Tier.PREMIUM
+    backend: str = "direct"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +119,8 @@ class TaskView:
     merged: bool = False
     conflicted: bool = False
     merge_failed: bool = False
+    # Set when the task was given a tier (ADR 0020); else its kind's tier applies.
+    tier: Tier | None = None
 
     @property
     def live_attempt(self) -> AttemptView | None:
@@ -176,6 +182,7 @@ def apply(board: Board, stored: StoredEvent) -> Board:
             request=event.request,
             needs=event.needs,
             branch=event.branch,
+            tier=event.tier,
         )
     else:
         existing = board.tasks.get(event.task_id)
@@ -218,7 +225,12 @@ def _apply_to_task(task: TaskView, stored: StoredEvent) -> TaskView:
                 raise InvalidEventError(stored, "another attempt is still live")
             if any(a.attempt_id == event.attempt_id for a in task.attempts):
                 raise InvalidEventError(stored, "attempt id already used")
-            attempt = AttemptView(attempt_id=event.attempt_id, agent=event.agent)
+            attempt = AttemptView(
+                attempt_id=event.attempt_id,
+                agent=event.agent,
+                tier=event.tier or Tier.PREMIUM,
+                backend=event.backend or "direct",
+            )
             return replace(task, attempts=(*task.attempts, attempt))
         case (
             AttemptLocated()

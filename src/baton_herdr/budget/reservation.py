@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.budget.quota import BudgetSource, counted
 from baton_herdr.core.model import AttemptStatus
+from baton_herdr.core.routing import Tier
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -76,7 +77,7 @@ def reserve(
         tokens = sum(
             max(
                 0,
-                expected_cost(agent, _role(task), tasks, sessions)
+                expected_cost(agent, _role(task), tasks, sessions, tier=live.tier)
                 - _spent(live.session_ref, sessions),
             )
             for task, live in running
@@ -88,9 +89,15 @@ def reserve(
 
 
 def expected_cost(
-    agent: AgentKind, role: str, tasks: Iterable[TaskView], sessions: Mapping[str, SessionCost]
+    agent: AgentKind,
+    role: str,
+    tasks: Iterable[TaskView],
+    sessions: Mapping[str, SessionCost],
+    *,
+    tier: Tier = Tier.PREMIUM,
 ) -> int:
-    """The median counted tokens of the agent's last finished attempts of this kind.
+    """The median counted tokens of the agent's last finished attempts of this kind, in
+    this tier (ADR 0020): an economy model's attempts cost differently.
 
     An attempt with no records (its session not known, or not collected) says nothing
     about cost and is left out, rather than counted as free.
@@ -102,6 +109,7 @@ def expected_cost(
             if _role(task) == role
             for a in task.attempts
             if a.agent is agent
+            and a.tier is tier
             and a.status is AttemptStatus.ENDED
             and a.session_ref is not None
             and a.session_ref in sessions
