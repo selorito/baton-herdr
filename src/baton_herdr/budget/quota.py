@@ -56,6 +56,8 @@ class Window:
     resets_at: datetime | None
     used_tokens: int | None = None
     cap_tokens: int | None = None
+    # When the window that is open now began; None when not known or none is open.
+    opened_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,10 @@ class AgentBudget:
     recent_tokens: int = 0
     # Set while the agent is limited (it hit a limit; from the event log).
     limited_until: datetime | None = None
+    # Attempts running on the agent, and the share of the tightest window they are
+    # expected to spend still (ADR 0019); None when it cannot be turned into a share.
+    running: int = 0
+    reserved_percent: float | None = None
 
     @property
     def estimate(self) -> bool:
@@ -77,6 +83,13 @@ class AgentBudget:
     @property
     def available(self) -> bool:
         return self.limited_until is None
+
+    @property
+    def effective_percent(self) -> float | None:
+        """What is left once running attempts have spent what they are expected to."""
+        if self.remaining_percent is None or self.reserved_percent is None:
+            return self.remaining_percent
+        return max(0.0, self.remaining_percent - self.reserved_percent)
 
 
 def counted(tokens: UsageTokens) -> int:
@@ -140,6 +153,11 @@ def _reported(
             # A window that has reset since the report is unused until the next one.
             used_percent=0.0 if w.resets_at is not None and w.resets_at <= now else w.used_percent,
             resets_at=w.resets_at if w.resets_at is not None and w.resets_at > now else None,
+            opened_at=(
+                w.resets_at - timedelta(minutes=w.window_minutes)
+                if w.resets_at is not None and w.resets_at > now
+                else None
+            ),
         )
         for w in latest.windows
     )
@@ -184,7 +202,12 @@ def _claude(
         return AgentBudget(AgentKind.CLAUDE, BudgetSource.UNKNOWN, None, (estimated,))
     percent = min(100.0, 100.0 * used / cap)
     estimated = Window(
-        "5h", percent, window[1] if window else None, used_tokens=used, cap_tokens=cap
+        "5h",
+        percent,
+        window[1] if window else None,
+        used_tokens=used,
+        cap_tokens=cap,
+        opened_at=window[0] if window else None,
     )
     return AgentBudget(AgentKind.CLAUDE, source, _left(percent), (estimated,))
 

@@ -11,6 +11,17 @@ is:
 
 ## [Unreleased]
 
+### Changed
+
+- **Tasks started at once no longer pile onto an agent near its limit** (ADR 0019). Every
+  running attempt reserves what it is expected to spend still: the median of its agent's
+  last finished attempts of the same kind, less what its session has spent so far. The
+  reserve is compared with what is left after that, and an agent below it runs one task
+  at a time. Before, four tasks assigned in the same second all saw the same "12% left"
+  and could all hit the limit. The reason line and `/budget` show it: `62% left, ~41%
+  after 2 running`. `task.agent_chosen` budget notes gain `running` and
+  `reserved_percent`.
+
 ## [1.2.0] - 2026-10-21
 
 Agents work side by side: a queue of tasks, and a project's independent steps, finish about

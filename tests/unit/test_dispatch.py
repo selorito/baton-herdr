@@ -8,11 +8,14 @@ from typing import TYPE_CHECKING, cast
 
 from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.fakes import FixedClock, InMemoryEventStore
-from baton_herdr.core.model import TaskId, TaskStatus
+from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.scheduler.dispatch import Dispatcher
 from baton_herdr.scheduler.runner import RunnerSettings
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from baton_herdr.core.events import StoredEvent
     from baton_herdr.scheduler.runner import TaskRunner
 
 NOW = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
@@ -25,6 +28,10 @@ class Runner:
         if task_id != TaskId("quick"):
             await asyncio.Event().wait()
         return TaskStatus.COMPLETED
+
+    async def agent_slots(self, events: Sequence[StoredEvent]) -> dict[AgentKind, int]:
+        del events
+        return {}  # the configured slots
 
 
 async def test_closing_cancels_running_workers_and_keeps_the_results_of_ended_ones() -> None:

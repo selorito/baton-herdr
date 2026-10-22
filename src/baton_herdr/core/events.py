@@ -185,6 +185,10 @@ class BudgetNote(BaseModel):
     remaining_percent: float | None = None
     # True when baton derived the figure (Claude); False when the agent reported it.
     estimate: bool = False
+    # Attempts running on the agent, and the share they are expected to spend still
+    # (ADR 0019); the reserve is compared with what is left after it.
+    running: int = 0
+    reserved_percent: float | None = None
 
 
 class AgentChosen(_Event):

@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
 from baton_herdr.budget.availability import fold_availability
-from baton_herdr.budget.choice import choose_agent
+from baton_herdr.budget.choice import choose_agent, slots
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.core.commands import complete_task, start_attempt
 from baton_herdr.core.config import DEFAULT_AGENT_SLOTS
@@ -90,6 +90,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from baton_herdr.budget.availability import Availability
+    from baton_herdr.budget.quota import AgentBudget
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.detector import Detector
     from baton_herdr.core.model import AttemptId, TaskId
@@ -577,6 +578,20 @@ class TaskRunner:
         available = availability.available(candidates, self._clock.now())
         return available[0] if available else None
 
+    async def agent_slots(self, events: Sequence[StoredEvent]) -> dict[AgentKind, int]:
+        """Sessions each agent may run now: its configured slots, or one while its
+        budget, after its running attempts, is below the reserve (ADR 0019)."""
+        agents = [agent for agent in self._settings.agents if agent in self._adapters]
+        return self._slots(await self._budget.read(agents, events, self._clock.now()))
+
+    def _slots(self, budgets: Mapping[AgentKind, AgentBudget]) -> dict[AgentKind, int]:
+        return slots(
+            budgets,
+            self._settings.agent_slots,
+            default=self._settings.default_agent_slots,
+            reserve_percent=self._settings.reserve_percent,
+        )
+
     async def _choose_agent(
         self, task_id: TaskId, tried: set[AgentKind]
     ) -> tuple[AgentKind | None, str]:
@@ -587,7 +602,7 @@ class TaskRunner:
         budgets = await self._budget.read(agents, events, now)
         full = full_agents(
             agent_load(project(events).tasks.values()),
-            self._settings.agent_slots,
+            self._slots(budgets),
             self._settings.default_agent_slots,
         )
         choice = choose_agent(

@@ -32,8 +32,10 @@ from detector_binary import detector, rust_detector
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
+    from baton_herdr.core.events import StoredEvent
     from baton_herdr.core.notify import Notice
     from baton_herdr.scheduler.queue import Signature
 
@@ -111,6 +113,9 @@ class Faulty:
             raise RuntimeError("a bug")
         return await self._inner.run(task_id)
 
+    async def agent_slots(self, events: Sequence[StoredEvent]) -> dict[AgentKind, int]:
+        return await self._inner.agent_slots(events)
+
 
 async def test_one_tasks_fault_does_not_stop_the_others(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -155,6 +160,10 @@ class Hangs:
         self.started.set()
         await asyncio.Event().wait()
         return TaskStatus.RUNNING
+
+    async def agent_slots(self, events: Sequence[StoredEvent]) -> dict[AgentKind, int]:
+        del events
+        return {}  # the configured slots
 
 
 async def test_stopping_batond_does_not_wait_for_a_turn_to_end(tmp_path: Path) -> None:

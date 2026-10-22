@@ -8,6 +8,10 @@ that (``budget.availability``), so a wrong estimate costs at most one limit.
 Busy agents, those running as many tasks as they have slots (ADR 0017), go behind
 every agent with a free slot, before budget is looked at. They are not refused
 either: a task that has to move on takes a busy agent rather than none.
+
+What is left is counted after the reservations of the agent's running attempts
+(ADR 0019), and an agent with less than the reserve left that way runs one task at a
+time (``slots``).
 """
 
 from __future__ import annotations
@@ -23,6 +27,9 @@ if TYPE_CHECKING:
 
     from baton_herdr.budget.quota import AgentBudget
     from baton_herdr.core.model import AgentKind
+
+# Sessions an agent with less than the reserve left may run at once (ADR 0019).
+LOW_BUDGET_SLOTS = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +56,8 @@ def choose_agent(  # noqa: PLR0913 - the agents, what is known of them, and what
     notes = tuple(_note(agent, budgets.get(agent)) for agent in agents)
 
     def low(note: BudgetNote) -> bool:
-        return note.remaining_percent is not None and note.remaining_percent < reserve_percent
+        left = _effective(note)
+        return left is not None and left < reserve_percent
 
     def skipped(note: BudgetNote) -> str:
         if not note.available:
@@ -80,7 +88,7 @@ def choose_agent(  # noqa: PLR0913 - the agents, what is known of them, and what
         return Choice(chosen.agent, f"{chosen.agent.value}: {order}, {_standing(chosen)}.", notes)
 
     # Every agent that could take it is short; the one with the most left goes first.
-    chosen = max(candidates, key=lambda n: n.remaining_percent or 0.0)
+    chosen = max(candidates, key=lambda n: _effective(n) or 0.0)
     reason = (
         f"{chosen.agent.value}: every agent that could take the task has less than the "
         f"{reserve_percent:g}% reserve left; {chosen.agent.value} has the most "
@@ -99,7 +107,34 @@ def _note(agent: AgentKind, budget: AgentBudget | None) -> BudgetNote:
             round(budget.remaining_percent, 1) if budget.remaining_percent is not None else None
         ),
         estimate=budget.estimate,
+        running=budget.running,
+        reserved_percent=(
+            round(budget.reserved_percent, 1) if budget.reserved_percent is not None else None
+        ),
     )
+
+
+def slots(
+    budgets: Mapping[AgentKind, AgentBudget],
+    configured: Mapping[AgentKind, int],
+    *,
+    default: int,
+    reserve_percent: float,
+) -> dict[AgentKind, int]:
+    """Sessions each agent may run at once: its configured slots, or one while it has
+    less than the reserve left after its running attempts (ADR 0019)."""
+    result = dict(configured)
+    for agent, budget in budgets.items():
+        left = budget.effective_percent
+        if left is not None and left < reserve_percent:
+            result[agent] = min(LOW_BUDGET_SLOTS, configured.get(agent, default))
+    return result
+
+
+def _effective(note: BudgetNote) -> float | None:
+    if note.remaining_percent is None or note.reserved_percent is None:
+        return note.remaining_percent
+    return max(0.0, note.remaining_percent - note.reserved_percent)
 
 
 def _until(budget: AgentBudget | None) -> datetime | None:
@@ -110,7 +145,11 @@ def _standing(note: BudgetNote) -> str:
     if note.remaining_percent is None:
         return "budget unknown"
     text = f"{note.remaining_percent:.0f}% left"
-    return f"~{text} (estimate)" if note.estimate else text
+    text = f"~{text} (estimate)" if note.estimate else text
+    left = _effective(note)
+    if note.reserved_percent and left is not None:
+        text += f", ~{left:.0f}% after {note.running} running"
+    return text
 
 
 def _clock(at: datetime, zone: tzinfo) -> str:

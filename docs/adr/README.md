@@ -23,5 +23,5 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0016](0016-projects-from-telegram.md) | Projects from Telegram: a request is planned, approved, run step by step, and delivered | accepted |
 | [0017](0017-parallel-work.md) | Parallel work: tasks side by side on every agent, and a project's independent steps in worktrees | accepted |
 | [0018](0018-releasing-an-agent.md) | The operator can release an agent baton set aside | accepted |
-| [0019](0019-budget-for-parallel-sessions.md) | Budget with parallel sessions: reserve what running attempts are expected to spend | proposed |
+| [0019](0019-budget-for-parallel-sessions.md) | Budget with parallel sessions: reserve what running attempts are expected to spend | accepted |
 | [0021](0021-natural-language-assistant.md) | A natural-language assistant in Telegram: a local model that proposes, the operator who starts | proposed |

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-21
 ---
 
@@ -54,8 +54,11 @@ Chosen option: **3**.
 - **Expected cost.** For each agent and kind of task (`plan`, `step`, `merge`, `task`), the
   median of the counted tokens (ADR 0012: input + cache writes + output) of the last 20
   finished attempts. A finished attempt's tokens are its session's records, joined to the
-  attempt by its `session_ref`. With fewer than 3 such attempts, a default per kind. An
-  attempt's expected cost changes with the median; nothing is stored.
+  attempt by its `session_ref`. An attempt with no records is left out rather than counted
+  as free. With fewer than 3 such attempts, 45k tokens: the mean of the 19 Claude sessions
+  measured on 2026-10-18. An attempt's expected cost changes with the median; nothing is
+  stored. Only the records the budget reads anyway (the last 24 hours, or back to the
+  last Claude limit) are used, so older attempts drop out of the median.
 - **Reservation.** For a running attempt: what it is expected to cost, less what its
   session has spent so far, and never below zero. The part it has already spent is in the
   reported figure, so it is not counted twice. The figure catching up with what the attempt
@@ -63,14 +66,16 @@ Chosen option: **3**.
 - **In percent.** Reported budgets are shares, so tokens are turned into a share with the
   agent's tokens per percent in its current window. That rate is the counted tokens since
   the window opened divided by the share it reports used, learned once at least 5 % is
-  used. For the Claude estimate, the share comes from the cap. With no rate the
-  reservation is unknown, and the budget stays as it is, as it does today.
+  used. A window that opened before the records read (a weekly one, usually) cannot be
+  measured that way. For the Claude estimate, the share comes from the cap. With no rate
+  the reservation is unknown, and the budget stays as it is, as it does today.
 - **Effective remaining** = remaining less the reservations of the agent's running
   attempts. `choose_agent` compares this figure with the reserve. Notices show it as an
   estimate ("~8 % left after 3 running").
 - **Below the reserve, one at a time.** An agent whose effective remaining is below the
   reserve takes one session at a time, whatever its `agent_slots`. Only one task then runs
-  into a limit that is close.
+  into a limit that is close. The dispatcher counts free slots with the same figure, so it
+  does not start workers for slots that budget has taken away.
 - **No race.** The dispatcher already chooses and starts attempts under one lock (ADR
   0017). The choice reads the running attempts from the log inside that lock, so the second
   start of a tick sees the first one's reservation.
@@ -82,8 +87,12 @@ Chosen option: **3**.
 - Good: no new events and no counters. A restart of batond rebuilds the same reservations.
 - Bad: the median is rough. Tasks differ by ten times or more, so a large task can still hit
   a limit. Its cost stays what ADR 0012 accepts: one limit and a hand-off.
-- Bad: the usage tables are read for every running attempt when a task is assigned. This is
-  cheap at four slots, and an index on `session_id` keeps it so.
+- Bad: the dispatcher reads the budget at every tick, as agent choice did at every
+  assignment. This is one query on the usage tables. Sessions are matched in memory, so
+  no new index is needed.
+- Bad: tokens are counted on this machine only. Claude's status line reports the whole
+  account, so sessions on other machines make tokens per percent look smaller. Each
+  reservation then looks larger, which errs on the side of caution.
 - Not covered: tokens spent by the user's own sessions after a choice. They show up in the
   next reported figure, as they do today.
 - Not covered: Codex sessions refreshing one token at the same time during a run

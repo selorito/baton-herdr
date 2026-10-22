@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.quota import fold_budgets, usage_since
+from baton_herdr.budget.reservation import reserve
+from baton_herdr.core.projection import project
 from baton_herdr.core.usage import UsageTokens
 
 if TYPE_CHECKING:
@@ -34,15 +36,14 @@ class BudgetReader:
     async def read(
         self, agents: Sequence[AgentKind], events: Sequence[StoredEvent], now: datetime
     ) -> dict[AgentKind, AgentBudget]:
-        usage = (
-            await self.usage.usage(since=usage_since(events, now)) if self.usage is not None else ()
-        )
+        since = usage_since(events, now)
+        usage = await self.usage.usage(since=since) if self.usage is not None else ()
         rate_limits = (
             await self.usage.rate_limits(since=now - RATE_LIMITS_LOOKBACK)
             if self.usage is not None
             else ()
         )
-        return fold_budgets(
+        budgets = fold_budgets(
             agents,
             events=events,
             usage=usage,
@@ -50,6 +51,10 @@ class BudgetReader:
             availability=fold_availability(events, cooldown=self.cooldown),
             now=now,
             claude_window_tokens=self.claude_window_tokens,
+        )
+        # What running attempts will still spend (ADR 0019).
+        return reserve(
+            budgets, tasks=project(events).tasks.values(), usage=usage, usage_since=since, now=now
         )
 
     async def spent(

@@ -68,7 +68,7 @@ class Dispatcher:
             board.tasks,
             running=self.running,
             available=available,
-            slots=self._settings.agent_slots,
+            slots=await self._runner.agent_slots(events),
             default_slots=self._settings.default_agent_slots,
             max_parallel=self._settings.max_parallel_tasks,
         )

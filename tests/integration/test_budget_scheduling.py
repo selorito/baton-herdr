@@ -196,3 +196,48 @@ def test_cli_budget_reads_the_usage_tables(tmp_path: Path) -> None:
         "Next task: claude: next in preference order "
         "(codex 3% left, below the 10% reserve), budget unknown."
     )
+
+
+async def test_tasks_assigned_at_once_see_each_others_reservations() -> None:
+    """ADR 0019: with 13% of Claude left, the first task reserves ~4.5% of it; the second,
+    assigned before the first has spent anything, sees ~8.5% left and goes to Codex."""
+    store = InMemoryEventStore()
+    other = TaskId("other")
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=NOW, task_id=t, title=t, instructions="Add power(a, b).", workdir=w
+            )
+            for t, w in ((TASK, "/work/calc"), (other, "/work/other"))
+        ]
+    )
+    usage = InMemoryUsageStore()
+    await usage.record([claude_response(870_000)])
+    runner = TaskRunner(
+        detector=rust_detector(),
+        store=store,
+        host=SimulatedAgents(
+            CLOCK,
+            scripts={AgentKind.CLAUDE: "claude-finish.toml", AgentKind.CODEX: "codex-finish.toml"},
+        ),
+        adapters=ADAPTERS,
+        notifier=RecordingNotifier(),
+        clock=CLOCK,
+        settings=RunnerSettings(
+            agents=(AgentKind.CLAUDE, AgentKind.CODEX),
+            start_timeout_s=2,
+            turn_timeout_s=2,
+            poll_interval_s=0.05,
+        ),
+        budget=BudgetReader(usage=usage, cooldown=COOLDOWN, claude_window_tokens=1_000_000),
+    )
+
+    results = await asyncio.gather(runner.run(TASK), runner.run(other))
+    assert list(results) == [TaskStatus.COMPLETED, TaskStatus.COMPLETED]
+
+    chosen = [s.event for s in await store.read() if isinstance(s.event, AgentChosen)]
+    assert [c.agent for c in chosen] == [AgentKind.CLAUDE, AgentKind.CODEX]
+    assert chosen[1].reason == (
+        "codex: next in preference order (claude ~13% left (estimate), ~8% after 1 running, "
+        "below the 10% reserve), budget unknown."
+    )

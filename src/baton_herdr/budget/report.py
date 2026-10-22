@@ -32,6 +32,8 @@ def _line(budget: AgentBudget, now: datetime, zone: tzinfo) -> str:
         parts.append(f"~{budget.remaining_percent:.0f}% left ({_SOURCE[budget.source]})")
     else:
         parts.append(f"{budget.remaining_percent:.0f}% left")
+    if budget.reserved_percent and budget.effective_percent is not None:
+        parts.append(f"~{budget.effective_percent:.0f}% after {budget.running} running")
     parts.extend(_window(w, budget, now, zone) for w in budget.windows)
     if not budget.windows:
         parts.append(f"{tokens(budget.recent_tokens)} tokens in the last 5h")
