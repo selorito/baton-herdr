@@ -202,3 +202,38 @@ def test_a_missing_baton_detect_is_downloaded_when_asked(tmp_path: Path) -> None
     (download,) = [c for c in script.ran if c[0] == "curl"]
     assert download[-1].endswith("/baton-detect-x86_64-unknown-linux-gnu")
     assert (where.local_bin / "baton-detect").stat().st_mode & stat.S_IXUSR
+
+
+def test_without_ollama_the_assistant_is_only_mentioned(tmp_path: Path) -> None:
+    script = Script()
+    where = paths(tmp_path)
+    run_setup(script.io(), where, timezone="UTC", target="x")
+    assert any("install Ollama" in line for line in script.said)
+    assert not BatonSettings.model_validate(
+        tomllib.loads(where.config.read_text())
+    ).assistant.enabled
+
+
+def test_with_ollama_the_assistant_is_set_up_when_asked(tmp_path: Path) -> None:
+    script = Script(found=("herdr", "claude", "baton-detect", "ollama"))
+    script.answers["Let the Telegram bot read plain messages"] = True
+    where = paths(tmp_path)
+    run_setup(script.io(), where, timezone="UTC", target="x")
+    assert ["ollama", "pull", "qwen3.5:4b"] in script.ran  # not listed by `ollama list`
+    assistant = BatonSettings.model_validate(tomllib.loads(where.config.read_text())).assistant
+    assert (assistant.backend, assistant.model) == ("ollama", "qwen3.5:4b")
+
+    again = Script(found=("herdr", "claude", "baton-detect", "ollama"))
+    run_setup(again.io(), where, timezone="UTC", target="x")
+    assert "Keeping the assistant's settings." in again.said
+    assert ["ollama", "pull", "qwen3.5:4b"] not in again.ran
+
+
+def test_the_assistant_is_off_unless_the_user_says_yes(tmp_path: Path) -> None:
+    script = Script(found=("herdr", "claude", "baton-detect", "ollama"))
+    where = paths(tmp_path)
+    run_setup(script.io(), where, timezone="UTC", target="x")
+    assert ["ollama", "list"] not in script.ran
+    assert not BatonSettings.model_validate(
+        tomllib.loads(where.config.read_text())
+    ).assistant.enabled

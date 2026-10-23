@@ -531,8 +531,8 @@ def setup(
     ] = True,
 ) -> None:
     """Set baton up on this machine, step by step: baton-detect, herdr's integrations, the
-    config, Telegram (it finds your chat itself), the policy, and the service. Safe to run
-    again: what exists is kept unless you say otherwise."""
+    config, Telegram (it finds your chat itself), the policy, the assistant if Ollama is
+    there, and the service. Safe to run again: what exists is kept unless you say otherwise."""
     io = Io(
         say=typer.echo,
         ask=lambda question, default: str(typer.prompt(question, default=default)),

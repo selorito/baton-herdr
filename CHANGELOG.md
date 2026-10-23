@@ -13,6 +13,11 @@ is:
 
 ### Added
 
+- **`baton setup` offers the assistant** when Ollama is installed: it asks for the model
+  (`qwen3.5:4b` by default), pulls it if needed, and writes `[assistant]`.
+- **Telegram's command menu.** The bot registers its commands, so typing "/" in the chat
+  lists them with what each does. `/help` tells about plain messages.
+
 - **Ask baton in your own words** (ADR 0021). With `[assistant]` set to a model Ollama
   serves on this machine, a plain message in Telegram is read by it: "t-1a2b3c4d neden
   takıldı?", "what is running?". The model only interprets the message; the answer comes

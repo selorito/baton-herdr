@@ -1,16 +1,24 @@
 # baton-herdr
 
 [![CI](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/selorito/baton-herdr)](https://github.com/selorito/baton-herdr/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](Cargo.toml)
 
-baton keeps a queue of coding tasks moving across Claude Code, Codex CLI and OpenCode running
-in [herdr](https://github.com/herdrdev/herdr), several at once. When one agent hits its usage
-limit, crashes or stalls, baton resumes the task or hands it to another agent, and tells you on
-Telegram. From Telegram you can also ask for a whole project: an agent plans it, you start the
-plan, independent steps run side by side on different agents and are merged back, and the
-result comes back with a link and a screenshot.
+**Coding agents that keep working while you are away.** baton runs a queue of coding tasks on
+Claude Code, Codex CLI and OpenCode in [herdr](https://github.com/herdrdev/herdr), several at
+once, and keeps them moving: when an agent hits its usage limit, crashes or stalls, baton
+resumes the task or hands it to another agent, and tells you on Telegram.
+
+| | |
+|---|---|
+| **Keeps going past limits** | Limits, crashes and stalls are recovered on their own: the same session resumed, the task handed on with what was done, or, with every agent limited, resumed at the first reset. |
+| **Work side by side** | Several tasks at once, a project's independent steps in their own git worktrees, merged back. A ten-task queue finishes three times sooner. |
+| **Projects from your phone** | "/new a site for my cafe": an agent plans it, you start the plan, the result comes back with a link and a screenshot. |
+| **Ask in your own words** | "why is t-42 stuck?", "build me a…": a model on your machine reads it; answers come from the log, work starts only from a button. |
+| **Spends the right budget** | Agents chosen by what each has left; routine steps on a cheaper model, moved up when they fail. |
+| **Safe to leave alone** | Risky commands ask you first, secrets are masked, and every decision is in an event log with its reason. |
 
 ![baton handing a task from Claude Code to Codex in herdr](docs/assets/demo.gif)
 

@@ -15,6 +15,7 @@ import getpass
 import json
 import re
 import time
+import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -202,6 +203,7 @@ def run_setup(io: Io, paths: Paths, *, timezone: str, target: str) -> bool:
     _config(io, paths, agents, timezone)
     complete &= _telegram(io, paths)
     _policy(io, paths)
+    _assistant(io, paths)
     return complete
 
 
@@ -294,6 +296,43 @@ def _policy(io: Io, paths: Paths) -> None:
     paths.policy.parent.mkdir(parents=True, exist_ok=True)
     paths.policy.write_text(first_policy(trusted), encoding="utf-8")
     io.say(f"Wrote {paths.policy}: trusted {', '.join(trusted)}.")
+
+
+# The model the assistant is set up with unless the user names another: measured on a
+# 15 GB laptop, it reads as well as a 9B model and leaves 3.9 GB free (ADR 0021).
+ASSISTANT_MODEL = "qwen3.5:4b"
+
+
+def _assistant(io: Io, paths: Paths) -> None:
+    """Optional: plain Telegram messages read by a model on this machine (ADR 0021)."""
+    text = paths.config.read_text(encoding="utf-8") if paths.config.exists() else ""
+    if tomllib.loads(text).get("assistant", {}).get("backend"):
+        io.say("Keeping the assistant's settings.")
+        return
+    if io.which("ollama") is None:
+        io.say(
+            "Optional: to ask baton in your own words on Telegram, install Ollama "
+            "(https://ollama.com) and run baton setup again."
+        )
+        return
+    if not io.confirm(
+        "Let the Telegram bot read plain messages with a model on this machine "
+        "(about 3-4 GB of memory while it answers)?",
+        default=False,
+    ):
+        return
+    model = io.ask("Ollama model", ASSISTANT_MODEL).strip() or ASSISTANT_MODEL
+    _, listed = io.run(["ollama", "list"])
+    if not any(line.split()[:1] == [model] for line in listed.splitlines()):
+        if not io.confirm(f"{model} is not pulled. Download it now?", default=True):
+            io.say(f"Pull it later: ollama pull {model}")
+        else:
+            code, out = io.run(["ollama", "pull", model])
+            io.say(f"Pulled {model}." if code == 0 else f"The download failed: {out.strip()}")
+    text = set_toml_value(text, "assistant", "backend", '"ollama"')
+    text = set_toml_value(text, "assistant", "model", json.dumps(model))
+    paths.config.write_text(text, encoding="utf-8")
+    io.say(f"Assistant: {model} reads plain messages; commands work as before.")
 
 
 def ask_secret(question: str) -> str:

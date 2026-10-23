@@ -70,10 +70,21 @@ HELP = (
     "/cancel <task or project>: drop it and close its agent's pane, e.g. /cancel t-1a2b3c4d.\n"
     "/budget: what each agent has left.\n"
     "/tier <task> economy|premium: the tier it runs in from its next attempt.\n"
+    "With the assistant on ([assistant]), just write: 'why is t-1a2b3c4d stuck?', "
+    "'what is running?', or what to build.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
 # A word of its own: "#economy", not "cafe#economy".
 _TIER_TAG = re.compile(r"(?<!\S)#(economy|premium)(?!\S)", re.IGNORECASE)
+# Telegram's command menu: what "/" offers in the chat.
+MENU = (
+    ("new", "Start a project: /new <what to build>"),
+    ("status", "Open tasks and agents"),
+    ("budget", "What each agent has left"),
+    ("tier", "Economy or premium: /tier <task> economy"),
+    ("cancel", "Drop a task or project: /cancel t-…"),
+    ("help", "What the bot does"),
+)
 PLAN_STARTED = "Started."
 PLAN_CANCELLED = "Cancelled."
 TASK_CANCELLED = "Task cancelled."
@@ -427,8 +438,11 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     """Long-poll Telegram and hand authorised updates to ``operator`` until cancelled."""
     from aiogram import Dispatcher, F, Router  # noqa: PLC0415 - only with Telegram
     from aiogram.filters import Command  # noqa: PLC0415
+    from aiogram.types import BotCommand  # noqa: PLC0415
 
     me = await bot.get_me()
+    with suppress(Exception):  # the menu is a convenience; the commands work without it
+        await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in MENU])
     router = Router()
 
     def sender(update: Message | CallbackQuery) -> int | None:
