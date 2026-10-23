@@ -11,12 +11,12 @@ is:
 
 ## [Unreleased]
 
-### Added
+## [1.3.0] - 2026-10-23
 
-- **`baton setup` offers the assistant** when Ollama is installed: it asks for the model
-  (`qwen3.5:4b` by default), pulls it if needed, and writes `[assistant]`.
-- **Telegram's command menu.** The bot registers its commands, so typing "/" in the chat
-  lists them with what each does. `/help` tells about plain messages.
+Ask baton in your own words, run routine work on a cheaper model, and start tasks side by
+side without piling them onto an agent near its limit.
+
+### Added
 
 - **Ask baton in your own words** (ADR 0021). With `[assistant]` set to a model Ollama
   serves on this machine, a plain message in Telegram is read by it: "t-1a2b3c4d neden
@@ -36,7 +36,6 @@ is:
   your next message as the change and replaces the card. A request missing something gets
   a question instead of a card. Cards can be pressed for `card_ttl_minutes` (30) and are
   forgotten on a restart.
-
 - **Economy tier** (ADR 0020). Routine work can run on a cheaper model of the same agent:
   `[tiers] roles = { step = "economy" }` and `[tiers.economy] claude = { model = "haiku" }`
   build a project's pages on Haiku and plan them on the default model. An economy task goes
@@ -60,6 +59,10 @@ is:
   `/status` marks economy tasks `(economy)` and moved-up ones `(⬆premium)`, and
   `baton status` shows economy attempts as `claude/economy:…`; premium lines read as
   before.
+- **`baton setup` offers the assistant** when Ollama is installed: it asks for the model
+  (`qwen3.5:4b` by default), pulls it if needed, and writes `[assistant]`.
+- **Telegram's command menu.** The bot registers its commands, so typing "/" in the chat
+  lists them with what each does. `/help` tells about plain messages.
 
 ### Changed
 
@@ -71,6 +74,15 @@ is:
   and could all hit the limit. The reason line and `/budget` show it: `62% left, ~41%
   after 2 running`. `task.agent_chosen` budget notes gain `running` and
   `reserved_percent`.
+
+### Known limitations
+
+- The assistant runs on the machine's CPU unless a GPU is there: about 10 s an answer, and
+  a model holds 3.8 GB (`qwen3.5:4b`) to 6.7 GB (9B) while loaded
+  (`docs/devlog/2026-10-22-assistant-on-ollama.md`). One message is answered at a time.
+- Confirmation cards live in memory: a restart of batond forgets them, and a press then
+  says the card has expired. Nothing is started from a forgotten card.
+- Work in an existing directory cannot be asked for in words yet; `baton task add` does it.
 
 ## [1.2.0] - 2026-10-21
 
@@ -321,7 +333,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/selorito/baton-herdr/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/selorito/baton-herdr/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/selorito/baton-herdr/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/selorito/baton-herdr/compare/v1.0.0...v1.0.1
