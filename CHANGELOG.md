@@ -20,6 +20,12 @@ is:
   way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
   default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
 
+### Fixed
+
+- **WSL1: the CLI could not open the log batond held** (`locking protocol`). SQLite's WAL
+  needs shared memory WSL1 does not share across processes; on WSL1 the database now uses
+  the rollback journal.
+
 ## [1.3.0] - 2026-10-23
 
 Ask baton in your own words, run routine work on a cheaper model, and start tasks side by

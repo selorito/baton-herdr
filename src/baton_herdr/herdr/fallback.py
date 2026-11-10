@@ -311,20 +311,6 @@ def with_title(
     }
 
 
-def running_on_wsl1(osrelease: str | None = None) -> bool:
-    """True on WSL1, whose kernel release reads like ``4.4.0-26100-Microsoft``.
-
-    WSL2's (``…-microsoft-standard-WSL2``) is a real Linux kernel herdr can read.
-    """
-    if osrelease is None:
-        try:
-            osrelease = Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8")
-        except OSError:
-            return False
-    release = osrelease.strip()
-    return release.endswith("-Microsoft") and "WSL2" not in release
-
-
 class ProcProcessTable:
     """:class:`ProcessTable` read from ``/proc``."""
 

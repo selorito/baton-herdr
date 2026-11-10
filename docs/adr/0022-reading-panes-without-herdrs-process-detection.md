@@ -68,6 +68,11 @@ Everything is in `baton_herdr.herdr`; `HerdrPaneHost` keeps its `PaneHost` contr
   the text with `pane.send_input` (bracketed when the terminal asked for it), wait 300 ms,
   press Enter.
 - **Processes.** The shell's descendants with their command lines, or the shell alone.
+- **The log's journal.** WSL1's shared memory does not hold SQLite's WAL together across
+  processes: with batond holding the database, every other process opening it (the CLI,
+  `baton doctor`, `sqlite3`) failed with `locking protocol` (SQLITE_PROTOCOL). On WSL1 the
+  ledger uses the rollback journal (`journal_mode=DELETE`), which locks with `fcntl`;
+  elsewhere it stays WAL. A WAL file opened on WSL1 is switched on its next upgrade.
 - **Session ids** still come from herdr (`agent_session`). Seen through the process table,
   an agent can appear a moment before its session report: targeting already treats that
   as `UNCONFIRMED` until the id arrives (ADR 0006).

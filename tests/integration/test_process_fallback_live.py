@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.herdr import process_fallback
-from baton_herdr.herdr.fallback import running_on_wsl1
 from baton_herdr.herdr.host import HerdrPaneHost
 
 import fake_agent

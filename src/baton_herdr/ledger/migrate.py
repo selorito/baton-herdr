@@ -10,6 +10,8 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
+from baton_herdr.core.platform import running_on_wsl1
+
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
@@ -37,10 +39,18 @@ def upgrade(db_path: Path) -> None:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+def journal_mode() -> str:
+    """WAL, except on WSL1: there WAL's shared memory does not work across processes, and
+    every second process opening the file fails with SQLITE_PROTOCOL ("locking protocol"),
+    so the CLI cannot reach the log batond holds. The rollback journal locks with fcntl,
+    which WSL1 has (ADR 0022)."""
+    return "DELETE" if running_on_wsl1() else "WAL"
+
+
 def _upgrade(db_path: Path) -> None:
     command.upgrade(alembic_config(db_path), "head")
-    # WAL is a property of the file. Set it here, once, before the stores connect:
-    # switching takes an exclusive lock, which two engines opening a fresh file at
-    # the same moment would fight over.
+    # The journal mode is a property of the file. Set it here, once, before the stores
+    # connect: switching takes an exclusive lock, which two engines opening a fresh file
+    # at the same moment would fight over.
     with closing(sqlite3.connect(db_path, timeout=5)) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(f"PRAGMA journal_mode={journal_mode()}")

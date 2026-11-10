@@ -12,6 +12,7 @@ from baton_herdr.core.config import HerdrSettings
 from baton_herdr.core.fakes import FakeProcessTable, FakeScreenExplainer
 from baton_herdr.core.model import AgentKind, AgentState
 from baton_herdr.core.panes import AgentBlockedError, AgentNotRunningError, PaneProcess
+from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.core.processes import ProcessEntry
 from baton_herdr.herdr import reads_processes_itself
 from baton_herdr.herdr.fallback import (
@@ -23,7 +24,6 @@ from baton_herdr.herdr.fallback import (
     herdr_state_dir,
     identify,
     parse_stat,
-    running_on_wsl1,
     title_rules_from,
     with_title,
 )

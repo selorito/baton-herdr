@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.config import resolve_herdr_socket_path
+from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.herdr.fallback import (
     HerdrFileExplainer,
     ManifestTitleRules,
     ProcessFallback,
     ProcProcessTable,
     herdr_state_dir,
-    running_on_wsl1,
 )
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
