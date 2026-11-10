@@ -3,7 +3,8 @@
 A model only interprets the operator's message: it has no file system, shell or herdr.
 Its answer is text that must fit :data:`INTENT_SCHEMA`; :func:`parse_intent` holds every
 backend to it, and whatever does not fit becomes ``chat``, so nothing acts on it. Work is
-started only through the existing functions, after the operator presses a button.
+started, cancelled or moved to another tier only through the existing functions, after the
+operator presses a button.
 """
 
 from __future__ import annotations
@@ -110,22 +111,47 @@ class ProjectProposal(_Schema):
     question: str | None = Field(default=None, max_length=300)
 
 
+class TaskRef(_Schema):
+    """The task (or, to cancel, the project) an action is for: its id when the message
+    writes one, else the words the operator names it by ("the cafe task": "cafe"). baton
+    finds the task from them; the model never makes up an id."""
+
+    id: str | None = Field(default=None, pattern=TASK_OR_PROJECT_ID)
+    words: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _names_something(self) -> TaskRef:
+        if self.id is None and self.words is None:
+            msg = "a task is named by its id or by words"
+            raise ValueError(msg)
+        return self
+
+
+class CancelProposal(_Schema):
+    task: TaskRef
+
+
+class TierProposal(_Schema):
+    task: TaskRef
+    tier: Literal["economy", "premium"]
+
+
 class Interpretation(_Schema):
-    intent: Literal["chat", "status", "new_project"]
+    intent: Literal["chat", "status", "new_project", "cancel", "set_tier"]
     # What the operator is told: the chat answer, or the question to ask.
     reply: str = Field(max_length=1500)
     confidence: float = Field(ge=0, le=1)
     status: StatusQuery | None = None
     new_project: ProjectProposal | None = None
+    cancel: CancelProposal | None = None
+    set_tier: TierProposal | None = None
 
     @model_validator(mode="after")
     def _fits_the_intent(self) -> Interpretation:
-        if (self.intent == "status") != (self.status is not None):
-            msg = "a status intent carries status, and only it does"
-            raise ValueError(msg)
-        if (self.intent == "new_project") != (self.new_project is not None):
-            msg = "a new_project intent carries new_project, and only it does"
-            raise ValueError(msg)
+        for intent in ("status", "new_project", "cancel", "set_tier"):
+            if (self.intent == intent) != (getattr(self, intent) is not None):
+                msg = f"a {intent} intent carries {intent}, and only it does"
+                raise ValueError(msg)
         return self
 
 

@@ -125,6 +125,9 @@ async def test_a_plain_why_goes_straight_to_the_explanation() -> None:
         ("p-1a2b3c projesi ne aşamada?", True),
         ("bugün ne yapsam?", False),  # names nothing, asks no status
         ("t-1a2b3c4d hakkında ne düşünüyorsun", False),  # neither how nor why
+        ("t-1a2b3c4d durumu ne, iptal et", False),  # asks for a cancel
+        ("is t-1a2b3c4d done? then stop it", False),
+        ("t-1a2b3c4d durumda mı, ucuz modele al", False),  # asks for a tier
     ],
 )
 def test_only_plain_status_questions_skip_the_model(message: str, *, plain: bool) -> None:

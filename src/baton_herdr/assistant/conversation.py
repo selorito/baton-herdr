@@ -1,9 +1,12 @@
 """The assistant's side of a conversation (ADR 0021): one message in, one answer out.
 
 The model interprets; baton acts. An answer that does not fit the schema is small talk
-saying it was not understood. A status question is answered from the log's digest: in a
-fixed form, or, for a "why", explained by the model from the digest alone, with the events
-it relied on cited and any citation the digest does not hold dropped.
+saying it was not understood. A project, a cancel or a change of tier comes as a card,
+done only when the operator presses its button; which task a cancel or a tier is for is
+found by baton, and asked when it is not plain. A status question is answered from the
+log's digest: in a fixed form, or, for a "why", explained by the model from the digest
+alone, with the events it relied on cited and any citation the digest does not hold
+dropped.
 
 One message is answered at a time, within a time limit; a message that arrives meanwhile
 is told to wait, not queued, so the bot never stalls behind the model.
@@ -20,8 +23,17 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
-from baton_herdr.assistant.cards import Card, CardState, CardStore
+from baton_herdr.assistant.cards import Card, CardKind, CardState, CardStore
 from baton_herdr.assistant.digest import brief, build_digest
+from baton_herdr.assistant.targets import (
+    MAX_CHOICES,
+    Ambiguous,
+    Closed,
+    OneProject,
+    OneTask,
+    Unknown,
+    find_target,
+)
 from baton_herdr.core.assistant import (
     MODEL_SCHEMA,
     AssistantTurn,
@@ -29,18 +41,22 @@ from baton_herdr.core.assistant import (
     ChatMessage,
     Interpretation,
     StatusQuery,
+    TaskRef,
     model_schema,
     parse_intent,
 )
 from baton_herdr.core.logging import get_logger
+from baton_herdr.core.projection import project
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from datetime import tzinfo
 
     from baton_herdr.assistant.digest import Digest
+    from baton_herdr.assistant.targets import Found
     from baton_herdr.core.assistant import AssistantBackend
     from baton_herdr.core.ports import EventStore
+    from baton_herdr.core.projection import TaskView
 
 type Language = Literal["tr", "en"]
 
@@ -54,16 +70,26 @@ operator's message; you cannot run anything. Classify it:
 - "new_project": a request to build or change something. new_project.request is the
   request, complete, as the operator would write it to an agent. target.kind is "new".
   When something essential is missing, ask it in new_project.question.
+- "cancel": a request to cancel, drop or stop a task or a project. cancel.task.id is the
+  id the message writes (t-… or p-…). When it writes none, id is null and cancel.task.words
+  is how it names the task, in its own words ("cancel the cafe task": "cafe"). Never make
+  up an id.
+- "set_tier": a request to run a task on the cheaper model ("economy") or the usual one
+  ("premium"). set_tier.task as for cancel; set_tier.tier is "economy" or "premium".
 - "chat": anything else. Answer in reply.
 confidence is how sure you are of the intent, from 0 to 1. reply is at most two short
-sentences. Fill status for a status intent and new_project for a new_project intent, never
-null for its own intent; leave the other one null.
+sentences. Fill the object named like the intent (status, new_project, cancel, set_tier),
+never null for its own intent; leave the others null.
 {language}
 Answer with one JSON object only:
-{{"intent": "chat" | "status" | "new_project", "reply": "...", "confidence": 0.9,
+{{"intent": "chat" | "status" | "new_project" | "cancel" | "set_tier", "reply": "...",
+ "confidence": 0.9,
  "status": {{"ids": ["t-1a2b3c4d"], "why": false}} or null,
  "new_project": {{"request": "...", "target": {{"kind": "new"}}, "question": "..." or null}}
- or null}}"""
+ or null,
+ "cancel": {{"task": {{"id": "t-1a2b3c4d" or null, "words": "..." or null}}}} or null,
+ "set_tier": {{"task": {{"id": "t-1a2b3c4d" or null, "words": "..." or null}},
+ "tier": "economy" | "premium"}} or null}}"""
 
 EXPLAIN_INSTRUCTIONS = """\
 You explain to the operator what baton's log says about their question. Use only the
@@ -134,6 +160,75 @@ TEXTS: dict[str, dict[Language, str]] = {
         "en": "A newer card replaced this one.",
     },
     "buttons": {"tr": "Başlat|Düzenle|İptal", "en": "Start|Edit|Cancel"},
+    # A cancel or a change of tier, asked for in words.
+    "cancel_card": {
+        "tr": "🛑 {task} iptal edilsin mi?\n"
+        "Bırakılır ve yeniden denenmez{pane}.\n"
+        "Kart {minutes} dakika geçerli.",
+        "en": "🛑 Cancel {task}?\n"
+        "It is dropped and not tried again{pane}.\n"
+        "This card can be pressed for {minutes} minutes.",
+    },
+    "cancel_pane": {"tr": "; ajanının paneli kapatılır", "en": "; its agent's pane is closed"},
+    "cancel_project_card": {
+        "tr": "🛑 {project} projesi iptal edilsin mi?\n"
+        "Açık {count} işi bırakılır, ajanlarının panelleri kapatılır:\n{tasks}\n"
+        "Kart {minutes} dakika geçerli.",
+        "en": "🛑 Cancel project {project}?\n"
+        "Its {count} open task(s) are dropped and their agents' panes closed:\n{tasks}\n"
+        "This card can be pressed for {minutes} minutes.",
+    },
+    "tier_card": {
+        "tr": "🔀 {task} {tier} çalışsın mı?{now}\n"
+        "Bir sonraki denemesinden geçerli{running}.\n"
+        "Kart {minutes} dakika geçerli.",
+        "en": "🔀 Run {task} {tier}?{now}\n"
+        "It applies from its next attempt{running}.\n"
+        "This card can be pressed for {minutes} minutes.",
+    },
+    "tier_now": {"tr": " Şu an: {tier}.", "en": " Now: {tier}."},
+    "tier_running": {
+        "tr": "; süren deneme kendi katmanında biter",
+        "en": "; the attempt under way keeps its tier",
+    },
+    "economy": {"tr": "economy (ucuz model)", "en": "economy (the cheaper model)"},
+    "premium": {"tr": "premium (her zamanki model)", "en": "premium (the usual model)"},
+    "cancel_buttons": {"tr": "İptal et|Vazgeç", "en": "Cancel it|Keep it"},
+    "tier_buttons": {"tr": "Değiştir|Vazgeç", "en": "Change|Keep"},
+    "which": {
+        "tr": "Hangisi? Kimliğini yaz:\n{choices}",
+        "en": "Which one? Write its id:\n{choices}",
+    },
+    "which_more": {"tr": "… ve {count} tane daha", "en": "… and {count} more"},
+    "which_none": {
+        "tr": "Hangi iş? Kimliğini yaz (t-…); /status hepsini gösterir.",
+        "en": "Which task? Write its id (t-…); /status lists them.",
+    },
+    "no_match": {
+        "tr": "'{words}' diye açık bir iş bulamadım. Kimliğini yaz; /status hepsini gösterir.",
+        "en": "No open task fits '{words}'. Write its id; /status lists them.",
+    },
+    "closed": {
+        "tr": "{named} zaten {status}; değişecek bir şey yok.",
+        "en": "{named} is already {status}; nothing to change.",
+    },
+    "same_tier": {
+        "tr": "{task} zaten {tier} çalışıyor.",
+        "en": "{task} runs {tier} already.",
+    },
+    "no_such_button": {
+        "tr": "Bu kartta böyle bir düğme yok.",
+        "en": "This card has no such button.",
+    },
+    "already_done": {"tr": "Zaten yapıldı. {result}", "en": "Already done. {result}"},
+    "kept": {
+        "tr": "Olduğu gibi bırakıldı; hiçbir şey değişmedi.",
+        "en": "Left as it was; nothing changed.",
+    },
+    "was_kept": {
+        "tr": "Bu karttan vazgeçilmişti; hiçbir şey değişmedi.",
+        "en": "This card was dismissed; nothing changed.",
+    },
 }
 
 # Letters only Turkish writes, among the languages the bot speaks, and common Turkish
@@ -168,6 +263,9 @@ _TURKISH_WORDS = frozenset(
         "proje",
         "yap",
         "yaz",
+        "iptal",
+        "et",
+        "ucuz",
     }
 )
 
@@ -201,7 +299,9 @@ class CardContext:
 
 
 type CardContextFor = Callable[[str], Awaitable[CardContext]]
-type StartProject = Callable[[str], Awaitable[tuple[bool, str]]]
+# A card's Start: the command the card stands for, run by the bot; whether it did it, and
+# what it said.
+type CardAction = Callable[[Card], Awaitable[tuple[bool, str]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +329,8 @@ class Assistant:
         self._cards = cards
         self._busy = asyncio.Lock()
         self._history: deque[ChatMessage] = deque(maxlen=config.history_messages)
+        # A cancel or a tier asked "which one?": the operator's next message may be the id.
+        self._pending: tuple[CardKind, str | None] | None = None
         self._log = get_logger("baton.assistant")
 
     async def answer(self, message: str, context: CardContextFor | None = None) -> Reply:
@@ -248,9 +350,9 @@ class Assistant:
             )
             return reply
 
-    async def press(self, data: str, start: StartProject) -> str:
-        """A press on a card's button (``as:<action>:<card>``). ``start`` makes the project
-        the way /new does; it runs at most once per card."""
+    async def press(self, data: str, start: CardAction) -> str:
+        """A press on a card's button (``as:<action>:<card>``). ``start`` does what the
+        card stands for the way its command does; it runs at most once per card."""
         _, action, card_id = [*data.split(":", 2), "", ""][:3]
         if self._cards is None:
             return TEXTS["expired"]["en"]
@@ -262,10 +364,15 @@ class Assistant:
         self._log.info("assistant card", card=card.card_id, action=action, state=card.state)
         return _press_text(card, acted=pressed.acted, language=language)
 
-    async def _answer(
+    async def _answer(  # noqa: PLR0911 - one return per kind of answer
         self, message: str, language: Language, context: CardContextFor | None
     ) -> Reply:
         editing = self._cards.editing() if self._cards is not None else None
+        pending, self._pending = self._pending, None
+        if pending is not None and (answered := _only_an_id(message)) is not None:
+            # The answer to "which one?": the id, written by the operator.
+            kind, tier = pending
+            return await self._action(kind, TaskRef(id=answered), tier, message, language)
         if (known := plain_status(message)) is not None:
             # The intent is plain without the model: a call saved, the slowest part.
             self._log.info("assistant intent", intent="status", why=known.why, model=False)
@@ -288,6 +395,14 @@ class Assistant:
         )
         if parsed.rejected is not None:
             return Reply(TEXTS["not_understood"][language])
+        interpretation = parsed.interpretation
+        if interpretation.cancel is not None:
+            return await self._action(
+                CardKind.CANCEL, interpretation.cancel.task, None, message, language
+            )
+        if interpretation.set_tier is not None:
+            wanted = interpretation.set_tier
+            return await self._action(CardKind.TIER, wanted.task, wanted.tier, message, language)
         proposal = parsed.interpretation.new_project
         if proposal is not None and not proposal.question and self._cards is not None:
             if proposal.target.kind != "new":
@@ -314,6 +429,43 @@ class Assistant:
             for label, action in zip(labels, actions, strict=True)
         )
         return Reply(text, buttons)
+
+    async def _action(
+        self, kind: CardKind, ref: TaskRef, tier: str | None, message: str, language: Language
+    ) -> Reply:
+        """A cancel (``tier`` None) or a change of tier: a card naming the task and what
+        will happen, or a question when which task is not plain."""
+        written = (message, *(m.text for m in self._history if m.role == "operator"))
+        found = find_target(
+            project(await self._store.read()),
+            ref,
+            written=written,
+            projects=kind is CardKind.CANCEL,
+        )
+        self._log.info("assistant target", kind=kind, found=type(found).__name__)
+        if isinstance(found, (Unknown, Ambiguous)):
+            self._pending = (kind, tier)  # the next message may be the id
+            return Reply(_which(found, language))
+        if isinstance(found, Closed):
+            return Reply(TEXTS["closed"][language].format(named=found.named, status=found.status))
+        if isinstance(found, OneTask) and tier is not None and found.task.tier == tier:
+            return Reply(
+                TEXTS["same_tier"][language].format(
+                    task=_task_line(found.task), tier=TEXTS[tier][language]
+                )
+            )
+        target = found.task.task_id if isinstance(found, OneTask) else found.project_id
+        request = f"{target} {tier}" if tier is not None else target
+        if self._cards is None:
+            return Reply(f"/{kind.value} {request}")  # no cards: the command that would do it
+        card = self._cards.propose(request, language=language, kind=kind)
+        minutes = int(self._cards.ttl.total_seconds() // 60)
+        labels = TEXTS[f"{kind.value}_buttons"][language].split("|")
+        buttons = tuple(
+            (label, f"{CARD_PREFIX}{action}:{card.card_id}")
+            for label, action in zip(labels, ("start", "cancel"), strict=True)
+        )
+        return Reply(_action_text(found, tier, language, minutes), buttons)
 
     async def _act(self, interpretation: Interpretation, message: str, language: Language) -> str:
         if interpretation.status is not None:
@@ -375,6 +527,15 @@ class Assistant:
 
 
 _IDS = re.compile(r"\b(t-[0-9a-f]{8}|p-[0-9a-f]{6})\b")
+
+
+def _only_an_id(message: str) -> str | None:
+    """The id a message is made of, alone: "t-1a2b3c4d", "t-1a2b3c4d."."""
+    ids = _IDS.findall(message)
+    rest = _IDS.sub("", message).strip(" \t\n.,!?'\"`")
+    return ids[0] if len(ids) == 1 and not rest else None
+
+
 _WHY = frozenset({"neden", "niye", "niçin", "why"})
 _STATUS = frozenset(
     {
@@ -405,7 +566,7 @@ def plain_status(message: str) -> StatusQuery | None:
     model's to read."""
     ids = tuple(dict.fromkeys(_IDS.findall(message)))
     words = set(re.findall(r"\w+", message.lower()))
-    if words & _BUILD or len(ids) > MAX_IDS:
+    if words & (_BUILD | _CHANGE) or len(ids) > MAX_IDS:
         return None
     if not ids:
         return StatusQuery() if _OPEN.match(message) and len(words) <= MAX_OPEN_WORDS else None
@@ -420,6 +581,10 @@ def plain_status(message: str) -> StatusQuery | None:
 _BUILD = frozenset(
     {"yap", "yaz", "ekle", "düzelt", "oluştur", "build", "make", "add", "fix", "write"}
 )
+# Words that ask for a task to be cancelled or moved: such a message goes to the model too.
+_CHANGE = frozenset(
+    {"iptal", "durdur", "cancel", "stop", "drop", "ucuz", "economy", "premium", "tier"}
+)
 MAX_IDS = 5
 MAX_OPEN_WORDS = 6
 
@@ -433,23 +598,25 @@ EDIT_FRAME = (
 
 def _press_text(card: Card, *, acted: bool, language: Language) -> str:  # noqa: PLR0911 - one per state
     """What a press is answered with: what it did, or the state that kept it from acting."""
+    a_project = card.kind is CardKind.PROJECT
     match card.state:
         case CardState.STARTED:
-            return (
-                card.result
-                if acted
-                else TEXTS["already_started"][language].format(result=card.result)
-            )
+            already = "already_started" if a_project else "already_done"
+            return card.result if acted else TEXTS[already][language].format(result=card.result)
         case CardState.FAILED:
             return card.result
         case CardState.EDITING:
             return TEXTS["edit"][language]
-        case CardState.CANCELLED:
+        case CardState.CANCELLED if a_project:
             return TEXTS["cancelled" if acted else "was_cancelled"][language]
+        case CardState.CANCELLED:
+            return TEXTS["kept" if acted else "was_kept"][language]
         case CardState.STARTING:
             return TEXTS["starting"][language]
         case CardState.SUPERSEDED:
             return TEXTS["superseded"][language]
+        case CardState.PROPOSED:  # a button this card does not have: Edit on a cancel
+            return TEXTS["no_such_button"][language]
         case _:
             return TEXTS["expired"][language]
 
@@ -459,3 +626,52 @@ def _brief(digest: Digest, language: Language) -> str:
     if digest.unknown:
         lines.append(TEXTS["unknown"][language].format(ids=", ".join(digest.unknown)))
     return "\n".join(lines)
+
+
+def _task_line(task: TaskView) -> str:
+    """A task as a card names it: its id, title, status and agent."""
+    agent = f", {task.attempts[-1].agent.value}" if task.attempts else ""
+    return f'{task.task_id} "{task.title}" ({task.status.value}{agent})'
+
+
+def _action_text(
+    found: OneTask | OneProject, tier: str | None, language: Language, minutes: int
+) -> str:
+    if isinstance(found, OneProject):
+        return TEXTS["cancel_project_card"][language].format(
+            project=found.project_id,
+            count=len(found.open_tasks),
+            tasks="\n".join(f"- {_task_line(t)}" for t in found.open_tasks),
+            minutes=minutes,
+        )
+    task = found.task
+    live = task.live_attempt
+    if tier is None:
+        pane = TEXTS["cancel_pane"][language] if live and live.pane_id else ""
+        return TEXTS["cancel_card"][language].format(
+            task=_task_line(task), pane=pane, minutes=minutes
+        )
+    now = task.tier or (task.attempts[-1].tier if task.attempts else None)
+    return TEXTS["tier_card"][language].format(
+        task=_task_line(task),
+        tier=TEXTS[tier][language],
+        now=TEXTS["tier_now"][language].format(tier=now.value) if now else "",
+        running=TEXTS["tier_running"][language] if live else "",
+        minutes=minutes,
+    )
+
+
+def _which(found: Found, language: Language) -> str:
+    """The question asked when which task is not plain: the candidates, or what failed."""
+    if isinstance(found, Ambiguous):
+        lines = [f"- {_task_line(t)}" for t in found.candidates[:MAX_CHOICES]]
+        if len(found.candidates) > MAX_CHOICES:
+            more = len(found.candidates) - MAX_CHOICES
+            lines.append(TEXTS["which_more"][language].format(count=more))
+        return TEXTS["which"][language].format(choices="\n".join(lines))
+    assert isinstance(found, Unknown)  # noqa: S101 - the caller passes only these two
+    if not found.named:
+        return TEXTS["which_none"][language]
+    if _IDS.fullmatch(found.named):
+        return TEXTS["unknown"][language].format(ids=found.named)
+    return TEXTS["no_match"][language].format(words=found.named)

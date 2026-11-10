@@ -68,6 +68,35 @@ def test_an_existing_target_fits_the_schema_already_for_v2() -> None:
     assert parsed(no_path)[0] == "chat"
 
 
+def test_a_cancel_or_a_tier_names_its_task_by_id_or_by_words() -> None:
+    cancel = parse_intent(
+        answer(intent="cancel", cancel={"task": {"id": "t-1a2b3c4d"}}), min_confidence=0.5
+    ).interpretation.cancel
+    assert cancel is not None
+    assert (cancel.task.id, cancel.task.words) == ("t-1a2b3c4d", None)
+    tier = parse_intent(
+        answer(intent="set_tier", set_tier={"task": {"words": "cafe"}, "tier": "economy"}),
+        min_confidence=0.5,
+    ).interpretation.set_tier
+    assert tier is not None
+    assert (tier.task.id, tier.task.words, tier.tier) == (None, "cafe", "economy")
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"intent": "cancel"},  # no cancel object
+        {"intent": "cancel", "cancel": {"task": {}}},  # names no task
+        {"intent": "cancel", "cancel": {"task": {"id": "t-42"}}},  # not an id baton makes
+        {"intent": "set_tier", "set_tier": {"task": {"id": "t-1a2b3c4d"}, "tier": "cheap"}},
+        {"intent": "chat", "cancel": {"task": {"id": "t-1a2b3c4d"}}},  # not its intent
+    ],
+)
+def test_a_cancel_or_a_tier_that_does_not_fit_is_not_understood(fields: dict[str, Any]) -> None:
+    intent, rejected = parsed(answer(**fields))
+    assert (intent, rejected is not None) == ("chat", True)
+
+
 def test_small_talk_is_chat() -> None:
     raw = answer(intent="chat", reply="Merhaba! Nasıl yardımcı olabilirim?")
     result = parse_intent(raw, min_confidence=0.5)
@@ -129,7 +158,7 @@ def test_the_schema_is_plain_json_and_names_every_intent() -> None:
     text = schema_text(INTENT_SCHEMA)
     assert json.loads(text) == INTENT_SCHEMA
     intents = INTENT_SCHEMA["properties"]["intent"]["enum"]
-    assert intents == ["chat", "status", "new_project"]
+    assert intents == ["chat", "status", "new_project", "cancel", "set_tier"]
     assert set(INTENT_SCHEMA["required"]) == {"intent", "reply", "confidence"}
 
 
