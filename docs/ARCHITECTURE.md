@@ -295,6 +295,10 @@ A plain message goes to the assistant when `[assistant]` is set
    facts from the log, redacted, each with what cites it (`#12`, `a-1a2b3c4d`).
 4. A project proposal becomes a card (`assistant/cards.py`, `CardStore`). Its Start calls
    `OperatorBot.new_project`, the function `/new` calls, once per card under a lock.
+5. A cancel or a change of tier names its task by id or by words; `assistant/targets.py`,
+   `find_target`, finds it in the log (an id counts only when the operator wrote it) or
+   says why not, and the assistant asks instead. Found, it becomes a card whose Start
+   calls what `/cancel` or `/tier` calls (`OperatorBot._cancel`, `OperatorBot._tier`).
 
 ## Where to look next
 

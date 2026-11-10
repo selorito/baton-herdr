@@ -19,6 +19,11 @@ is:
   the screen (`herdr agent explain --file`) and to the terminal title, prompts pasted the
   way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
   default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
+- **Cancel a task and change its tier in words** (ADR 0021, amended). "t-1a2b3c4d'yi
+  iptal et", "cancel the cafe task", "t-1a2b3c4d ucuz modelde çalışsın": the assistant
+  shows a card naming the task and what will happen, and its button does what `/cancel`
+  or `/tier` does. baton finds the task from the id or the words; a name that fits no
+  open task, or several, gets a question, and the id written in reply answers it.
 
 ### Fixed
 

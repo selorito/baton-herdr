@@ -161,8 +161,11 @@ test keeps passing throughout.
 - A3–A4: projects described in words, confirmed on a card, planned before anything is
   coded.
 - A5: documentation, and a demo scenario (`docs/devlog/2026-10-22-assistant-demo.md`).
+- A6: `cancel` and `set_tier` as intents: a card naming the task and what will happen,
+  done by what `/cancel` and `/tier` do; baton finds the task, and asks when it is not
+  plain.
 - Not yet: work in an existing directory from words (the schema has it already), more
-  than one allowed user, `cancel` and `set_tier` as intents.
+  than one allowed user.
 
 ## After v1
 

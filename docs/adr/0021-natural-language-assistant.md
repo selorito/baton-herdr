@@ -81,7 +81,8 @@ class AssistantBackend(Protocol):
 
 ### Intents (v1)
 
-`chat`, `status` and `new_project`. `cancel` and `set_tier` are left for later.
+`chat`, `status` and `new_project`. `cancel` and `set_tier` were left for later; they are
+added by the amendment below.
 
 A `new_project` proposal names its target as `{"kind": "new"}` or
 `{"kind": "existing", "path": "…"}`. v1 accepts only `new`. An `existing` target is answered
@@ -181,3 +182,36 @@ reply in the chat, or a card whose Start calls `start_project`, the same functio
   memory, both on an idle machine and while agents run.
 - Not in v1: tasks in an existing repository from words (`baton task add` needs a path,
   checked against the policy's `trusted_dirs`), more than one allowed user, voice messages.
+
+## Amendment (2026-11-10): `cancel` and `set_tier`
+
+Two intents join the closed set, under the same rule: the model interprets, baton acts
+only after the owner presses a button on a card.
+
+- **Schema.** `cancel: {task}` and `set_tier: {task, tier}`, `tier` being `economy` or
+  `premium`. `task` is a `TaskRef`: the `id` the message writes (`t-…`, or `p-…` to cancel
+  a project), or, when it writes none, the `words` it names the task by ("the cafe task":
+  `cafe`). As for the other intents, the object named like the intent is set, and only it.
+- **baton finds the task, not the model** (`assistant/targets.py`, `find_target`). An id
+  counts only when it is in the operator's message or one of their earlier messages in
+  the conversation; one the model wrote by itself is set aside. Words are matched against
+  the titles and requests of open tasks. A project id to `set_tier` asks which of its
+  open tasks is meant (tiers are per task, ADR 0020).
+- **Not plain, then a question.** No match, more than one, an id the log does not have, or
+  nothing named: the operator is asked, with the candidates' ids when there are some, and
+  no card is shown. The next message, if it is an id alone, answers the question without
+  a model call. A task already closed gets "already cancelled; nothing to change".
+- **The card** names the task (id, title, status, agent) and what will happen: for a
+  cancel, that it is dropped and not tried again, and its pane closed when it has one;
+  for a project, every open task that goes with it; for a tier, the new tier, the current
+  one when known, and that it applies from the next attempt. Two buttons: **Cancel it** /
+  **Keep it**, or **Change** / **Keep**. There is no Edit.
+- **One code path.** The card holds its command's arguments. Start calls what `/cancel`
+  and `/tier` call in the bot (`scheduler.operator.cancel`, `projects.flow.cancel_project`,
+  `scheduler.operator.set_tier`), once per card under the card's lock. Those functions
+  check again at the press, so a task closed after the card was shown is refused with
+  their own words. No new event types.
+- **Plain status.** A message with a word asking for a cancel or a tier (`iptal`, `cancel`,
+  `stop`, `economy`, `ucuz`, …) is never read as a plain status question.
+- Without cards (no `CardStore`), the answer is the command that would do it, as for
+  projects.

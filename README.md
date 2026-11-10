@@ -294,11 +294,14 @@ baton: Claude 15 dakika boyunca ekranda değişiklik ve token olmadan durdu.
 
 you:   kafem için menülü tek sayfalık bir site yap
 baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] [Düzenle] [İptal]
+
+you:   cancel the cafe task
+baton: 🛑 Cancel t-1a2b3c4d "Cafe menu page" (running, claude)?   [Cancel it] [Keep it]
 ```
 
 - **The model only interprets.** It has no files, shell or herdr. Its answer must fit a
-  JSON schema of three intents (small talk, status, a project), or it is treated as small
-  talk saying it did not understand. Nothing it writes is acted on by itself.
+  JSON schema of five intents (small talk, status, a project, a cancel, a change of tier),
+  or it is treated as small talk saying it did not understand. Nothing it writes is acted on by itself.
 - **Status comes from the log.** A "why" is explained from a digest of the log, citing the
   events it relied on; a citation the digest does not hold is dropped. The digest never
   holds instructions, screens, directories or secrets. A plain question ("t-… ne
@@ -306,6 +309,10 @@ baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] 
 - **Projects come as a card.** **Start** does exactly what `/new` does, once; the plan then
   comes for your approval as usual. **Edit** takes your next message as the change. A
   request missing something gets a question instead.
+- **Cancels and tiers come as a card too.** "t-1a2b3c4d'yi iptal et", "cancel the cafe
+  task", "t-1a2b3c4d ucuz modelde çalışsın": the card names the task and what will
+  happen, and its button does exactly what `/cancel` or `/tier` does. baton, not the
+  model, finds the task; a name that fits no open task, or several, gets a question.
 - **One message at a time**, within `timeout_seconds`; Telegram shows "typing…".
   Answers in the language you write in.
 

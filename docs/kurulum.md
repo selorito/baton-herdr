@@ -154,7 +154,10 @@ Bilgisayarında çalışan bir model ([Ollama](https://ollama.com)) ile bot düz
 anlar: "t-1a2b3c4d neden takıldı?", "açık işler neler?", "kafem için menülü bir site yap".
 Model yalnızca mesajı yorumlar; dosyalara, terminale, ajanlara erişimi yoktur. Cevaplar
 baton'un kaydından gelir. Proje isteği bir kart olarak gelir: **Başlat**'a basmadan hiçbir
-şey başlamaz, sonra plan yine senin onayına gelir.
+şey başlamaz, sonra plan yine senin onayına gelir. "t-1a2b3c4d'yi iptal et" ya da
+"t-1a2b3c4d ucuz modelde çalışsın" gibi bir istek de işi ve ne olacağını yazan bir kart
+olarak gelir; düğmesi `/cancel` ya da `/tier` ne yapıyorsa onu yapar. Hangi işin
+kastedildiği belli değilse asistan tahmin etmez, sorar.
 
 1. Ollama'yı kur: `sudo snap install ollama` (ya da ollama.com'daki yöntem).
 2. Modeli indir: `ollama pull qwen3.5:4b` (3,3 GB). 15 GB RAM'li bir dizüstünde
