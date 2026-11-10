@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from baton_herdr.core.assistant import AssistantHealth, AssistantTurn, AssistantUnavailableError
 from baton_herdr.core.events import Event, StoredEvent
@@ -22,10 +22,11 @@ from baton_herdr.core.routing import BackendHealth, LaunchProfile, Tier
 from baton_herdr.core.usage import RateLimitObservation, UsageRecord
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Sequence
+    from collections.abc import AsyncGenerator, Mapping, Sequence
 
     from baton_herdr.core.model import TaskId
     from baton_herdr.core.notify import Notice, NoticeKind
+    from baton_herdr.core.processes import ProcessEntry
     from baton_herdr.core.usage import UsageEvent
 
 
@@ -307,3 +308,39 @@ class FakeAssistant:
 
     async def health(self) -> AssistantHealth:
         return AssistantHealth(up=self.up, detail="fake")
+
+
+class FakeProcessTable:
+    """:class:`baton_herdr.core.processes.ProcessTable` over a fixed list (ADR 0022).
+
+    ``argv`` maps a pid to its arguments; every pid whose arguments were read is kept in
+    ``argv_reads``."""
+
+    def __init__(
+        self,
+        entries: Sequence[ProcessEntry] = (),
+        argv: Mapping[int, Sequence[str]] | None = None,
+    ) -> None:
+        self.processes = list(entries)
+        self.arguments = dict(argv or {})
+        self.argv_reads: list[int] = []
+
+    def entries(self) -> list[ProcessEntry]:
+        return list(self.processes)
+
+    def argv(self, pid: int) -> Sequence[str] | None:
+        self.argv_reads.append(pid)
+        return self.arguments.get(pid)
+
+
+class FakeScreenExplainer:
+    """:class:`baton_herdr.core.processes.ScreenExplainer` that answers every screen with
+    ``answer`` (ADR 0022). Each (agent, screen) it was asked about is kept in ``asked``."""
+
+    def __init__(self, answer: Mapping[str, Any] | None = None) -> None:
+        self.answer: Mapping[str, Any] = answer or {}
+        self.asked: list[tuple[AgentKind, str]] = []
+
+    async def explain(self, agent: AgentKind, screen: str) -> Mapping[str, Any]:
+        self.asked.append((agent, screen))
+        return self.answer

@@ -85,6 +85,11 @@ class HerdrSettings(_Section):
     socket_path: Path | None = None
     # "default" means herdr's own default socket (no named session).
     session: str | None = BATON_HERDR_SESSION
+    # Who tells which agent runs in a pane (ADR 0022). With "herdr", herdr's process
+    # detection does. With "baton", baton reads the process table and has herdr classify the
+    # screen from a file, for systems where herdr cannot see a pane's processes. "auto" means
+    # "baton" on WSL1 and "herdr" elsewhere.
+    process_detection: Literal["auto", "herdr", "baton"] = "auto"
 
     @field_validator("session")
     @classmethod

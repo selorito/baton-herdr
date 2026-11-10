@@ -13,6 +13,7 @@ import pytest
 from baton_herdr.core import config
 from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
 from baton_herdr.core.panes import PaneHostUnavailableError
+from baton_herdr.herdr import process_fallback, reads_processes_itself
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
 
@@ -91,7 +92,9 @@ async def isolated_host() -> AsyncIterator[HerdrPaneHost]:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    host = HerdrPaneHost(HerdrSocket(socket_path, timeout_s=5))
+    # Where herdr cannot see a pane's processes, read them as batond would (ADR 0022).
+    fallback = process_fallback() if reads_processes_itself(HerdrSettings()) else None
+    host = HerdrPaneHost(HerdrSocket(socket_path, timeout_s=5), fallback=fallback)
     try:
         for _ in range(100):
             try:

@@ -11,6 +11,15 @@ is:
 
 ## [Unreleased]
 
+### Added
+
+- **WSL1** (ADR 0022). herdr cannot see a pane's processes on WSL1, so it named no agent
+  and baton never saw one start. There baton now reads the pane itself: the agent from
+  the process table under the pane's shell, the state from herdr's own rules applied to
+  the screen (`herdr agent explain --file`) and to the terminal title, prompts pasted the
+  way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
+  default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
+
 ## [1.3.0] - 2026-10-23
 
 Ask baton in your own words, run routine work on a cheaper model, and start tasks side by

@@ -20,7 +20,10 @@ izler:
 
 ## Gerekenler
 
-- Linux. Ubuntu 22.04 ve sonrası denendi.
+- Linux. Ubuntu 22.04 ve sonrası denendi. Windows'ta WSL2 ya da, sanallaştırma kapalıysa,
+  WSL1 olur. WSL1'de herdr pane'deki ajanı göremez; baton bunu kendisi okur (ADR 0022),
+  ayar gerekmez. WSL1'de systemd olmadığı için `baton service install` çalışmaz; baton'u
+  açık kalan bir `wsl.exe` altında başlat (bkz. "Gözetimsiz çalıştırma için öneriler").
 - [uv](https://docs.astral.sh/uv/getting-started/installation/):
   `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - [herdr](https://github.com/herdrdev/herdr) 0.9.1 veya sonrası.
