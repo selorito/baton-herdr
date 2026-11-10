@@ -35,7 +35,6 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.panes import PaneObservation, PaneProcess
 from baton_herdr.core.projection import project
 from baton_herdr.daemon import (
-    add_task,
     claude_session_args,
     claude_status_line,
     open_runtime,
@@ -44,6 +43,7 @@ from baton_herdr.daemon import (
     serve,
 )
 from baton_herdr.ledger import open_event_store
+from baton_herdr.scheduler.operator import add_task
 
 from detector_binary import detector
 from simulated_agents import SimulatedAgents

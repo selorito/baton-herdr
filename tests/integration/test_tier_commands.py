@@ -30,9 +30,9 @@ from baton_herdr.core.model import (
 )
 from baton_herdr.core.projection import project
 from baton_herdr.core.routing import ModelSpec, Tier
-from baton_herdr.daemon import add_task
 from baton_herdr.ledger import open_event_store
 from baton_herdr.projects.flow import propose_plans
+from baton_herdr.scheduler.operator import add_task
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 from baton_herdr.telegram.bot import HELP, BotSettings, OperatorBot, split_tier
 

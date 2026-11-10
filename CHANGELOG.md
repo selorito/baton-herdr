@@ -19,6 +19,12 @@ is:
   the screen (`herdr agent explain --file`) and to the terminal title, prompts pasted the
   way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
   default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
+- **The assistant starts work in an existing directory** (ADR 0021, amended). "~/src/calc
+  içinde calc.py'ye bölme ekle", or a project's id, comes as a card with the directory,
+  the title and the instructions; Start adds one task there, as `baton task add` does.
+  Only a directory inside the policy's `trusted_dirs`, or a project baton made, is
+  offered, and only once it exists; anything else is refused with the reason. baton
+  creates, moves and deletes no directory for it.
 
 ### Fixed
 

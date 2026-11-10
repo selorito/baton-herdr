@@ -306,6 +306,11 @@ baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] 
 - **Projects come as a card.** **Start** does exactly what `/new` does, once; the plan then
   comes for your approval as usual. **Edit** takes your next message as the change. A
   request missing something gets a question instead.
+- **Work in a directory you name** ("~/src/calc içinde calc.py'ye bölme ekle", or a
+  project's id) comes as a card too, with the directory, a title and the instructions;
+  **Start** adds one task there, as `baton task add` does. Only a directory inside the
+  policy's `trusted_dirs`, or a project baton made, is offered; anything else is refused
+  with the reason. baton never creates, moves or deletes a directory for it.
 - **One message at a time**, within `timeout_seconds`; Telegram shows "typing…".
   Answers in the language you write in.
 

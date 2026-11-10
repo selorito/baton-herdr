@@ -3,7 +3,9 @@
 The model interprets; baton acts. An answer that does not fit the schema is small talk
 saying it was not understood. A status question is answered from the log's digest: in a
 fixed form, or, for a "why", explained by the model from the digest alone, with the events
-it relied on cited and any citation the digest does not hold dropped.
+it relied on cited and any citation the digest does not hold dropped. Work asked for comes
+as a card: a new project, or a task in a directory that exists, once baton has checked
+that the directory may take work (``places``).
 
 One message is answered at a time, within a time limit; a message that arrives meanwhile
 is told to wait, not queued, so the bot never stalls behind the model.
@@ -22,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
 from baton_herdr.assistant.cards import Card, CardState, CardStore
 from baton_herdr.assistant.digest import brief, build_digest
+from baton_herdr.assistant.places import Place, Places, Refused
 from baton_herdr.core.assistant import (
     MODEL_SCHEMA,
     AssistantTurn,
@@ -52,8 +55,11 @@ operator's message; you cannot run anything. Classify it:
   status.ids (none: everything open). status.why = true when it asks why (why stuck, why
   moved, why failed).
 - "new_project": a request to build or change something. new_project.request is the
-  request, complete, as the operator would write it to an agent. target.kind is "new".
-  When something essential is missing, ask it in new_project.question.
+  request, complete, as the operator would write it to an agent. target.kind is "new" for
+  something new. When the message names a directory or a project (p-1a2b3c) to work in,
+  target is {{"kind": "existing", "path": ...}} with that directory exactly as written
+  (~/src/calc, /home/me/calc) or that project id. When something essential is missing,
+  ask it in new_project.question.
 - "chat": anything else. Answer in reply.
 confidence is how sure you are of the intent, from 0 to 1. reply is at most two short
 sentences. Fill status for a status intent and new_project for a new_project intent, never
@@ -62,8 +68,8 @@ null for its own intent; leave the other one null.
 Answer with one JSON object only:
 {{"intent": "chat" | "status" | "new_project", "reply": "...", "confidence": 0.9,
  "status": {{"ids": ["t-1a2b3c4d"], "why": false}} or null,
- "new_project": {{"request": "...", "target": {{"kind": "new"}}, "question": "..." or null}}
- or null}}"""
+ "new_project": {{"request": "...", "target": {{"kind": "new"}} or
+ {{"kind": "existing", "path": "~/src/calc"}}, "question": "..." or null}} or null}}"""
 
 EXPLAIN_INSTRUCTIONS = """\
 You explain to the operator what baton's log says about their question. Use only the
@@ -95,9 +101,50 @@ TEXTS: dict[str, dict[Language, str]] = {
     "unknown": {"tr": "{ids}: kayıtta böyle bir iş yok.", "en": "{ids}: no such task in the log."},
     "nothing_open": {"tr": "Açık iş yok.", "en": "No open tasks."},
     "sources": {"tr": "Kaynak", "en": "Sources"},
-    "existing_later": {
-        "tr": "Var olan bir klasörde iş başlatmak henüz yok; şimdilik: baton task add",
-        "en": "Work in an existing directory is not here yet; for now: baton task add",
+    "existing_off": {
+        "tr": "Var olan bir klasörde iş başlatmak burada açık değil; şimdilik: baton task add",
+        "en": "Work in an existing directory is not set up here; for now: baton task add",
+    },
+    "relative": {
+        "tr": "{path}: klasörün tam yolunu yaz (/… ya da ~/…).",
+        "en": "{path}: write the full path (/… or ~/…).",
+    },
+    "missing": {
+        "tr": "{path}: böyle bir klasör yok. baton klasör açmaz, taşımaz, silmez; yeni bir "
+        "şey için yeni bir proje iste.",
+        "en": "{path}: no such directory. baton makes, moves and deletes no directories; "
+        "for something new, ask for a new project.",
+    },
+    "untrusted": {
+        "tr": "{path}: policy.yaml'daki trusted_dirs içinde değil, baton'un açtığı bir proje "
+        "de değil; orada iş başlatmam. Güveniyorsan trusted_dirs'e ekle.",
+        "en": "{path}: not in the policy's trusted_dirs, and not a project baton made; I "
+        "start no work there. Add it to trusted_dirs in policy.yaml if you trust it.",
+    },
+    "unknown_project": {
+        "tr": "{path}: kayıtta böyle bir proje yok.",
+        "en": "{path}: no such project in the log.",
+    },
+    "by_trusted": {
+        "tr": "policy.yaml'daki trusted_dirs içinde",
+        "en": "in the policy's trusted_dirs",
+    },
+    "by_project": {"tr": "baton'un projesi {project}", "en": "it is baton's project {project}"},
+    "task_card": {
+        "tr": "🛠 İş önerisi\nBaşlık: {title}\n{request}\n\n"
+        "Nerede: {where} (var olan klasör; baton klasör açmaz, taşımaz, silmez)\n"
+        "Neden izinli: {why}\n"
+        "Ajan (şu an): {agent}\n"
+        "Katman: {tier}\n"
+        "Başlatınca ajan doğrudan bu klasörde çalışır; plan aşaması yok.\n"
+        "Kart {minutes} dakika geçerli.",
+        "en": "🛠 Task proposal\nTitle: {title}\n{request}\n\n"
+        "Where: {where} (an existing directory; baton makes, moves and deletes none)\n"
+        "Allowed because: {why}\n"
+        "Agent (now): {agent}\n"
+        "Tier: {tier}\n"
+        "Once you start it, the agent works in this directory; there is no plan step.\n"
+        "This card can be pressed for {minutes} minutes.",
     },
     "card": {
         "tr": "📝 Proje önerisi\n{request}\n\n"
@@ -192,16 +239,19 @@ class Reply:
 
 @dataclass(frozen=True, slots=True)
 class CardContext:
-    """What a card says besides the request, from the bot: where the project would be made,
-    the agent a task would go to now and why, and the tier its plan runs in."""
+    """What a card says besides the request, from the bot: where a project would be made,
+    the agent a task would go to now and why, and the tier its plan (or the task) runs in."""
 
     where: str
     agent: str
     tier: str
 
 
-type CardContextFor = Callable[[str], Awaitable[CardContext]]
+# The request, and the directory it would run in (None: a new project).
+type CardContextFor = Callable[[str, str | None], Awaitable[CardContext]]
 type StartProject = Callable[[str], Awaitable[tuple[bool, str]]]
+# A task's title, instructions and directory, added as ``baton task add`` adds one.
+type AddTask = Callable[[str, str, str], Awaitable[tuple[bool, str]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,12 +271,16 @@ class Assistant:
         store: EventStore,
         config: AssistantConfig,
         cards: CardStore | None = None,
+        places: Places | None = None,
     ) -> None:
         self._backend = backend
         self._store = store
         self._config = config
         # Proposed projects waiting for a press (A3); None: the bot shows no cards.
         self._cards = cards
+        # Directories that may take work (trusted_dirs, baton's projects); None: work in an
+        # existing directory is not offered.
+        self._places = places
         self._busy = asyncio.Lock()
         self._history: deque[ChatMessage] = deque(maxlen=config.history_messages)
         self._log = get_logger("baton.assistant")
@@ -248,13 +302,27 @@ class Assistant:
             )
             return reply
 
-    async def press(self, data: str, start: StartProject) -> str:
+    async def press(self, data: str, start: StartProject, add: AddTask | None = None) -> str:
         """A press on a card's button (``as:<action>:<card>``). ``start`` makes the project
-        the way /new does; it runs at most once per card."""
+        the way /new does, ``add`` the task in a directory that exists the way ``baton task
+        add`` does; one of them runs at most once per card."""
         _, action, card_id = [*data.split(":", 2), "", ""][:3]
         if self._cards is None:
             return TEXTS["expired"]["en"]
-        pressed = await self._cards.press(card_id, action, start)
+
+        async def begin(card: Card) -> tuple[bool, str]:
+            if card.workdir is None:
+                return await start(card.request)
+            language: Language = "tr" if card.language == "tr" else "en"
+            if self._places is None or add is None:
+                return False, TEXTS["existing_off"][language]
+            # Checked again: the directory may have gone, or the policy changed, meanwhile.
+            found = self._places.find(card.workdir, await self._store.read())
+            if isinstance(found, Refused):
+                return False, _refusal(found, language)
+            return await add(card.title, card.request, found.path)
+
+        pressed = await self._cards.press(card_id, action, begin)
         card = pressed.card
         if card is None:
             return TEXTS["expired"]["en"]
@@ -273,7 +341,8 @@ class Assistant:
             return Reply(await self._act(interpretation, message, language))
         if editing is not None:
             # The operator pressed Edit: this message is the change to that request.
-            message = EDIT_FRAME.format(request=editing.request, change=message)
+            where = EDIT_WHERE.format(path=editing.workdir) if editing.workdir else ""
+            message = EDIT_FRAME.format(request=editing.request, where=where, change=message)
         raw = await self._ask(
             AssistantTurn(
                 instructions=self._instructions(INTENT_INSTRUCTIONS),
@@ -290,23 +359,58 @@ class Assistant:
             return Reply(TEXTS["not_understood"][language])
         proposal = parsed.interpretation.new_project
         if proposal is not None and not proposal.question and self._cards is not None:
-            if proposal.target.kind != "new":
-                return Reply(TEXTS["existing_later"][language])
+            place: Place | None = None
+            if proposal.target.path is not None:
+                if self._places is None:
+                    return Reply(TEXTS["existing_off"][language])
+                found = self._places.find(proposal.target.path, await self._store.read())
+                self._log.info("assistant directory", found=found)
+                if isinstance(found, Refused):
+                    return Reply(_refusal(found, language))
+                place = found
             if editing is not None:
                 self._cards.supersede(editing.card_id)
-            return await self._card(proposal.request, language, context)
+            return await self._card(proposal.request, language, context, place)
         return Reply(await self._act(parsed.interpretation, message, language))
 
     async def _card(
-        self, request: str, language: Language, context: CardContextFor | None
+        self,
+        request: str,
+        language: Language,
+        context: CardContextFor | None,
+        place: Place | None = None,
     ) -> Reply:
         assert self._cards is not None  # noqa: S101 - the caller checked
-        card = self._cards.propose(request, language=language)
-        about = await context(request) if context is not None else CardContext("-", "-", "-")
-        minutes = int(self._cards.ttl.total_seconds() // 60)
-        text = TEXTS["card"][language].format(
-            request=request, where=about.where, agent=about.agent, tier=about.tier, minutes=minutes
+        workdir = place.path if place is not None else None
+        title = title_of(request) if place is not None else ""
+        card = self._cards.propose(request, language=language, workdir=workdir, title=title)
+        about = (
+            await context(request, workdir) if context is not None else CardContext("-", "-", "-")
         )
+        minutes = int(self._cards.ttl.total_seconds() // 60)
+        if place is None:
+            text = TEXTS["card"][language].format(
+                request=request,
+                where=about.where,
+                agent=about.agent,
+                tier=about.tier,
+                minutes=minutes,
+            )
+        else:
+            why = (
+                TEXTS["by_trusted"][language]
+                if place.by == "trusted_dirs"
+                else TEXTS["by_project"][language].format(project=place.by)
+            )
+            text = TEXTS["task_card"][language].format(
+                title=title,
+                request=request,
+                where=place.path,
+                why=why,
+                agent=about.agent,
+                tier=about.tier,
+                minutes=minutes,
+            )
         labels = TEXTS["buttons"][language].split("|")
         actions = ("start", "edit", "cancel")
         buttons = tuple(
@@ -327,6 +431,8 @@ class Assistant:
             proposal = interpretation.new_project
             if proposal.question:
                 return proposal.question
+            if proposal.target.kind == "existing":
+                return TEXTS["existing_off"][language]
             return f"/new {proposal.request}"  # no cards: the command that would do it
         return interpretation.reply or TEXTS["not_understood"][language]
 
@@ -427,8 +533,30 @@ MAX_OPEN_WORDS = 6
 # An edit, put to the model as one message: the request as it stood, and what changes.
 EDIT_FRAME = (
     "Revise this project request and propose it again as new_project.\n"
-    "Request: {request}\nChange: {change}"
+    "Request: {request}\n{where}Change: {change}"
 )
+# The directory of an edited card, so the revision keeps it unless the change names another.
+EDIT_WHERE = "Directory: {path}\n(target existing, this path, unless the change names another)\n"
+
+# A task's title from its request: the first sentence, short enough for /status.
+TITLE_LENGTH = 60
+_SENTENCE_END = re.compile(r"[.;!?](?:\s|$)|\n")
+_TAG = re.compile(r"(?<!\S)#\w+")
+
+
+def title_of(request: str) -> str:
+    """The first sentence of ``request``, without tags (#economy), cut to a word under
+    :data:`TITLE_LENGTH` characters."""
+    text = _TAG.sub("", request).strip()
+    first = _SENTENCE_END.split(text, maxsplit=1)[0].strip() or text
+    if len(first) <= TITLE_LENGTH:
+        return first
+    cut = first[: TITLE_LENGTH - 1].rsplit(" ", 1)[0].rstrip(",;: ")
+    return f"{cut}…"
+
+
+def _refusal(refused: Refused, language: Language) -> str:
+    return TEXTS[refused.reason][language].format(path=refused.path)
 
 
 def _press_text(card: Card, *, acted: bool, language: Language) -> str:  # noqa: PLR0911 - one per state

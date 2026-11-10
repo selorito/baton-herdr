@@ -41,6 +41,7 @@ from baton_herdr.scheduler.notices import tier_mark
 from baton_herdr.scheduler.operator import (
     ActionRefusedError,
     act,
+    add_task,
     cancel,
     find_blocker,
     set_tier,
@@ -106,9 +107,11 @@ class BotSettings:
     # Zone for the times shown, as configured for the scheduler.
     timezone: str = "UTC"
     # For the assistant's cards (ADR 0021): the reserve agent choice keeps, and the tier a
-    # project's plan runs in unless the request says (#economy).
+    # project's plan, or a task in an existing directory, runs in unless the request says
+    # so with a tag such as #economy.
     reserve_percent: float = 10
     plan_tier: str = "premium"
+    task_tier: str = "premium"
 
 
 class OperatorBot:
@@ -172,7 +175,7 @@ class OperatorBot:
         assert self.assistant is not None  # noqa: S101 - only called with one
         return await self.assistant.answer(text.strip(), context=self._card_context)
 
-    async def _card_context(self, request: str) -> CardContext:
+    async def _card_context(self, request: str, workdir: str | None) -> CardContext:
         where = str(self._projects_root) if self._projects_root else "-"
         agents = list(self._settings.agents)
         budgets = (
@@ -184,13 +187,29 @@ class OperatorBot:
             agents, budgets, reserve_percent=self._settings.reserve_percent, zone=self._zone
         ).reason
         tier = split_tier(request)[1]
-        named = tier.value if tier else self._settings.plan_tier
+        usual = self._settings.plan_tier if workdir is None else self._settings.task_tier
+        named = tier.value if tier else usual
         return CardContext(where=where, agent=agent, tier=named)
 
     async def _start_from_card(self, request: str) -> tuple[bool, str]:
         """A card's Start: exactly what /new does with the request."""
         said = await self.new_project(request)
         return said.startswith("Project p-"), said
+
+    async def _add_from_card(self, title: str, instructions: str, workdir: str) -> tuple[bool, str]:
+        """A card's Start for work in a directory that exists: a task, as ``baton task add``
+        adds one. The assistant has checked the directory; nothing is made or moved."""
+        instructions, tier = split_tier(instructions)
+        task_id = await add_task(
+            self._store,
+            title=title,
+            instructions=instructions,
+            workdir=workdir,
+            clock=self._clock,
+            tier=tier,
+        )
+        self._on_action()
+        return True, f"Task {task_id} in {workdir}: {title}."
 
     async def budget(self) -> str:
         if self._budget is None:
@@ -320,7 +339,7 @@ class OperatorBot:
         if data.startswith(CARD_PREFIX):
             if self.assistant is None:
                 return "This card has expired; send the request again."
-            return await self.assistant.press(data, self._start_from_card)
+            return await self.assistant.press(data, self._start_from_card, self._add_from_card)
         if data.startswith("task:cancel:"):
             return await self.cancel(data.removeprefix("task:cancel:"))
         try:

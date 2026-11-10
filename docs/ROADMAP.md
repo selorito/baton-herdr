@@ -161,8 +161,10 @@ test keeps passing throughout.
 - A3–A4: projects described in words, confirmed on a card, planned before anything is
   coded.
 - A5: documentation, and a demo scenario (`docs/devlog/2026-10-22-assistant-demo.md`).
-- Not yet: work in an existing directory from words (the schema has it already), more
-  than one allowed user, `cancel` and `set_tier` as intents.
+- Work in an existing directory from words: a card with the directory, the title and the
+  instructions, offered only inside the policy's `trusted_dirs` or in a project baton
+  made; a task there once the owner presses Start.
+- Not yet: more than one allowed user, `cancel` and `set_tier` as intents.
 
 ## After v1
 
