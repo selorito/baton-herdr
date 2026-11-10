@@ -81,6 +81,7 @@ def probes(
         local_address=lambda: "192.168.1.165",
         can_bind=lambda host: host == "192.168.1.165",
         now=lambda: NOW,
+        on_wsl1=lambda: False,  # never this machine's kernel
     )
 
 
@@ -128,10 +129,43 @@ async def test_missing_pieces_are_named_with_a_fix(
     assert not (tmp_path / "new").exists()
     assert checks["herdr server"].level is Level.FAIL
     assert "baton service install" in checks["herdr server"].hint
+    assert "systemd" in checks["herdr server"].hint
+    assert "wsl1" not in checks
     assert checks["codex"].level is Level.FAIL  # not on PATH
     assert checks["timezone"].level is Level.WARN  # UTC on a machine in Istanbul
     assert 'timezone = "Europe/Istanbul"' in checks["timezone"].hint
     assert checks["telegram"].level is Level.WARN
+
+
+async def test_on_wsl1_doctor_says_so_and_recommends_the_scheduled_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "baton.toml"
+    config.write_text("", encoding="utf-8")
+    monkeypatch.setenv("BATON_CONFIG", str(config))
+    wsl1 = replace(probes(herdr_up=False), on_wsl1=lambda: True)
+
+    checks = by_name(await diagnose(wsl1))
+
+    line = checks["wsl1"]
+    assert line.level is Level.OK
+    assert "WSL1 detected" in line.detail
+    assert "process_detection" in line.detail
+    assert "rollback journal" in line.detail
+    hint = checks["herdr server"].hint
+    assert "scheduled task" in hint
+    assert "baton service install" in hint
+    assert "to have systemd do it" not in hint
+
+    # Installed already: the task is what should be running it.
+    installed = by_name(await diagnose(replace(wsl1, installed_session=lambda: "baton")))
+    assert "Start-ScheduledTask -TaskName 'baton'" in installed["herdr server"].hint
+
+    # herdr's own detection names no agent on WSL1.
+    config.write_text('[herdr]\nprocess_detection = "herdr"\n', encoding="utf-8")
+    forced = by_name(await diagnose(wsl1))["wsl1"]
+    assert forced.level is Level.WARN
+    assert 'process_detection = "auto"' in forced.hint
 
 
 async def test_an_invalid_config_stops_the_other_checks(
