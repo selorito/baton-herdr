@@ -1,22 +1,36 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from baton_herdr.core.config import BatonSettings, HerdrSettings
+from baton_herdr.core.fakes import FakeProcessTable
+from baton_herdr.core.processes import ProcessEntry
 from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
     ServiceError,
+    ServiceProcesses,
     UnitPlan,
+    install_start_script,
     install_units,
     installed_session,
+    render_start_script,
     render_units,
+    scheduled_task_command,
     search_path,
+    service_processes,
     service_session,
+    status_lines,
+    uninstall,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 PLAN = UnitPlan(
     herdr="/home/u/.local/bin/herdr",
@@ -93,6 +107,173 @@ def test_the_installed_units_session_is_read_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))  # no start script either
     assert installed_session() is None
     install_units(replace(PLAN, session="work"), force=False)
     assert installed_session() == "work"
+
+
+# WSL1 (ADR 0022, amended): one start script for a Windows scheduled task, no systemd.
+
+
+def test_the_start_script_does_what_both_units_do(tmp_path: Path) -> None:
+    config = tmp_path / "herdr-server.toml"
+    script = render_start_script(replace(PLAN, herdr_config=config))
+    assert script.startswith("#!/bin/bash\n")
+    assert "/home/u/.local/bin/herdr --session baton server" in script
+    assert f"HERDR_CONFIG_PATH={config}" in script
+    assert "BATON_HERDR__SESSION=baton /home/u/.local/bin/baton daemon" in script
+    assert "export PATH=/home/u/.local/bin:/usr/bin\n" in script
+    assert "BATON_CONFIG" not in script  # the user default needs no pin
+    assert "export HOME=${HOME:-/home/u}\n" in render_start_script(
+        replace(PLAN, home=Path("/home/u"))
+    )
+    # Each restarts after it exits, as Restart= does, with the units' delays.
+    assert script.count("while true; do") == 2
+    assert "sleep 5\n" in script
+    assert "sleep 10\n" in script
+    pinned = render_start_script(replace(PLAN, config=Path("/srv/baton.toml")))
+    assert "BATON_CONFIG=/srv/baton.toml BATON_HERDR__SESSION=baton" in pinned
+
+
+def test_the_start_script_is_valid_bash(tmp_path: Path) -> None:
+    path = tmp_path / "start"
+    path.write_text(render_start_script(replace(PLAN, path="/a b/bin:/usr/bin")))
+    subprocess.run(["bash", "-n", str(path)], check=True)  # noqa: S603, S607 - fixed
+
+
+def test_a_second_start_while_one_runs_exits_and_leaves_it_alone() -> None:
+    script = render_start_script(PLAN)
+    # Only this install's herdr and batond count: their full paths, regex-escaped.
+    assert r"pgrep -f -- '/home/u/\.local/bin/herdr --session baton server'" in script
+    assert r"pgrep -f -- '/home/u/\.local/bin/baton daemon'" in script
+    assert "exit 0" in script  # success, so the task does not restart it
+
+
+def test_install_writes_the_script_executable_and_never_overwrites_silently(
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "bin" / "baton-wsl1-start"
+    config = tmp_path / "baton" / "herdr-server.toml"
+    plan = replace(PLAN, herdr_config=config)
+    assert install_start_script(plan, force=False, path=script) == [config, script]
+    assert script.stat().st_mode & 0o777 == 0o755
+    assert "resume_agents_on_restore = false" in config.read_text()
+
+    with pytest.raises(ServiceError, match="--force"):
+        install_start_script(plan, force=False, path=script)
+    # A running bash reads its script as it goes: the file is replaced, never rewritten.
+    before = script.stat().st_ino
+    with script.open() as running:
+        install_start_script(replace(plan, session="work"), force=True, path=script)
+        assert "--session baton server" in running.read()
+    assert script.stat().st_ino != before
+    assert "--session work server" in script.read_text()
+
+
+def test_the_scheduled_task_command_runs_the_script_under_wsl_exe() -> None:
+    script = Path("/home/u/.local/bin/baton-wsl1-start")
+    command = scheduled_task_command(script, "Ubuntu-24.04")
+    assert (
+        "New-ScheduledTaskAction -Execute 'wsl.exe' "
+        "-Argument '-d Ubuntu-24.04 -- /home/u/.local/bin/baton-wsl1-start'"
+    ) in command
+    assert "-AtStartup" in command
+    assert "-AtLogOn" in command
+    assert "-LogonType S4U" in command  # runs whether or not you are signed in
+    assert "-ExecutionTimeLimit ([TimeSpan]::Zero)" in command
+    assert "-RestartInterval (New-TimeSpan -Minutes 1)" in command
+    assert "Register-ScheduledTask -TaskName 'baton'" in command
+    assert "Start-ScheduledTask -TaskName 'baton'" in command
+    assert "'-d <distro> --" in scheduled_task_command(script, None)
+    quoted = scheduled_task_command(Path("/home/o'neil/start"), "Ubuntu")
+    assert "-Argument '-d Ubuntu -- /home/o''neil/start'" in quoted
+
+
+def test_the_installed_scripts_session_is_read_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    script = tmp_path / "baton-wsl1-start"
+    assert installed_session(script=script) is None
+    install_start_script(replace(PLAN, session="work"), force=False, path=script)
+    assert installed_session(script=script) == "work"
+
+
+def test_the_services_processes_are_found_by_their_arguments() -> None:
+    table = FakeProcessTable(
+        [
+            ProcessEntry(10, 1, "herdr", "S"),
+            ProcessEntry(11, 1, "herdr", "S"),
+            ProcessEntry(12, 1, "python", "S"),
+            ProcessEntry(13, 1, "herdr", "S"),
+            ProcessEntry(14, 1, "baton", "Z"),
+        ],
+        argv={
+            10: ["/bin/herdr", "--session", "baton", "server"],
+            11: ["/bin/herdr", "--session", "work", "server"],
+            12: ["/venv/python", "/bin/baton", "daemon"],
+            13: ["/bin/herdr", "--session", "baton"],  # a client, not the server
+            14: ["/bin/baton", "daemon"],  # exiting
+        },
+    )
+    assert service_processes(table, "baton") == ServiceProcesses(herdr=[10], batond=[12])
+
+
+def test_status_says_what_is_installed_and_what_runs(tmp_path: Path) -> None:
+    script = tmp_path / "baton-wsl1-start"
+    running = ServiceProcesses(herdr=[10], batond=[12])
+    lines = status_lines(wsl1=True, installed=None, files=[script], processes=running)
+    assert lines[0] == f"start script: not installed ({script}); run baton service install"
+    assert "herdr server: running (pid 10)" in lines
+    assert "batond: running (pid 12)" in lines
+    assert any("Get-ScheduledTask -TaskName 'baton'" in line for line in lines)
+
+    stopped = ServiceProcesses(herdr=[], batond=[])
+    units = [tmp_path / HERDR_UNIT, tmp_path / BATON_UNIT]
+    lines = status_lines(wsl1=False, installed="baton", files=units, processes=stopped)
+    assert lines[0] == f"units: {units[0]}, {units[1]} (herdr session 'baton')"
+    assert "batond: not running" in lines
+    assert any("systemctl --user status" in line for line in lines)
+
+
+def test_uninstall_on_wsl1_removes_the_script_and_says_how_to_remove_the_task(
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "baton-wsl1-start"
+    install_start_script(PLAN, force=False, path=script)
+    ran: list[Sequence[str]] = []
+
+    def run(command: Sequence[str]) -> tuple[int, str]:
+        ran.append(command)
+        return 0, ""
+
+    lines = uninstall(wsl1=True, run=run, script=script)
+    assert not script.exists()
+    assert ran == []  # never a Windows command
+    assert f"removed {script}" in lines
+    assert any("Unregister-ScheduledTask -TaskName 'baton'" in line for line in lines)
+    assert uninstall(wsl1=True, run=lambda c: (0, ""), script=script)[0].startswith(
+        "nothing to remove"
+    )
+
+
+def test_uninstall_with_systemd_stops_the_units_before_removing_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    written = install_units(PLAN, force=False)
+    ran: list[list[str]] = []
+
+    def run(command: Sequence[str]) -> tuple[int, str]:
+        ran.append(list(command))
+        assert all(path.exists() for path in written) or command[-1] == "daemon-reload"
+        return 0, ""
+
+    lines = uninstall(wsl1=False, run=run)
+    assert ran == [
+        ["systemctl", "--user", "disable", "--now", BATON_UNIT, HERDR_UNIT],
+        ["systemctl", "--user", "daemon-reload"],
+    ]
+    assert not any(path.exists() for path in written)
+    assert sorted(lines) == sorted(f"removed {path}" for path in written)

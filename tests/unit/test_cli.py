@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
+from baton_herdr import cli
 from baton_herdr.cli import app
 
 from detector_binary import detector
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 runner = CliRunner()
 
@@ -76,3 +83,38 @@ def test_policy_check_says_what_would_happen_and_why() -> None:
         "rule: (^|\\s)(--force(-with-lease)?|--force-push)(\\s|=|$) (defaults)",
     ]
     assert runner.invoke(app, ["policy", "check", "ls", "--agent", "gpt"]).exit_code == 2
+
+
+def test_service_install_on_wsl1_writes_the_start_script_and_prints_the_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "herdr").write_text("#!/bin/sh\n")
+    (bin_dir / "herdr").chmod(0o755)
+    monkeypatch.setattr(cli, "running_on_wsl1", lambda: True)
+    env = {
+        "HOME": str(tmp_path),
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "BATON_CONFIG": str(tmp_path / "none.toml"),
+        "BATON_USAGE__ENABLED": "false",
+        "WSL_DISTRO_NAME": "Ubuntu-24.04",
+    }
+    script = tmp_path / ".local" / "bin" / "baton-wsl1-start"
+
+    result = runner.invoke(app, ["service", "install"], env=env)
+    assert result.exit_code == 0, result.output
+    assert f"wrote {script}" in result.stdout
+    assert f"-Argument '-d Ubuntu-24.04 -- {script}'" in result.stdout
+    assert "systemctl" not in result.stdout
+    assert not (tmp_path / "config" / "systemd").exists()
+    assert "--session baton server" in script.read_text()
+
+    status = runner.invoke(app, ["service", "status"], env=env)
+    assert status.stdout.startswith(f"start script: {script} (herdr session 'baton')")
+
+    removed = runner.invoke(app, ["service", "uninstall"], env=env)
+    assert f"removed {script}" in removed.stdout
+    assert "Unregister-ScheduledTask" in removed.stdout
+    assert not script.exists()
