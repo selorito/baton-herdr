@@ -32,6 +32,10 @@ written by hand, `~/.local/bin/baton-wsl1-start`, started by a Windows scheduled
 - A first version of that test let the fakes `exec sleep`, so their cmdline became
   `sleep 60` and the second copy did not find them. A real herdr and batond keep their
   arguments; the fakes now do too.
-- `just check-py` passes on WSL1. The installed baton, `~/.config/baton`, the hand-made
+- `just check-py` on WSL1: everything passes except the two tests of
+  `test_classify_golden.py`, which fail the same way on `feat/herdr-wsl1` without this
+  change: the installed `~/.local/bin/baton-detect` answers `unknown time zone
+  "US/Eastern"` (Ubuntu 24.04 ships the legacy `US/` zones only in `tzdata-legacy`). No
+  Rust toolchain here to look further. The installed baton, `~/.config/baton`, the hand-made
   script and the running task were not touched; `baton service install` was run only
   against temporary homes in the tests.
