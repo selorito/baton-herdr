@@ -106,7 +106,7 @@ test keeps passing throughout.
 | 3. Policy engine (permissions ✅, ADR 0013) | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
 | 5. Benchmark ✅ | `bench/` | baton's own loop against simulated agents on simulated time: limits, crashes, hangs, consecutive limits, waiting for a reset, and budget-aware choice on or off. `just bench`, reproducible per seed; results in `bench/results/`. |
-| 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
+| 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load (✅ 2026-11-10, tested with fakes; see the devlog), documentation, first tagged release. |
 
 ### baton-detect in Rust (ADR 0011)
 

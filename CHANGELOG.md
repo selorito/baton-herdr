@@ -25,6 +25,10 @@ is:
 - **WSL1: the CLI could not open the log batond held** (`locking protocol`). SQLite's WAL
   needs shared memory WSL1 does not share across processes; on WSL1 the database now uses
   the rollback journal.
+- **A subscription that ended mid-turn failed the task's run.** herdr's watch subscribed
+  again after `events_lost`, but not after its connection ended: the run stopped with
+  `herdr closed the connection` until batond's next cycle re-attached. It now subscribes
+  again and reads the pane, as after lost events.
 
 ## [1.3.0] - 2026-10-23
 
