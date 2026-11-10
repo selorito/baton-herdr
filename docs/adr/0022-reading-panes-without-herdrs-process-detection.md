@@ -96,5 +96,40 @@ Everything is in `baton_herdr.herdr`; `HerdrPaneHost` keeps its `PaneHost` contr
   herdr leaves out a manifest it cannot compile.
 - Neutral: WSL1 itself kills a distribution's processes when the last `wsl.exe` attached
   to it exits. batond and herdr must run under a `wsl.exe` that stays (a Windows task at
-  logon or boot), not detached from an SSH session. `baton service install` (systemd) does
-  not apply; WSL1 has no systemd.
+  logon or boot), not detached from an SSH session. WSL1 has no systemd, so
+  `baton service install` does something else there; see the amendment below.
+
+## Amendment (2026-11-10): the service on WSL1
+
+On WSL1 `baton service install` (and the service step of `baton setup`) writes one start
+script, `~/.local/bin/baton-wsl1-start`, in place of the two systemd units, and prints the
+PowerShell command that registers a Windows scheduled task to run it:
+`wsl.exe -d <distro> -- <script>`, the distribution from `WSL_DISTRO_NAME`.
+
+- **The script** does what both units do, with the same values `plan_units` computes for
+  them: a herdr server in the configured session with `HERDR_CONFIG_PATH`, then, after
+  5 s, `baton daemon` with `BATON_HERDR__SESSION` (and `BATON_CONFIG` when pinned); `PATH`
+  and `LANG` as in the units. Each runs in a loop that restarts it after it exits, 5 s and
+  10 s later, as `RestartSec=` does. The script stays in the foreground, which keeps the
+  task's `wsl.exe`, and so the distribution's processes, alive. A second copy started
+  while one runs (the task fires at boot and at logon) finds this install's herdr server
+  or batond with `pgrep` on their full paths and exits with success, so the task does not
+  retry it. Logs go to `~/.local/state/baton/`. The file is replaced by a rename, never
+  rewritten in place: bash reads a running script as it goes.
+- **The task**: at boot and at logon, principal S4U (runs whether or not the user is
+  signed in, without storing a password), no execution time limit, restarted every minute
+  after a failure, a new instance ignored while one runs. This is the task that ran baton
+  on WSL1 by hand in the run recorded in the devlog of 2026-11-10.
+- **baton never runs a Windows command.** Registering a task at boot needs an elevated
+  PowerShell, and the user is the one who should grant that; baton prints the command.
+  `baton service uninstall` removes the script and prints the commands that stop and
+  unregister the task; `baton service status` reports the script and whether the
+  processes run, read from `/proc`, and how to ask Windows about the task.
+- **`baton doctor`** shows a `wsl1` line (baton reads pane processes, the database uses the
+  rollback journal, the task runs the service), warns when `process_detection = "herdr"`
+  is forced there, and on an unreachable herdr server recommends the scheduled task, not
+  systemd.
+
+Considered and not chosen: having baton call `powershell.exe` or `schtasks.exe` through
+WSL interop. It needs elevation baton cannot ask for, interop may be disabled, and a tool
+that changes the Windows side unasked is harder to trust than one printed command.
