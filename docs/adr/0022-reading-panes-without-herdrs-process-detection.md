@@ -66,7 +66,10 @@ Everything is in `baton_herdr.herdr`; `HerdrPaneHost` keeps its `PaneHost` contr
   `derive_state` like herdr's own answer, so evidence reads `herdr:rule:<id>`.
 - **Prompts.** What `agent.prompt` does: refuse when no agent runs or it is blocked; paste
   the text with `pane.send_input` (bracketed when the terminal asked for it), wait 300 ms,
-  press Enter.
+  press Enter. On WSL1 a write of more than 4 KiB to the pty of an agent in raw mode
+  hangs the terminal up and ends the agent with its shell (Claude Code: 4000 bytes pass,
+  4500 do not; project steps run about 5 KB). The text is pasted in pieces of at most
+  2 KiB; the agent joins consecutive pastes into one prompt.
 - **Processes.** The shell's descendants with their command lines, or the shell alone.
 - **The log's journal.** WSL1's shared memory does not hold SQLite's WAL together across
   processes: with batond holding the database, every other process opening it (the CLI,

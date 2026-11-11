@@ -41,6 +41,11 @@ EXPLAIN_SCREEN_LINES = 200
 PROMPT_SUBMIT_DELAY_S = 0.3
 # Reading a process's cmdline can hang on WSL; a probe slower than this finds nothing.
 PROCESS_PROBE_TIMEOUT_S = 2.0
+# On WSL1 a single write of more than 4 KiB to the pty of an agent in raw mode hangs the
+# terminal up, ending the agent and its shell (seen live with Claude Code: 4000 bytes
+# pass, 4500 do not). A longer prompt is pasted in pieces below that; the agent joins
+# consecutive pastes into one prompt.
+PASTE_CHUNK_BYTES = 2048
 
 
 class HerdrPaneHost:
@@ -155,7 +160,8 @@ class HerdrPaneHost:
         if observation.state.needs_human:
             msg = f"agent {pane_id} is blocked and requires interactive input"
             raise AgentBlockedError(msg, code="agent_blocked")
-        await self._call("pane.send_input", {"pane_id": pane_id, "text": text})
+        for piece in paste_pieces(text):
+            await self._call("pane.send_input", {"pane_id": pane_id, "text": piece})
         await asyncio.sleep(PROMPT_SUBMIT_DELAY_S)
         await self._call("pane.send_input", {"pane_id": pane_id, "keys": ["Enter"]})
 
@@ -216,6 +222,21 @@ class HerdrPaneHost:
             raise _translate(err) from err
         except HerdrUnavailableError as err:
             raise PaneHostUnavailableError(str(err)) from err
+
+
+def paste_pieces(text: str, limit: int = PASTE_CHUNK_BYTES) -> list[str]:
+    """``text`` split into pieces of at most ``limit`` UTF-8 bytes, at character
+    boundaries, in order."""
+    pieces: list[str] = []
+    start = size = 0
+    for index, char in enumerate(text):
+        width = len(char.encode())
+        if size + width > limit:
+            pieces.append(text[start:index])
+            start, size = index, 0
+        size += width
+    pieces.append(text[start:])
+    return pieces
 
 
 async def _probe[T](read: Callable[[], T]) -> T | None:

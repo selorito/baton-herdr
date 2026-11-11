@@ -25,6 +25,9 @@ is:
 - **WSL1: the CLI could not open the log batond held** (`locking protocol`). SQLite's WAL
   needs shared memory WSL1 does not share across processes; on WSL1 the database now uses
   the rollback journal.
+- **WSL1: a prompt over 4 KB ended the agent and its pane.** WSL1 hangs a terminal up on
+  a write that large; every project step failed with "the claude pane is gone". Long
+  prompts are now pasted in pieces.
 
 ## [1.3.0] - 2026-10-23
 

@@ -27,7 +27,7 @@ from baton_herdr.herdr.fallback import (
     title_rules_from,
     with_title,
 )
-from baton_herdr.herdr.host import HerdrPaneHost
+from baton_herdr.herdr.host import PASTE_CHUNK_BYTES, HerdrPaneHost, paste_pieces
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -466,6 +466,33 @@ async def test_a_prompt_is_pasted_then_entered() -> None:
         {"pane_id": "w1:p2", "text": "add a power function"},
         {"pane_id": "w1:p2", "keys": ["Enter"]},
     ]
+
+
+async def test_a_long_prompt_is_pasted_in_pieces_then_entered() -> None:
+    socket = FakeSocket(PANE)
+    host = host_with(socket, claude_table(), FakeScreenExplainer(rule("idle", "prompt")))
+    prompt = "ç" * 3000  # 6000 bytes
+
+    await host.send_prompt("w1:p2", prompt)
+
+    inputs = [params for method, params in socket.requests if method == "pane.send_input"]
+    pieces = [params["text"] for params in inputs[:-1]]
+    assert "".join(pieces) == prompt
+    assert all(len(piece.encode()) <= PASTE_CHUNK_BYTES for piece in pieces)
+    assert len(pieces) == 3
+    assert inputs[-1] == {"pane_id": "w1:p2", "keys": ["Enter"]}
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "a", "a" * 2048, "a" * 2049, "aç" * 1500, "日本語" * 700, "x\ny" * 1000],
+)
+def test_paste_pieces_keep_the_text_and_the_limit(text: str) -> None:
+    pieces = paste_pieces(text)
+
+    assert "".join(pieces) == text
+    assert all(len(piece.encode()) <= PASTE_CHUNK_BYTES for piece in pieces)
+    assert all(pieces[:-1])
 
 
 async def test_a_prompt_to_a_blocked_agent_is_refused() -> None:
