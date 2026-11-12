@@ -46,6 +46,7 @@ from baton_herdr.projects.flow import (
     halt_stopped_projects,
     propose_plans,
 )
+from baton_herdr.projects.publish import publisher_for
 from baton_herdr.scheduler.dispatch import Dispatcher
 from baton_herdr.scheduler.queue import Signature, next_wake
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, Repository, UsageStore
+    from baton_herdr.projects.flow import Publisher
 
 
 def make_detector(settings: DetectorSettings) -> Detector:
@@ -208,6 +210,8 @@ class Runtime:
     # A finished project's page: the preview batond serves, and a browser for its picture.
     preview: PreviewServer | None = None
     browser: Path | None = None
+    # Where a delivered page is published for anyone to open; None: not published (ADR 0023).
+    publisher: Publisher | None = None
     # Parallel steps' worktrees and merges (ADR 0017).
     repository: Repository = field(default_factory=GitRepository)
 
@@ -310,6 +314,7 @@ async def open_runtime(
                 port=settings.projects.preview_port,
             ),
             browser=find_browser(settings.projects.browser),
+            publisher=publisher_for(settings.projects),
         )
     finally:
         await detector.aclose()
@@ -569,6 +574,7 @@ async def advance_projects(runtime: Runtime) -> None:
         clock=runtime.clock,
         workspace=GitWorkspace(),
         show=Showcase(runtime.preview, runtime.browser),
+        publisher=runtime.publisher,
     )
     for notice in [*proposed, *halted, *merged, *delivered]:
         if runtime.notifier is not None:

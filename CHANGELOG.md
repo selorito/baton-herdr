@@ -13,6 +13,11 @@ is:
 
 ### Added
 
+- **Delivered pages on Vercel** (ADR 0023). With `[projects] publish = "vercel"` and a
+  token in `.env` (`BATON_PROJECTS__VERCEL_TOKEN`), a finished project's page is deployed
+  to Vercel as a project of its own, and the delivery notice leads with its public link,
+  which opens from any phone. Off by default. `baton project publish p-…` publishes one
+  project at any time.
 - **WSL1** (ADR 0022). herdr cannot see a pane's processes on WSL1, so it named no agent
   and baton never saw one start. There baton now reads the pane itself: the agent from
   the process table under the pane's shell, the state from herdr's own rules applied to

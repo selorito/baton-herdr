@@ -301,6 +301,13 @@ class ProjectsSettings(_Section):
     preview_port: int = Field(default=8765, ge=0, le=65535)
     # A Chromium or Chrome for the page's screenshot; unset: looked up on PATH.
     browser: str | None = None
+    # Where a delivered project's page is also published for anyone to open (ADR 0023).
+    # "off": the preview only. "vercel": deployed to Vercel as a project of its own, with
+    # vercel_token (BATON_PROJECTS__VERCEL_TOKEN in .env); its link comes with the delivery.
+    publish: Literal["off", "vercel"] = "off"
+    vercel_token: SecretStr | None = None
+    # A team's id (team_…) or slug; unset: the token's personal account.
+    vercel_team: str | None = None
 
     @field_validator("root")
     @classmethod

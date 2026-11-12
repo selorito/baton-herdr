@@ -146,3 +146,10 @@ timezone = "UTC"
 # preview_port = 8765
 # A Chromium or Chrome for the page's screenshot; unset: looked up.
 # browser = "chromium"
+# Also publish a delivered page where anyone can open it (ADR 0023). "off": the preview
+# only. "vercel": each project's page becomes a Vercel project of its own, and the
+# delivery carries its https://<project>.vercel.app link. The token goes in .env as
+# BATON_PROJECTS__VERCEL_TOKEN (vercel.com/account/tokens). `baton project publish p-…`
+# publishes one project now, whatever this says.
+# publish = "off"
+# vercel_team = "team_…"

@@ -27,3 +27,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0020](0020-task-tiers-and-provider-backends.md) | Task tiers: economy runs the same agents on a cheaper model, behind a provider backend | accepted |
 | [0021](0021-natural-language-assistant.md) | A natural-language assistant in Telegram: a local model that proposes, the operator who starts | accepted |
 | [0022](0022-reading-panes-without-herdrs-process-detection.md) | Reading panes without herdr's process detection: baton's own reading on WSL1 | accepted |
+| [0023](0023-publishing-delivered-pages-on-vercel.md) | Publishing delivered pages on Vercel, for anyone to open | accepted |

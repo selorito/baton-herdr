@@ -40,6 +40,7 @@ from baton_herdr.projects.flow import (
     reject_plan,
     start_project,
 )
+from baton_herdr.projects.publish import PublishError, VercelPublisher
 from baton_herdr.scheduler.operator import (
     ActionRefusedError,
     act,
@@ -323,6 +324,49 @@ def project_start(
 ) -> None:
     """Start a proposed plan: its steps run in order, or side by side where the plan allows."""
     _plan_choice(task_id, start=True)
+
+
+@project_app.command("publish")
+def project_publish(
+    target: Annotated[str, typer.Argument(help="A project (p-…), or a project's directory.")],
+) -> None:
+    """Publish a project's page on Vercel now, whatever [projects] publish says (ADR 0023)."""
+    settings = _settings()
+    if settings.projects.vercel_token is None:
+        typer.echo(
+            "No Vercel token: set BATON_PROJECTS__VERCEL_TOKEN in baton's .env "
+            "(vercel.com/account/tokens).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    publisher = VercelPublisher(
+        settings.projects.vercel_token.get_secret_value(), team=settings.projects.vercel_team
+    )
+
+    local = None if target.startswith("p-") else Path(target).expanduser().resolve()
+
+    async def publish() -> str:
+        workdir = local or await _project_dir(settings, target)
+        try:
+            return await publisher.publish(workdir)
+        except PublishError as err:
+            typer.echo(f"Not published: {err}.", err=True)
+            raise typer.Exit(code=1) from err
+
+    typer.echo(asyncio.run(publish()))
+
+
+async def _project_dir(settings: BatonSettings, target: str) -> Path:
+    store = await open_event_store(settings.database.path)
+    try:
+        tasks = project(await store.read()).tasks.values()
+    finally:
+        await store.close()
+    plan = next((t for t in tasks if t.project == target and t.role == "plan"), None)
+    if plan is None:
+        typer.echo(f"There is no project {target}.", err=True)
+        raise typer.Exit(code=1)
+    return Path(plan.workdir)
 
 
 @project_app.command("cancel")
