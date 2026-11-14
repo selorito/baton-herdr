@@ -120,7 +120,9 @@ class HerdrPaneHost:
         while True:
             # herdr's events are invalidation signals. Subscribe first, then read: the
             # read is authoritative, and every later event triggers another read. The
-            # same read reconciles state after herdr reports lost events.
+            # same read reconciles state after herdr reports lost events, or after the
+            # subscription's connection ends; only a subscription herdr does not take
+            # again means herdr is out of reach.
             try:
                 events = await self._socket.subscribe([subscription])
             except HerdrApiError as err:
@@ -131,12 +133,11 @@ class HerdrPaneHost:
                 yield await self.observe(pane_id)
                 async for _event in events:
                     yield await self.observe(pane_id)
-            except EventsLostError:
+            except (EventsLostError, HerdrUnavailableError):
+                # The reads raise PaneHostError themselves; this is the subscription's end.
                 continue
             except HerdrApiError as err:
                 raise _translate(err) from err
-            except HerdrUnavailableError as err:
-                raise PaneHostUnavailableError(str(err)) from err
             finally:
                 await events.aclose()
 

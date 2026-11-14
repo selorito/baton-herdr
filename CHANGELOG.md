@@ -44,6 +44,10 @@ is:
 - **WSL1: a prompt over 4 KB ended the agent and its pane.** WSL1 hangs a terminal up on
   a write that large; every project step failed with "the claude pane is gone". Long
   prompts are now pasted in pieces.
+- **A subscription that ended mid-turn failed the task's run.** herdr's watch subscribed
+  again after `events_lost`, but not after its connection ended: the run stopped with
+  `herdr closed the connection` until batond's next cycle re-attached. It now subscribes
+  again and reads the pane, as after lost events.
 
 ## [1.3.0] - 2026-10-23
 

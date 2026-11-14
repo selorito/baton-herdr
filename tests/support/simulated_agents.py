@@ -8,6 +8,7 @@ fallback for Codex), so the adapters classify exactly what they would live.
 from __future__ import annotations
 
 import asyncio
+import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,6 +67,7 @@ class SimulatedAgents(FakePaneHost):
         permission_after_prompt: bool = False,
         permission_screen: str = PERMISSION_SCREEN,
         end_mark: str | None = "⏺ Done.\n  [[BATON:END status=done]]",
+        session_per_pane: bool = False,
     ) -> None:
         super().__init__()
         self._clock = clock
@@ -82,6 +84,8 @@ class SimulatedAgents(FakePaneHost):
         self.permission_answers: list[tuple[str, ...]] = []
         # Closing lines of a finished turn: the agent's message and its end mark.
         self.end_mark = end_mark
+        # One session id per pane, so that many panes of one agent are told apart.
+        self._session_per_pane = session_per_pane
         # Script played by a freshly launched agent; resumed sessions always finish.
         self._fresh_scripts = SCRIPT_FILES | (scripts or {})
         self.dialog_answers: list[tuple[str, ...]] = []
@@ -92,6 +96,7 @@ class SimulatedAgents(FakePaneHost):
         self.prompts: list[tuple[AgentKind, str]] = []
         self._tasks: list[asyncio.Task[None]] = []
         self._dialogs: set[str] = set()
+        self._resumed: dict[str, str] = {}  # pane -> the session resumed there
 
     async def send_text(self, pane_id: str, text: str) -> None:
         await super().send_text(pane_id, text)
@@ -103,6 +108,8 @@ class SimulatedAgents(FakePaneHost):
         agent, script = _command_target(command, self._fresh_scripts)
         if list(keys) == ["Enter"] and agent is not None and script is not None:
             self.launched.append(command)
+            if command.startswith(_resume_prefix(agent)):
+                self._resumed[pane_id] = shlex.split(command)[2]  # `<agent> <flag> <session>`
             if (
                 self._resume_fails
                 and script == RESUMED_SCRIPT_FILES.get(agent)
@@ -142,7 +149,7 @@ class SimulatedAgents(FakePaneHost):
                 agent=AgentKind.CODEX,
                 state=AgentState.UNKNOWN,
                 evidence="herdr:idle-fallback",
-                session_ref="codex-session",
+                session_ref=self.session(AgentKind.CODEX, pane_id),
             )
         )
 
@@ -175,12 +182,18 @@ class SimulatedAgents(FakePaneHost):
                     agent=agent,
                     state=AgentState.BLOCKED_OTHER,
                     evidence="herdr:rule:bash_permission_prompt",
-                    session_ref=f"{agent.value}-session",
+                    session_ref=self.session(agent, pane_id),
                 )
             )
             return
         self._running[pane_id] = (agent, 2)
         self._show(pane_id, prompt=prompt)
+
+    def session(self, agent: AgentKind, pane_id: str) -> str:
+        """The session id the agent in ``pane_id`` reports: the one it resumed, or its own."""
+        if not self._session_per_pane:
+            return f"{agent.value}-session"
+        return self._resumed.get(pane_id, f"{agent.value}-session-{pane_id}")
 
     def reshow(self) -> None:
         """Redraw every running agent, e.g. after a test changed ``end_mark``."""
@@ -211,7 +224,7 @@ class SimulatedAgents(FakePaneHost):
                 agent=agent,
                 state=state,
                 evidence=evidence,
-                session_ref=f"{agent.value}-session",
+                session_ref=self.session(agent, pane_id),
                 cwd="/work/calc",
             )
         )
@@ -225,10 +238,14 @@ def _command_target(
         if agent not in fresh_scripts:
             continue
         # Either may be followed by baton's own arguments (RunnerSettings.launch_args).
-        resume = adapter.resume_command(f"{agent.value}-session")
-        if command == resume or command.startswith(f"{resume} "):
+        if command.startswith(_resume_prefix(agent)):
             return agent, RESUMED_SCRIPT_FILES[agent]
         launch = adapter.launch_command()
         if command == launch or command.startswith(f"{launch} "):
             return agent, fresh_scripts[agent]
     return None, None
+
+
+def _resume_prefix(agent: AgentKind) -> str:
+    """The start of the agent's resume command, whatever session it names."""
+    return ADAPTERS[agent].resume_command("").removesuffix("''")
