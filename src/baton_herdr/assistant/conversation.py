@@ -573,9 +573,11 @@ class Assistant:
 
     async def _act(self, interpretation: Interpretation, message: str, language: Language) -> str:
         if interpretation.status is not None:
-            digest = build_digest(
-                await self._store.read(), ids=interpretation.status.ids, zone=self._config.zone
-            )
+            # As for a cancel: an id counts only when the operator wrote it. One the model
+            # made up would narrow the answer to nothing ("not in the record").
+            written = " ".join((message, *(m.text for m in self._history if m.role == "operator")))
+            ids = [i for i in interpretation.status.ids if i in written]
+            digest = build_digest(await self._store.read(), ids=ids, zone=self._config.zone)
             if interpretation.status.why and digest.tasks:
                 return await self._explain(message, digest, language)
             return _brief(digest, language)
