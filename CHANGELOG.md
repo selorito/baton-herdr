@@ -35,6 +35,11 @@ is:
 - **`baton doctor` on WSL1** shows a `wsl1` line (pane processes read by baton, the
   rollback journal) and, when the herdr server is unreachable, recommends the scheduled
   task instead of systemd.
+- **Cancel a task and change its tier in words** (ADR 0021, amended). "t-1a2b3c4d'yi
+  iptal et", "cancel the cafe task", "t-1a2b3c4d ucuz modelde çalışsın": the assistant
+  shows a card naming the task and what will happen, and its button does what `/cancel`
+  or `/tier` does. baton finds the task from the id or the words; a name that fits no
+  open task, or several, gets a question, and the id written in reply answers it.
 
 ### Fixed
 

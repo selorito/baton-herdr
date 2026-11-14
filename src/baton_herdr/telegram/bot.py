@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
+from baton_herdr.assistant.cards import Card, CardKind
 from baton_herdr.assistant.conversation import CardContext
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.choice import choose_agent
@@ -71,7 +72,8 @@ HELP = (
     "/budget: what each agent has left.\n"
     "/tier <task> economy|premium: the tier it runs in from its next attempt.\n"
     "With the assistant on ([assistant]), just write: 'why is t-1a2b3c4d stuck?', "
-    "'what is running?', or what to build.\n"
+    "'what is running?', 'cancel the cafe task', 'run t-1a2b3c4d on economy', "
+    "or what to build.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
 # A word of its own: "#economy", not "cafe#economy".
@@ -187,9 +189,14 @@ class OperatorBot:
         named = tier.value if tier else self._settings.plan_tier
         return CardContext(where=where, agent=agent, tier=named)
 
-    async def _start_from_card(self, request: str) -> tuple[bool, str]:
-        """A card's Start: exactly what /new does with the request."""
-        said = await self.new_project(request)
+    async def _start_from_card(self, card: Card) -> tuple[bool, str]:
+        """A card's Start: exactly what its command does, /new with the request, or /cancel
+        and /tier with their arguments."""
+        if card.kind is CardKind.CANCEL:
+            return await self._cancel(card.request)
+        if card.kind is CardKind.TIER:
+            return await self._tier(card.request.split())
+        said = await self.new_project(card.request)
         return said.startswith("Project p-"), said
 
     async def budget(self) -> str:
@@ -250,8 +257,12 @@ class OperatorBot:
 
     async def tier(self, args: list[str]) -> str:
         """``/tier t-… economy|premium`` (ADR 0020)."""
+        return (await self._tier(args))[1]
+
+    async def _tier(self, args: list[str]) -> tuple[bool, str]:
+        """``/tier``: whether the tier was set, and what to tell."""
         if len(args) != 2 or args[1] not in {t.value for t in Tier}:
-            return "Say which task and tier: /tier t-1a2b3c4d economy, or premium."
+            return False, "Say which task and tier: /tier t-1a2b3c4d economy, or premium."
         task_id, tier = TaskId(args[0]), Tier(args[1])
         try:
             running = await set_tier(
@@ -262,13 +273,17 @@ class OperatorBot:
                 by=f"telegram:{self._settings.owner_id}",
             )
         except ActionRefusedError as err:
-            return str(err)
+            return False, str(err)
         self._on_action()
         later = " from its next attempt; the one under way runs on" if running else ""
-        return f"{task_id} runs {tier.value}{later}."
+        return True, f"{task_id} runs {tier.value}{later}."
 
     async def cancel(self, target: str) -> str:
         """``/cancel t-…`` drops a task, ``/cancel p-…`` a whole project."""
+        return (await self._cancel(target))[1]
+
+    async def _cancel(self, target: str) -> tuple[bool, str]:
+        """``/cancel``: whether it was cancelled, and what to tell."""
         by = f"telegram:{self._settings.owner_id}"
         try:
             if target.startswith("p-"):
@@ -286,11 +301,14 @@ class OperatorBot:
                 )
                 result = f"{TASK_CANCELLED} {target}" + ("; its pane is closed." if closed else ".")
             else:
-                return "Say what to cancel: /cancel t-1a2b3c4d, or /cancel p-1a2b3c for a project."
+                return (
+                    False,
+                    "Say what to cancel: /cancel t-1a2b3c4d, or /cancel p-1a2b3c for a project.",
+                )
         except (ActionRefusedError, ProjectError) as err:
-            return str(err)
+            return False, str(err)
         self._on_action()
-        return result
+        return True, result
 
     async def plan_choice(self, data: str) -> str:
         """A press on a plan's Start or Cancel; ``data`` is ``plan:start:t-1a2b3c4d``."""

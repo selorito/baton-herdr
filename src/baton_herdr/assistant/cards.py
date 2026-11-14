@@ -1,10 +1,12 @@
-"""Confirmation cards: a project the assistant proposes, started only by the operator's
-press (ADR 0021).
+"""Confirmation cards: what the assistant proposes, done only on the operator's press
+(ADR 0021).
 
-A card is proposed with the request as it would go to ``/new``. Its Start calls the very
-function ``/new`` calls, once: presses are decided under a lock per card, and a card in a
-final state answers with that state. Cards live in memory; after a restart, or once
-their time is up, a press is told the card has expired. Nothing was started from it.
+A card is proposed with what it would pass to its command: the request for ``/new``, or
+the arguments of ``/cancel`` or ``/tier``. Its Start calls the very function that command
+calls, once: presses are decided under a lock per card, and a card in a final state
+answers with that state. Only a project's card can be edited. Cards live in memory; after
+a restart, or once their time is up, a press is told the card has expired. Nothing was
+started from it.
 
     PROPOSED --start--> STARTING --ok--> STARTED
        |                    '--error--> FAILED
@@ -46,9 +48,16 @@ class CardState(StrEnum):
         return self not in {CardState.PROPOSED, CardState.EDITING, CardState.STARTING}
 
 
+class CardKind(StrEnum):
+    PROJECT = "project"  # /new <request>
+    CANCEL = "cancel"  # /cancel <t-… or p-…>
+    TIER = "tier"  # /tier <t-…> <economy|premium>
+
+
 @dataclass(frozen=True, slots=True)
 class Card:
     card_id: str
+    # What its command is given: a project's request, or a command's arguments.
     request: str
     created_at: datetime
     # The language its texts are in: the operator's when it was proposed.
@@ -56,6 +65,7 @@ class Card:
     state: CardState = CardState.PROPOSED
     # What starting it said: the project made, or why it could not be.
     result: str = ""
+    kind: CardKind = CardKind.PROJECT
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,12 +83,15 @@ class CardStore:
     _cards: dict[str, Card] = field(default_factory=dict)
     _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
 
-    def propose(self, request: str, *, language: str = "en") -> Card:
+    def propose(
+        self, request: str, *, language: str = "en", kind: CardKind = CardKind.PROJECT
+    ) -> Card:
         card = Card(
             card_id=secrets.token_hex(4),
             request=request,
             created_at=self.clock.now(),
             language=language,
+            kind=kind,
         )
         self._cards[card.card_id] = card
         self._locks[card.card_id] = asyncio.Lock()
@@ -104,10 +117,10 @@ class CardStore:
             self._set(card, CardState.SUPERSEDED)
 
     async def press(
-        self, card_id: str, action: str, start: Callable[[str], Awaitable[tuple[bool, str]]]
+        self, card_id: str, action: str, start: Callable[[Card], Awaitable[tuple[bool, str]]]
     ) -> Press:
         """Act on a press of ``action`` ("start", "edit", "cancel") once. ``start`` is
-        given the request and says whether the project was made, and what to tell."""
+        given the card and says whether its command did it, and what to tell."""
         lock = self._locks.get(card_id)
         if lock is None:
             return Press(card=None, acted=False)  # unknown: made before a restart
@@ -117,7 +130,7 @@ class CardStore:
                 return Press(card=card, acted=False)
             if action == "cancel":
                 return Press(card=self._set(card, CardState.CANCELLED), acted=True)
-            if action == "edit":
+            if action == "edit" and card.kind is CardKind.PROJECT:
                 for other in list(self._cards.values()):
                     if other.state is CardState.EDITING:
                         self._set(other, CardState.SUPERSEDED)  # one change at a time
@@ -126,7 +139,7 @@ class CardStore:
                 return Press(card=card, acted=False)
             self._set(card, CardState.STARTING)
             try:
-                made, said = await start(card.request)
+                made, said = await start(card)
             except Exception:
                 self._set(card, CardState.FAILED, "could not be started")
                 raise
