@@ -53,6 +53,9 @@ is:
 
 ### Fixed
 
+- An attempt waiting for a person no longer loops: a re-attach that changed nothing does
+  not wake the daemon, so it is looked at again after the idle time, not ~once a second.
+
 - **WSL1: the CLI could not open the log batond held** (`locking protocol`). SQLite's WAL
   needs shared memory WSL1 does not share across processes; on WSL1 the database now uses
   the rollback journal.
