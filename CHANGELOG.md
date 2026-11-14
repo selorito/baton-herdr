@@ -40,6 +40,12 @@ is:
   shows a card naming the task and what will happen, and its button does what `/cancel`
   or `/tier` does. baton finds the task from the id or the words; a name that fits no
   open task, or several, gets a question, and the id written in reply answers it.
+- **The assistant starts work in an existing directory** (ADR 0021, amended). "~/src/calc
+  içinde calc.py'ye bölme ekle", or a project's id, comes as a card with the directory,
+  the title and the instructions; Start adds one task there, as `baton task add` does.
+  Only a directory inside the policy's `trusted_dirs`, or a project baton made, is
+  offered, and only once it exists; anything else is refused with the reason. baton
+  creates, moves and deletes no directory for it.
 
 ### Fixed
 

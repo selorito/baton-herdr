@@ -27,7 +27,8 @@ from baton_herdr.core.fakes import RecordingNotifier
 from baton_herdr.core.model import AgentKind, InterruptReason, TaskStatus
 from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import project
-from baton_herdr.daemon import add_task, open_runtime, run_pending
+from baton_herdr.daemon import open_runtime, run_pending
+from baton_herdr.scheduler.operator import add_task
 
 import fake_agent
 from detector_binary import detector

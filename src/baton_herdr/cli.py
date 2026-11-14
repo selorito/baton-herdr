@@ -30,7 +30,7 @@ from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
 from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.core.projection import TaskView, project
 from baton_herdr.core.routing import Tier
-from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
+from baton_herdr.daemon import open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, local_timezone, render
 from baton_herdr.herdr.fallback import ProcProcessTable
 from baton_herdr.ledger import open_event_store, open_usage_store
@@ -47,6 +47,7 @@ from baton_herdr.projects.publish import PublishError, VercelPublisher
 from baton_herdr.scheduler.operator import (
     ActionRefusedError,
     act,
+    add_task,
     cancel,
     release_agent,
     set_tier,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import posixpath
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -308,6 +309,25 @@ class FakeAssistant:
 
     async def health(self) -> AssistantHealth:
         return AssistantHealth(up=self.up, detail="fake")
+
+
+class FakeDirectories:
+    """:class:`baton_herdr.core.assistant.Directories` over a fixed set of directories.
+    ``~`` is ``home``; every path asked about is kept in ``asked``."""
+
+    def __init__(self, *existing: str, home: str = "/home/me") -> None:
+        self.existing = set(existing)
+        self.home = home
+        self.asked: list[str] = []
+
+    def resolve(self, path: str) -> str | None:
+        self.asked.append(path)
+        if path == "~" or path.startswith("~/"):
+            path = self.home + path[1:]
+        if not path.startswith("/"):
+            return None
+        where = posixpath.normpath(path)
+        return where if where in self.existing else None
 
 
 class FakeProcessTable:

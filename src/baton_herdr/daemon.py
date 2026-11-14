@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import os
 import stat
-import uuid
 from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -22,13 +21,13 @@ from baton_herdr.adapters import ADAPTERS
 from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
 from baton_herdr.assistant.cards import CardStore
 from baton_herdr.assistant.conversation import Assistant, AssistantConfig
+from baton_herdr.assistant.places import LocalDirectories, Places
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BudgetSettings, DetectorSettings, TierSettings
 from baton_herdr.core.detector import HostDetector
-from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
@@ -162,8 +161,15 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
     )
 
 
-def assistant_for(settings: BatonSettings, store: EventStore, clock: Clock) -> Assistant | None:
-    """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model."""
+def assistant_for(
+    settings: BatonSettings,
+    store: EventStore,
+    clock: Clock,
+    trusted_dirs: tuple[str, ...] = (),
+) -> Assistant | None:
+    """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model.
+    It offers work in an existing directory only inside ``trusted_dirs`` (the policy's) or
+    in a project baton made."""
     config = settings.assistant
     if not config.enabled or config.model is None:
         return None
@@ -184,6 +190,7 @@ def assistant_for(settings: BatonSettings, store: EventStore, clock: Clock) -> A
             zone=ZoneInfo(settings.scheduler.timezone),
         ),
         cards=CardStore(clock=clock, ttl=timedelta(minutes=config.card_ttl_minutes)),
+        places=Places(directories=LocalDirectories(), trusted=trusted_dirs),
     )
 
 
@@ -284,11 +291,12 @@ async def open_runtime(
                     timezone=scheduling.timezone,
                     reserve_percent=settings.budget.reserve_percent,
                     plan_tier=settings.tiers.roles.get("plan", "premium"),
+                    task_tier=settings.tiers.roles.get("task", "premium"),
                 ),
                 budget=budget,
                 on_action=wake.set,
                 projects_root=settings.projects.root,
-                assistant=assistant_for(settings, store, clock),
+                assistant=assistant_for(settings, store, clock, scheduling.trusted_dirs),
             )
         yield Runtime(
             store=store,
@@ -386,32 +394,6 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
     finally:
         loop.remove_reader(fd)
         os.close(fd)
-
-
-async def add_task(  # noqa: PLR0913 - the store and each field of the task
-    store: EventStore,
-    *,
-    title: str,
-    instructions: str,
-    workdir: str,
-    clock: Clock | None = None,
-    tier: Tier | None = None,
-) -> TaskId:
-    task_id = TaskId(f"t-{uuid.uuid4().hex[:8]}")
-    now = (clock or SystemClock()).now()
-    await store.append(
-        [
-            TaskCreated(
-                occurred_at=now,
-                task_id=task_id,
-                title=title,
-                instructions=instructions,
-                workdir=workdir,
-                tier=tier,
-            )
-        ]
-    )
-    return task_id
 
 
 async def run_pending(

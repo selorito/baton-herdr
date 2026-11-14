@@ -71,8 +71,8 @@ sequenceDiagram
 
 ### 1. A task is added
 
-`baton task add` (`cli.py`, `task_add`) calls `daemon.add_task`, which appends one event,
-`task.created`, with the title, the instructions and the working directory. Then it
+`baton task add` (`cli.py`, `task_add`) calls `scheduler.operator.add_task`, which appends one
+event, `task.created`, with the title, the instructions and the working directory. Then it
 wakes batond (`daemon.poke`); the CLI never runs the task itself.
 
 - Events: `core/events.py`. Each event has a stable `type` string (`task.created`,
@@ -299,6 +299,11 @@ A plain message goes to the assistant when `[assistant]` is set
    `find_target`, finds it in the log (an id counts only when the operator wrote it) or
    says why not, and the assistant asks instead. Found, it becomes a card whose Start
    calls what `/cancel` or `/tier` calls (`OperatorBot._cancel`, `OperatorBot._tier`).
+6. Work in a directory that exists is first checked by `assistant/places.py`,
+   `Places.find`: inside the policy's `trusted_dirs` or a project baton made, and already
+   there (`LocalDirectories` only looks). Anything else is refused with the reason. Its
+   card's Start checks again and calls `scheduler.operator.add_task`, as `baton task add`
+   does.
 
 ## Where to look next
 

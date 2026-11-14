@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-10-22
+amended: 2026-11-10
 ---
 
 # A natural-language assistant in Telegram: a local model that proposes, the operator who starts
@@ -85,10 +86,9 @@ class AssistantBackend(Protocol):
 added by the amendment below.
 
 A `new_project` proposal names its target as `{"kind": "new"}` or
-`{"kind": "existing", "path": "…"}`. v1 accepts only `new`. An `existing` target is answered
-with "not yet: use `baton task add`", and no card is shown. v2 then accepts it without a
-schema change: the path is checked against the policy's `trusted_dirs` and must exist, and
-the work goes through `daemon.add_task`, as `baton task add` does.
+`{"kind": "existing", "path": "…"}`. v1 accepted only `new`. Since the amendment of
+2026-11-10, an `existing` target is accepted without a schema change: see "Work in an
+existing directory" below.
 
 - The model's output is parsed with pydantic. Output that does not parse, fields that do
   not fit the intent, or an unknown intent are all treated as `chat`, with the reply "I
@@ -137,7 +137,9 @@ messages (notices, commands) stay in English in v1.
   names that matched (`baton:claude_trust_folder`) and times. It never includes
   instructions, screens, notices' blocks, environment, paths outside the projects root,
   settings or tokens.
-- **Paths.** The model never names a path. A new project's directory is made by baton.
+- **Paths.** A new project's directory is made by baton. The model names a path only as
+  the operator wrote it, for work in an existing directory, and baton alone decides whether
+  work may go there (below).
 
 ### Speed (measured in A2, `docs/devlog/2026-10-22-assistant-on-ollama.md`)
 
@@ -180,8 +182,8 @@ reply in the chat, or a card whose Start calls `start_project`, the same functio
   nothing has been started from them.
 - Measured in A2's live test: whether replies fit the schema, reply time, and the model's
   memory, both on an idle machine and while agents run.
-- Not in v1: tasks in an existing repository from words (`baton task add` needs a path,
-  checked against the policy's `trusted_dirs`), more than one allowed user, voice messages.
+- Not in v1: more than one allowed user, voice messages. Tasks in an existing directory
+  from words, `cancel` and `set_tier` came with the amendments below.
 
 ## Amendment (2026-11-10): `cancel` and `set_tier`
 
@@ -215,3 +217,36 @@ only after the owner presses a button on a card.
   `stop`, `economy`, `ucuz`, …) is never read as a plain status question.
 - Without cards (no `CardStore`), the answer is the command that would do it, as for
   projects.
+
+## Amendment 2026-11-10: work in an existing directory
+
+"~/dev/baton-projects/wsl1-smoke içinde calc.py'ye bölme ekle" names a directory that
+exists. The model answers `new_project` with `target = {"kind": "existing", "path": …}`,
+the directory exactly as the operator wrote it, or a project id (`p-1a2b3c`) when the
+operator names a project. The schema is the one of v1.
+
+- **baton decides where.** `assistant/places.py`, `Places.find`, resolves the path through
+  `core.assistant.Directories` (`~` expanded, links followed, so a link inside a trusted
+  directory is judged by where it leads) and offers it only when it is an existing
+  directory and either inside the policy's `trusted_dirs` or inside a project baton made
+  (a plan task's directory in the log). A project id stands for that project's directory.
+- **Anything else is refused with the reason**, and no card is shown: a relative path
+  ("write the full path"), a directory that does not exist ("baton makes, moves and
+  deletes no directories"), one outside `trusted_dirs` and every project ("add it to
+  trusted_dirs if you trust it"), a project id the log does not hold. With the policy off
+  there are no `trusted_dirs`, so only baton's projects are offered.
+- **Never create, move or delete.** `LocalDirectories` only resolves and looks. Nothing
+  in this path makes a directory, so a missing one is a refusal, not a new project.
+- **The card** shows the directory, why it is allowed (`trusted_dirs`, or the project's
+  id), a title (the request's first sentence, at most 60 characters), the instructions
+  (the request), the agent a task would go to now, and the tier (`[tiers] roles.task`,
+  or a tag in the request). There is no plan step: once started, the agent works in that
+  directory, as with `baton task add`.
+- **Start** checks the directory again, since it may have gone or the policy changed while
+  the card waited, and then calls `scheduler.operator.add_task`, the function `baton task
+  add` calls (moved there from `daemon` so the bot can call it). It runs once per card,
+  under the card's lock, as for a project. A refusal at Start is the card's final answer.
+- **Edit** gives the model the card's directory with the request, so the revision keeps it
+  unless the change names another, and the new card is checked again.
+- **The task** is an ordinary `task.created`: no project, no new event type. Whether the
+  policy approves tests and builds there is decided as for any task (ADR 0013).

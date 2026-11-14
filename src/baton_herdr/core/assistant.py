@@ -75,13 +75,24 @@ class AssistantBackend(Protocol):
         ...
 
 
+class Directories(Protocol):
+    """The file system, as far as the assistant looks at it: whether a path names a
+    directory. It never creates, moves or deletes one."""
+
+    def resolve(self, path: str) -> str | None:
+        """``path`` absolute, with ``~`` expanded and links followed, when it names a
+        directory that exists; ``None`` otherwise."""
+        ...
+
+
 class _Schema(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class Target(_Schema):
-    """Where a project's work goes. v1 takes only ``new``: a directory baton makes. An
-    ``existing`` directory is in the schema already, for v2, so it does not change then."""
+    """Where the work goes: ``new``, a directory baton makes for a project, or
+    ``existing``, a directory the operator named (as written, or a project id), which baton
+    checks before it offers anything there."""
 
     kind: Literal["new", "existing"]
     path: str | None = Field(default=None, max_length=500)

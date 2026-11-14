@@ -1,11 +1,13 @@
 """Confirmation cards: what the assistant proposes, done only on the operator's press
 (ADR 0021).
 
-A card is proposed with what it would pass to its command: the request for ``/new``, or
-the arguments of ``/cancel`` or ``/tier``. Its Start calls the very function that command
-calls, once: presses are decided under a lock per card, and a card in a final state
-answers with that state. Only a project's card can be edited. Cards live in memory; after
-a restart, or once their time is up, a press is told the card has expired. Nothing was
+A card is proposed with what it would pass to its command: the request for ``/new`` (or,
+for work in a directory that exists, that directory and the task's title, for ``baton
+task add``), or the arguments of ``/cancel`` or ``/tier``. Its Start calls the very
+function that command calls, once: presses are decided under a lock per card, and a card
+in a final state answers with that state. Only a project's card can be edited. Cards live
+in memory; after a restart, or once their time is up, a press is told the card has
+expired. Nothing was
 started from it.
 
     PROPOSED --start--> STARTING --ok--> STARTED
@@ -66,6 +68,10 @@ class Card:
     # What starting it said: the project made, or why it could not be.
     result: str = ""
     kind: CardKind = CardKind.PROJECT
+    # Work in a directory that exists: the directory, and the task's title. None: a new
+    # project, in a directory baton makes. Only for a project's card.
+    workdir: str | None = None
+    title: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +90,13 @@ class CardStore:
     _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
 
     def propose(
-        self, request: str, *, language: str = "en", kind: CardKind = CardKind.PROJECT
+        self,
+        request: str,
+        *,
+        language: str = "en",
+        kind: CardKind = CardKind.PROJECT,
+        workdir: str | None = None,
+        title: str = "",
     ) -> Card:
         card = Card(
             card_id=secrets.token_hex(4),
@@ -92,6 +104,8 @@ class CardStore:
             created_at=self.clock.now(),
             language=language,
             kind=kind,
+            workdir=workdir,
+            title=title,
         )
         self._cards[card.card_id] = card
         self._locks[card.card_id] = asyncio.Lock()

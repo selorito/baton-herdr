@@ -214,6 +214,11 @@ Bilmen gerekenler:
 - Model, cevaptan sonra 5 dakika bellekte kalır (`keep_alive = "5m"`). Belleği hemen
   boşaltmak için `keep_alive = "0"` yaz; her cevap ~10 saniye uzar.
 - "Düzenle"ye basarsan bir sonraki mesajın isteğe yapılacak değişiklik olarak alınır.
+- Var olan bir klasörde iş de isteyebilirsin: "~/src/calc içinde calc.py'ye bölme ekle"
+  ya da "p-1a2b3c'de açılış saatlerini ekle". Kartta klasör, başlık ve talimat görünür;
+  **Başlat** orada bir iş açar (`baton task add` gibi). Yalnızca `policy.yaml`'daki
+  `trusted_dirs` içindeki klasörler ve baton'un açtığı projeler kabul edilir; gerisi
+  nedeniyle reddedilir. baton bunun için klasör açmaz, taşımaz, silmez.
 - Kart 30 dakika geçerlidir; baton yeniden başlarsa açık kartlar düşer.
 
 ## Gözetimsiz çalıştırma için öneriler

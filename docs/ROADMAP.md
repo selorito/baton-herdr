@@ -164,8 +164,10 @@ test keeps passing throughout.
 - A6: `cancel` and `set_tier` as intents: a card naming the task and what will happen,
   done by what `/cancel` and `/tier` do; baton finds the task, and asks when it is not
   plain.
-- Not yet: work in an existing directory from words (the schema has it already), more
-  than one allowed user.
+- Work in an existing directory from words: a card with the directory, the title and the
+  instructions, offered only inside the policy's `trusted_dirs` or in a project baton
+  made; a task there once the owner presses Start.
+- Not yet: more than one allowed user.
 
 ## After v1
 
