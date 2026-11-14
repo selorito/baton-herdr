@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+import os
 import platform
 import shutil
 import signal
@@ -26,10 +27,12 @@ from baton_herdr.core.config import BatonSettings, config_file, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
+from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.core.projection import TaskView, project
 from baton_herdr.core.routing import Tier
 from baton_herdr.daemon import add_task, open_runtime, poke, run_pending, serve
 from baton_herdr.doctor import Level, diagnose, local_timezone, render
+from baton_herdr.herdr.fallback import ProcProcessTable
 from baton_herdr.ledger import open_event_store, open_usage_store
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.create import ProjectSetupError
@@ -52,10 +55,22 @@ from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
     NEXT_STEPS,
+    START_SCRIPT,
+    WSL1_NEXT_STEPS,
     ServiceError,
+    install_start_script,
     install_units,
+    installed_session,
     plan_units,
+    render_start_script,
     render_units,
+    scheduled_task_command,
+    service_processes,
+    service_session,
+    start_script_path,
+    status_lines,
+    uninstall,
+    unit_dir,
 )
 from baton_herdr.setup import Io, Paths, SetupError, ask_secret, run_setup
 
@@ -65,7 +80,11 @@ if TYPE_CHECKING:
 app = typer.Typer(name="baton", no_args_is_help=True, add_completion=False)
 task_app = typer.Typer(name="task", help="Manage tasks.", no_args_is_help=True)
 app.add_typer(task_app)
-service_app = typer.Typer(name="service", help="Run batond as a systemd user service.")
+service_app = typer.Typer(
+    name="service",
+    help="Run batond as a service: systemd user units, or on WSL1 a Windows scheduled task.",
+    no_args_is_help=True,
+)
 app.add_typer(service_app)
 project_app = typer.Typer(
     name="project", help="Projects: a request, planned and run step by step.", no_args_is_help=True
@@ -625,11 +644,23 @@ def _run_command(command: Sequence[str]) -> tuple[int, str]:
 
 
 def _setup_service(io: Io) -> None:
-    """The systemd user units, enabled and (re)started, kept running after logout."""
+    """The systemd user units, enabled and (re)started, kept running after logout. On WSL1
+    the start script, and the PowerShell command that has Windows run it."""
     if not io.confirm("Run baton as a service (starts at login, keeps running)?", default=True):
         return
     settings = _settings()
     plan = plan_units(settings, config=config_file())
+    if running_on_wsl1():
+        try:
+            written = install_start_script(plan, force=False)
+        except ServiceError:
+            if not io.confirm("The start script is installed already. Update it?", default=True):
+                return
+            written = install_start_script(plan, force=True)
+        for path in written:
+            io.say(f"Wrote {path}.")
+        io.say(_wsl1_next_steps(written[-1], plan.session))
+        return
     try:
         written = install_units(plan, force=False)
     except ServiceError:
@@ -650,13 +681,24 @@ def _setup_service(io: Io) -> None:
     io.say(f"batond is running. Watch its agents with: herdr --session {plan.session}")
 
 
+def _wsl1_next_steps(script: Path, session: str) -> str:
+    command = scheduled_task_command(script, os.environ.get("WSL_DISTRO_NAME"))
+    steps = WSL1_NEXT_STEPS.format(command=command, session=session)
+    if not os.environ.get("WSL_DISTRO_NAME"):
+        steps += "Replace <distro> with this distribution's name (wsl.exe -l -v on Windows).\n"
+    return steps
+
+
 @service_app.command("install")
 def service_install(
     *,
-    force: Annotated[bool, typer.Option(help="Replace existing unit files.")] = False,
-    dry_run: Annotated[bool, typer.Option(help="Print the units instead of writing them.")] = False,
+    force: Annotated[bool, typer.Option(help="Replace existing files.")] = False,
+    dry_run: Annotated[bool, typer.Option(help="Print the files instead of writing them.")] = False,
 ) -> None:
     """Write systemd user units for batond and its own herdr server (not enabled).
+
+    On WSL1, which has no systemd, write one start script instead, and print the
+    PowerShell command that registers a Windows scheduled task to run it.
 
     The herdr session is [herdr] session from the settings (default "baton"), the
     same one the CLI and `baton doctor` connect to.
@@ -664,6 +706,16 @@ def service_install(
     settings = _settings()
     try:
         plan = plan_units(settings, config=config_file())
+        if running_on_wsl1():
+            if dry_run:
+                typer.echo(f"# {START_SCRIPT}\n{render_start_script(plan)}")
+                typer.echo(_wsl1_next_steps(start_script_path(), plan.session))
+                return
+            written = install_start_script(plan, force=force)
+            for path in written:
+                typer.echo(f"wrote {path}")
+            typer.echo(_wsl1_next_steps(written[-1], plan.session))
+            return
         if dry_run:
             for name, text in render_units(plan).items():
                 typer.echo(f"# {name}\n{text}")
@@ -674,6 +726,31 @@ def service_install(
         typer.echo(str(err), err=True)
         raise typer.Exit(code=1) from err
     typer.echo(NEXT_STEPS.format(baton_unit=BATON_UNIT, session=plan.session))
+
+
+@service_app.command("status")
+def service_status() -> None:
+    """Say what is installed, and whether herdr's server and batond run."""
+    wsl1 = running_on_wsl1()
+    installed = installed_session()
+    session = installed
+    if session is None:
+        try:
+            session = service_session(_settings())
+        except ServiceError:
+            session = ""
+    files = [start_script_path()] if wsl1 else [unit_dir() / HERDR_UNIT, unit_dir() / BATON_UNIT]
+    processes = service_processes(ProcProcessTable(), session)
+    for line in status_lines(wsl1=wsl1, installed=installed, files=files, processes=processes):
+        typer.echo(line)
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Remove what `baton service install` wrote. With systemd the units are stopped and
+    disabled first; on WSL1 it says how to remove the Windows task."""
+    for line in uninstall(wsl1=running_on_wsl1(), run=_run_command):
+        typer.echo(line)
 
 
 @app.command()

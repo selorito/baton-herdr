@@ -24,6 +24,17 @@ is:
   the screen (`herdr agent explain --file`) and to the terminal title, prompts pasted the
   way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
   default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
+- **`baton service install` on WSL1** (ADR 0022, amended). WSL1 has no systemd, so there
+  it writes one start script, `~/.local/bin/baton-wsl1-start`, that runs the herdr server
+  and batond and restarts each after it exits, and prints the PowerShell command that
+  registers a Windows scheduled task to run it under `wsl.exe`. baton runs no Windows
+  command itself. `baton setup` does the same on WSL1.
+- **`baton service status` and `baton service uninstall`.** Status says what is installed
+  and whether herdr's server and batond run. Uninstall stops, disables and removes the
+  systemd units; on WSL1 it removes the start script and prints how to remove the task.
+- **`baton doctor` on WSL1** shows a `wsl1` line (pane processes read by baton, the
+  rollback journal) and, when the herdr server is unreachable, recommends the scheduled
+  task instead of systemd.
 
 ### Fixed
 

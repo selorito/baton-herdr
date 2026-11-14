@@ -449,7 +449,8 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
 ## Install
 
 You need:
-- Linux;
+- Linux, or Windows with WSL2, or WSL1 where virtualization is off (see
+  [WSL1](#wsl1) below);
 - [uv](https://docs.astral.sh/uv/);
 - [herdr](https://github.com/herdrdev/herdr) 0.9.1 or later;
 - the agents you want to use (Claude Code, Codex CLI, OpenCode), each signed in once by
@@ -478,6 +479,28 @@ mkdir -p ~/.config/baton && cp baton.example.toml ~/.config/baton/baton.toml
 baton doctor
 ```
 
+### WSL1
+
+herdr cannot see a pane's processes on WSL1, so baton reads them itself
+(`[herdr] process_detection = "auto"`), and the database uses SQLite's rollback journal
+instead of WAL (ADR 0022). Neither needs a setting; `baton doctor` says so on a `wsl1` line.
+
+WSL1 has no systemd, and it ends every process of the distribution when the last
+`wsl.exe` attached to it exits, so batond must run under a `wsl.exe` that stays. There,
+`baton service install` (and `baton setup`) writes `~/.local/bin/baton-wsl1-start`, which
+runs the herdr server and batond and restarts each after it exits, and prints the
+PowerShell command that registers the Windows scheduled task `baton` to run it: at boot
+and at logon, signed in or not, with no time limit, restarted every minute after a
+failure. baton never runs Windows commands itself; paste that command into PowerShell as
+administrator.
+
+- `baton service status` shows whether the script is installed and whether herdr's
+  server and batond run;
+- the logs are in `~/.local/state/baton/` (`daemon.log`, `herdr-server.log`,
+  `wsl1-start.log`);
+- `baton service uninstall` removes the script and prints the command that removes the
+  task.
+
 Edit `~/.config/baton/baton.toml`. At least set `[scheduler] agents` (in order of
 preference) and `timezone`, because agents print limit reset times in local time. baton
 reads `./baton.toml` if there is one, otherwise `~/.config/baton/baton.toml`;
@@ -498,7 +521,9 @@ It says how to fix what is missing.
   - `baton.service` runs `baton daemon` against it.
 
   Enable them with `systemctl --user enable --now baton.service` and
-  `loginctl enable-linger "$USER"`.
+  `loginctl enable-linger "$USER"`. `baton service status` says what is installed and
+  running; `baton service uninstall` stops and removes the units. On WSL1 a Windows
+  scheduled task runs a start script instead ([WSL1](#wsl1)).
 - **Foreground:** start `herdr --session baton server &` from a plain terminal, not from
   inside an agent, then `baton daemon`.
 - **Watch:**

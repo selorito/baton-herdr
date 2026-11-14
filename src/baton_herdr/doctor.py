@@ -36,10 +36,11 @@ from baton_herdr.core.config import (
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.platform import running_on_wsl1
 from baton_herdr.ollama.client import OllamaAssistant
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.deliver import find_browser, local_address
-from baton_herdr.service import installed_session
+from baton_herdr.service import TASK_NAME, installed_session
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -180,6 +181,7 @@ class Probes:
     can_bind: Callable[[str], bool] = _can_bind
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     assistant_health: Callable[[AssistantSettings], Awaitable[AssistantHealth]] = _assistant_health
+    on_wsl1: Callable[[], bool] = running_on_wsl1
 
 
 async def diagnose(probes: Probes | None = None) -> list[Check]:
@@ -209,6 +211,8 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
             f"Copy baton.example.toml to {path} and edit it.",
         )
     ]
+    if probes.on_wsl1():
+        checks.append(_wsl1(settings))
     checks.append(await _database(settings, probes))
     checks.extend(await _herdr(settings, probes))
     checks.extend(_agents(settings, probes))
@@ -236,6 +240,25 @@ async def _assistant(settings: BatonSettings, probes: Probes) -> Check:
         Level.WARN,
         health.detail,
         f"Start Ollama (ollama serve) and pull the model: ollama pull {settings.assistant.model}",
+    )
+
+
+def _wsl1(settings: BatonSettings) -> Check:
+    """What baton does differently on WSL1 (ADR 0022)."""
+    if settings.herdr.process_detection == "herdr":
+        return Check(
+            "wsl1",
+            Level.WARN,
+            'WSL1 detected, but [herdr] process_detection = "herdr": herdr cannot see a '
+            "pane's processes here, so no agent will be seen to start",
+            'Set [herdr] process_detection = "auto" (or remove it).',
+        )
+    return Check(
+        "wsl1",
+        Level.OK,
+        "WSL1 detected: baton reads pane processes itself ([herdr] process_detection), "
+        "the database uses the rollback journal, and a Windows scheduled task runs the "
+        "service",
     )
 
 
@@ -283,13 +306,22 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
         checks.append(Check("herdr server", Level.OK, f"reachable at {socket}"))
     except Exception as err:  # noqa: BLE001 - any failure is the finding
         start = f"herdr --session {session} server" if session else "herdr server"
-        checks.append(
-            Check(
-                "herdr server",
-                Level.FAIL,
-                f"not reachable ({type(err).__name__})",
-                f"Start it ({start}), or run `baton service install` to have systemd do it.",
+        if not probes.on_wsl1():
+            hint = f"Start it ({start}), or run `baton service install` to have systemd do it."
+        elif probes.installed_session() is None:
+            hint = (
+                "WSL1 has no systemd: run `baton service install`; it writes a start script "
+                "and prints the PowerShell command that registers a Windows scheduled task "
+                "to run it."
             )
+        else:
+            hint = (
+                "The Windows scheduled task should run the start script; in PowerShell: "
+                f"Start-ScheduledTask -TaskName '{TASK_NAME}'. Its log: "
+                "~/.local/state/baton/wsl1-start.log"
+            )
+        checks.append(
+            Check("herdr server", Level.FAIL, f"not reachable ({type(err).__name__})", hint)
         )
 
     try:
