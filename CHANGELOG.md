@@ -13,6 +13,10 @@ is:
 
 ### Added
 
+- **Stop words** (ADR 0024). "dur", "iptal", "stop" (alone, or with "hemen", "hepsini",
+  an id) cancel the work under way at once, as `/cancel` does, read by baton before the
+  assistant and without a button. Several pieces of work running: a button for each, and
+  one for all.
 - **Delivered pages on Vercel** (ADR 0023). With `[projects] publish = "vercel"` and a
   token in `.env` (`BATON_PROJECTS__VERCEL_TOKEN`), a finished project's page is deployed
   to Vercel as a project of its own, and the delivery notice leads with its public link,

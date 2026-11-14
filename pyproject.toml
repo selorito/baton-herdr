@@ -63,6 +63,7 @@ ignore = ["PLR2004"]
 "bench/**" = ["S311", "RUF001"]
 # The assistant answers in Turkish too, and Turkish writes the dotless i (U+0131).
 "src/baton_herdr/assistant/conversation.py" = ["RUF001", "RUF003"]
+"src/baton_herdr/assistant/stop.py" = ["RUF001", "RUF003"]
 
 [tool.ruff.lint.flake8-type-checking]
 # pydantic evaluates annotations at runtime; keep their imports out of TYPE_CHECKING blocks.

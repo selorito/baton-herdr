@@ -309,6 +309,9 @@ baton: 🛑 Cancel t-1a2b3c4d "Cafe menu page" (running, claude)?   [Cancel it] 
 - **Projects come as a card.** **Start** does exactly what `/new` does, once; the plan then
   comes for your approval as usual. **Edit** takes your next message as the change. A
   request missing something gets a question instead.
+- **Stop words act at once.** "dur", "iptal", "stop", alone or with "hemen" or
+  "hepsini", cancel the work under way without a card, read by baton before the model
+  (ADR 0024). With several pieces running, a button for each and one for all.
 - **Cancels and tiers come as a card too.** "t-1a2b3c4d'yi iptal et", "cancel the cafe
   task", "t-1a2b3c4d ucuz modelde çalışsın": the card names the task and what will
   happen, and its button does exactly what `/cancel` or `/tier` does. baton, not the

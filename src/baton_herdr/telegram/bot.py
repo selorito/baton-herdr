@@ -21,7 +21,8 @@ from zoneinfo import ZoneInfo
 
 from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
 from baton_herdr.assistant.cards import Card, CardKind
-from baton_herdr.assistant.conversation import CardContext
+from baton_herdr.assistant.conversation import CardContext, Reply
+from baton_herdr.assistant.stop import STOP_TEXTS, StopRequest, Target, read_stop, stop_targets
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.report import budget_lines, when
@@ -57,7 +58,7 @@ if TYPE_CHECKING:
     from aiogram import Bot
     from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
-    from baton_herdr.assistant.conversation import Assistant, Reply
+    from baton_herdr.assistant.conversation import Assistant
     from baton_herdr.budget.load import BudgetReader
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.model import AgentKind
@@ -91,6 +92,9 @@ MENU = (
 PLAN_STARTED = "Started."
 PLAN_CANCELLED = "Cancelled."
 TASK_CANCELLED = "Task cancelled."
+STOP_PREFIX = "stop:all:"
+# Buttons a stop offers at most, one per piece of work, before "all".
+STOP_CHOICES = 6
 # Said to a message that is neither a command nor a reply: it reached no agent.
 NOT_A_REPLY = "That message went to no agent. To answer a question, reply to its message."
 _DONE = {
@@ -166,10 +170,41 @@ class OperatorBot:
         if name == "/tier":
             return await self.tier(text.split()[1:])
         if not name.startswith("/"):
+            if (stopped := await self.stop(text)) is not None:
+                return stopped.text
             if self.assistant is not None and text.strip():
                 return (await self.converse(text)).text
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
+
+    async def stop(self, text: str) -> Reply | None:
+        """A stop word (ADR 0024), read by baton, not the model: the one piece of work
+        running, or every one with "hepsini" / "all", cancelled at once, as /cancel does; a
+        choice when several run. None: the message is not a stop."""
+        request = read_stop(text)
+        if request is None:
+            return None
+        targets = stop_targets(project(await self._store.read()), request)
+        language = request.language
+        if not targets:
+            return Reply(STOP_TEXTS["none"][language])
+        if len(targets) > 1 and not request.everything and not request.ids:
+            buttons = tuple(
+                (f"🛑 {t.target} {_short(t.title)}", f"task:cancel:{t.target}")
+                for t in targets[:STOP_CHOICES]
+            )
+            every = (STOP_TEXTS["all"][language], f"{STOP_PREFIX}{language}")
+            question = STOP_TEXTS["which"][language].format(count=len(targets))
+            return Reply(question, (*buttons, every))
+        return Reply(await self._stop_all(targets, language))
+
+    async def _stop_all(self, targets: list[Target], language: str) -> str:
+        lines = [STOP_TEXTS["done"][language]]
+        for target in targets:
+            done, said = await self._cancel(target.target)
+            lines.append(f"• {target.target} {_short(target.title)}" if done else f"⚠️ {said}")
+        self._log.info("stopped by a stop word", targets=[t.target for t in targets])
+        return "\n".join(lines)
 
     async def converse(self, text: str) -> Reply:
         """A plain message, answered by the assistant (ADR 0021), with a card's buttons when
@@ -358,6 +393,13 @@ class OperatorBot:
             if self.assistant is None:
                 return "This card has expired; send the request again."
             return await self.assistant.press(data, self._start_from_card, self._add_from_card)
+        if data.startswith(STOP_PREFIX):
+            request = StopRequest(language="tr" if data.endswith(":tr") else "en", everything=True)
+            language = request.language
+            targets = stop_targets(project(await self._store.read()), request)
+            if not targets:
+                return STOP_TEXTS["none"][language]
+            return await self._stop_all(targets, language)
         if data.startswith("task:cancel:"):
             return await self.cancel(data.removeprefix("task:cancel:"))
         try:
@@ -507,6 +549,10 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
         if not operator.authorized(message.chat.id, sender(message)):
             return
         text = message.text or ""
+        if not text.startswith("/") and (stopped := await operator.stop(text)) is not None:
+            # A stop word, before the assistant: it must not wait on the model (ADR 0024).
+            await message.answer(stopped.text, reply_markup=_markup(stopped.buttons))
+            return
         if operator.assistant is not None and not text.startswith("/") and text.strip():
             async with _typing(bot, message.chat.id):
                 reply = await operator.converse(text)
@@ -525,6 +571,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             result in _DONE.values()
             or result.startswith((PLAN_STARTED, PLAN_CANCELLED, TASK_CANCELLED, "Project "))
             or (query.data or "").startswith(CARD_PREFIX)  # a card is pressed once (ADR 0021)
+            or (query.data or "").startswith(STOP_PREFIX)
         )
         await query.answer(result, show_alert=not final)
         if query.message is not None and final:
@@ -542,3 +589,8 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     await dispatcher.start_polling(bot, handle_signals=False, close_bot_session=False)
+
+
+def _short(title: str, limit: int = 40) -> str:
+    """A title cut to fit a button."""
+    return title if len(title) <= limit else title[: limit - 1] + "…"
