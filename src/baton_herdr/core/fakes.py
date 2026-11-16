@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import posixpath
 from datetime import UTC, datetime, timedelta
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
 from baton_herdr.core.assistant import AssistantHealth, AssistantTurn, AssistantUnavailableError
@@ -324,9 +326,12 @@ class FakeDirectories:
         self.asked.append(path)
         if path == "~" or path.startswith("~/"):
             path = self.home + path[1:]
-        if not path.startswith("/"):
+        if path.startswith("/"):
+            where = posixpath.normpath(path)
+        elif PurePath(path).is_absolute():  # a real directory on Windows (tmp_path)
+            where = os.path.normpath(path)
+        else:
             return None
-        where = posixpath.normpath(path)
         return where if where in self.existing else None
 
 

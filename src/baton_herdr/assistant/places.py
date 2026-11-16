@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
 
 from baton_herdr.core.projection import project
@@ -59,12 +59,13 @@ class Places:
             if named not in projects:
                 return Refused(path, "unknown_project")
             candidate = projects[named]
-        elif not named.startswith(("/", "~")):
+        elif not (named.startswith(("/", "~")) or PurePath(named).is_absolute()):
+            # Absolute: /home/…, ~/…, or on Windows C:\Users\… (and /… on the current drive).
             return Refused(path, "relative")
         resolved = self.directories.resolve(candidate)
         if resolved is None:
             return Refused(path, "missing")
-        where = PurePosixPath(resolved)
+        where = PurePath(resolved)
         if any(where.is_relative_to(trusted) for trusted in self.trusted):
             return Place(resolved, "trusted_dirs")
         for project_id, workdir in projects.items():
