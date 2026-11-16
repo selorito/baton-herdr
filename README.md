@@ -46,13 +46,15 @@ and each one is recorded with its reason in an event log.
 
 ## Quickstart
 
-On Linux, with [uv](https://docs.astral.sh/uv/), [herdr](https://github.com/herdrdev/herdr)
-≥ 0.9.1, and the agents installed and signed in once by you:
+On Linux, WSL or macOS (Windows without WSL: `install.ps1`, beta), with the agents you want
+installed and signed in to once by you:
 
 ```bash
-uv tool install git+https://github.com/selorito/baton-herdr
-baton setup
+curl -fsSLO https://raw.githubusercontent.com/selorito/baton-herdr/v1.4.0/install.sh
+bash install.sh     # uv, herdr (checksum checked) and baton; asks before each step
 ```
+
+Every system, step by step: [docs/INSTALL.md](docs/INSTALL.md).
 
 `baton setup` walks through the rest:
 - downloads `baton-detect` if it is missing;
@@ -463,9 +465,9 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Install
 
-You need:
-- Linux, or Windows with WSL2, or WSL1 where virtualization is off (see
-  [WSL1](#wsl1) below);
+You need (every system step by step: [docs/INSTALL.md](docs/INSTALL.md)):
+- Linux, macOS, Windows with WSL2, WSL1 where virtualization is off (see [WSL1](#wsl1)
+  below), or native Windows (beta, ADR 0025);
 - [uv](https://docs.astral.sh/uv/);
 - [herdr](https://github.com/herdrdev/herdr) 0.9.1 or later;
 - the agents you want to use (Claude Code, Codex CLI, OpenCode), each signed in once by
@@ -474,10 +476,9 @@ You need:
 `baton-detect`, the Rust helper, comes either from a release or from source:
 
 ```bash
-# From a release (no Rust toolchain needed); x86_64 or aarch64:
-curl -fsSL -o ~/.local/bin/baton-detect \
-  https://github.com/selorito/baton-herdr/releases/latest/download/baton-detect-x86_64-unknown-linux-gnu
-chmod +x ~/.local/bin/baton-detect
+# From the release of your baton version (no Rust toolchain needed): baton setup
+# downloads the one for this system and checks it against the release's SHA256SUMS.
+baton setup
 
 # Or from source:
 cargo install --path crates/baton-detect --locked

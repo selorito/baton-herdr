@@ -385,3 +385,72 @@ These cannot be proven from here, and have to be tried on real hardware:
 6. `doctor` additions: OS and architecture, herdr range, proxy, git.
 7. An install script, `docs/INSTALL.md`, `docs/TROUBLESHOOTING.md`, the CI matrix, and
    clean-container runs on Ubuntu, Debian, Fedora and Arch.
+
+## Phase 2: status after the fixes (2026-11-16)
+
+| # | Status | Where |
+|---|--------|-------|
+| B1 | fixed: `requires-python = ">=3.12,<3.15"`; the install scripts pin `--python 3.12` | `bde2132` |
+| B2 | open: needs the merge to `main` and release 1.4.0 (the owner's go-ahead) | |
+| B3 | fixed: the target comes from the platform layer; releases for 5 targets | `36b78c2`, `7a672d5` |
+| B4 | fixed: launchd agents (not yet run on a real Mac) | `36b78c2` |
+| B5 | fixed: native Windows port (ADR 0025), beta | `36b78c2` |
+| I1 | fixed: depends on `tzdata` | `bde2132` |
+| I2 | fixed: the download matches baton's version, is SHA-256 checked, and needs no `curl` | `36b78c2` |
+| I3 | fixed: the WSL1 logs are bounded at 20 MB; Windows rotates a log at each start | `f47a985` |
+| I4 | fixed: `HTTPS_PROXY` / `[telegram] proxy` | `428e6c9` |
+| I5 | fixed: herdr is held to 0.9.1..0.9.5 by `doctor` | `9287631` |
+| I6 | fixed: CI matrix (not yet run: needs a push) | `79b284d` |
+| I7 | fixed: the install scripts download herdr with its checksum | `79b284d` |
+| I8 | listing text only: Gemini stays out of it | |
+| I9 | fixed: the preview port moves to a free one; one bot per user documented | `f934d1c` |
+| M1 | fixed | `f934d1c` |
+| M2 | fixed: `USERPROFILE` | `36b78c2` |
+| M3 | open (minor) | |
+| M4 | fixed: Linux binaries are static (musl) | `7a672d5` |
+| M5 | fixed | `9287631` |
+| M6 | fixed | `36b78c2` |
+| M7 | fixed: `docs/INSTALL.md` | |
+| M8 | fixed: `docs/INSTALL.md` | |
+
+Found during phase 2 and fixed:
+
+- **The policy's trusted directories.** They were compared unresolved, so a dir written
+  with `~` or through a link never matched (`34838a0`).
+- **Windows absolute paths.** The assistant refused them as relative (`34838a0`).
+- **A `baton.toml` with a byte order mark.** It crashed with a traceback (`d5e0120`).
+- **Agent commands on Windows.** They were split by POSIX rules, which dropped the
+  backslashes (`7a672d5`).
+
+Verified, with output kept in `target/e2e-*.log`:
+
+- **Clean containers, end to end.** `tools/e2e/run.sh` passes on Ubuntu 24.04, Debian 12,
+  Fedora 42 and Arch. Each run is install.sh, then `baton doctor`, then a task queued and
+  completed in herdr.
+- **Native Windows 11 (kasa).**
+  - The whole suite passes: 1048 passed, 40 POSIX-only skipped.
+  - In a throwaway profile, install.ps1 runs, then `baton doctor`, then a task queued and
+    completed in herdr's ConPTY pane, the agent detected by herdr.
+- **Linux.** `just check`: 1104 passed.
+- **Cross-compiling `baton-detect`.**
+  - Built in containers for `x86_64-pc-windows-gnu` and `x86_64-unknown-linux-musl`.
+  - The macOS and aarch64 targets are left to their CI runners.
+
+### Support matrix after phase 2
+
+| OS | x86_64 | aarch64 |
+|----|--------|---------|
+| Ubuntu, Debian, Fedora, Arch | **supported**, clean install tested | built; not tested |
+| Alpine (musl) | not tested (static binaries should run) | not tested |
+| macOS | beta: code and CI, not run on a Mac | beta: code and CI, not run on a Mac |
+| Windows + WSL1 | **supported** (kasa) | not tested |
+| Windows + WSL2 | supported by the same Linux path, not tested by us | not tested |
+| Windows, native | **beta**: suite and an end-to-end run with a stand-in agent pass | not tested (x64 under emulation) |
+
+Still to try by hand:
+
+- a real Claude Code (or Codex) on native Windows, which needs a one-time sign-in;
+- a real Mac;
+- ARM Linux;
+- a proxy;
+- the CI run itself, after the push.
