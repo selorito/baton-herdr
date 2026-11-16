@@ -326,6 +326,25 @@ class TelegramSettings(_Section):
     # The only Telegram user whose commands and buttons are handled (ADR 0009).
     # Without it the bot only sends notices.
     owner_id: int | None = None
+    # An HTTP(S) proxy for Telegram (http://host:port). Unset: HTTPS_PROXY or ALL_PROXY
+    # from the environment, unless NO_PROXY names Telegram; "" for none at all.
+    proxy: str | None = None
+
+
+_PROXY_VARIABLES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
+
+
+def telegram_proxy(settings: TelegramSettings, env: Mapping[str, str]) -> str | None:
+    """The proxy Telegram is reached through, if any."""
+    if settings.proxy is not None:
+        return settings.proxy or None
+    bypass = {
+        h.strip().lstrip(".").lower()
+        for h in env.get("NO_PROXY", env.get("no_proxy", "")).split(",")
+    }
+    if bypass & {"*", "telegram.org", "api.telegram.org"}:
+        return None
+    return next((env[name] for name in _PROXY_VARIABLES if env.get(name)), None)
 
 
 _Agent = Literal["claude", "codex", "opencode"]
