@@ -14,13 +14,17 @@ DEFAULT_SOCKET = HOME / ".config" / "herdr" / "herdr.sock"
 def resolve(env: dict[str, str], **settings: str | None) -> Path:
     # Without a configured session, as when [herdr] session is cleared: herdr's own lookup.
     settings = {"session": None, **settings}
-    return resolve_herdr_socket_path(HerdrSettings.model_validate(settings), env=env, home=HOME)
+    return resolve_herdr_socket_path(
+        HerdrSettings.model_validate(settings), env=env, home=HOME, system="linux"
+    )
 
 
 def test_by_default_baton_uses_its_own_herdr_session() -> None:
     assert HerdrSettings().session == BATON_HERDR_SESSION == "baton"
     assert (
-        resolve_herdr_socket_path(HerdrSettings(), env={"HERDR_SESSION": "work"}, home=HOME)
+        resolve_herdr_socket_path(
+            HerdrSettings(), env={"HERDR_SESSION": "work"}, home=HOME, system="linux"
+        )
         == HOME / ".config" / "herdr" / "sessions" / "baton" / "herdr.sock"
     )
 

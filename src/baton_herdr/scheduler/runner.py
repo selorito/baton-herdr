@@ -19,7 +19,6 @@ For one task it:
 from __future__ import annotations
 
 import asyncio
-import shlex
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
@@ -70,6 +69,7 @@ from baton_herdr.core.model import (
     TaskStatus,
 )
 from baton_herdr.core.panes import PaneHostError, PaneNotFoundError
+from baton_herdr.core.platform import shell_join
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.redact import redact
 from baton_herdr.core.routing import LaunchProfile, ModelSpec, Tier
@@ -531,7 +531,7 @@ class TaskRunner:
         if profile.model:
             parts.append(self._adapters[agent].model_args(profile.model))
         if profile.args:
-            parts.append(shlex.join(profile.args))
+            parts.append(shell_join(profile.args))
         return " ".join(parts)
 
     def _free_first(
@@ -760,7 +760,7 @@ class TaskRunner:
             return f"Premium: {agent.value} has no economy profile."
         profile = self._economy_profile(agent, task)
         how = [profile.model] if profile and profile.model else []
-        how += [shlex.join(profile.args)] if profile and profile.args else []
+        how += [shell_join(profile.args)] if profile and profile.args else []
         return f"Economy: {', '.join(how) or 'as configured'}."
 
     async def _start(
@@ -1562,10 +1562,11 @@ def _policy_note(events: Iterable[StoredEvent], attempt_id: AttemptId) -> str:
 def _shows_dir(screen: str, workdir: str) -> bool:
     """Whether a folder-trust question on ``screen`` names ``workdir``, as a full path or
     under ``~``; wrapped lines are joined first."""
-    flat = "".join(screen.split())
+    flat = "".join(screen.split()).replace("\\", "/")
     home = str(Path.home())
     names = {workdir, "~" + workdir.removeprefix(home) if workdir.startswith(home) else workdir}
-    return any("".join(name.split()) in flat for name in names)
+    # Either separator: an agent on Windows may print C:/Users/… or ~\dev\….
+    return any("".join(name.split()).replace("\\", "/") in flat for name in names)
 
 
 def _startup_keys(

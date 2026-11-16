@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+import io
 import os
-import platform
 import shutil
 import signal
 import subprocess
@@ -27,7 +27,7 @@ from baton_herdr.core.config import BatonSettings, config_file, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
-from baton_herdr.core.platform import running_on_wsl1
+from baton_herdr.core.platform import release_target, running_on_wsl1
 from baton_herdr.core.projection import TaskView, project
 from baton_herdr.core.routing import Tier
 from baton_herdr.daemon import open_runtime, poke, run_pending, serve
@@ -57,21 +57,34 @@ from baton_herdr.service import (
     HERDR_UNIT,
     NEXT_STEPS,
     START_SCRIPT,
+    WINDOWS_START_SCRIPT,
     WSL1_NEXT_STEPS,
     ServiceError,
+    ServiceKind,
+    UnitPlan,
+    install_launchd,
     install_start_script,
     install_units,
+    install_windows_start_script,
     installed_session,
+    launchd_commands,
+    other_status_lines,
     plan_units,
+    render_launchd,
     render_start_script,
     render_units,
+    render_windows_start_script,
     scheduled_task_command,
+    service_kind,
     service_processes,
     service_session,
     start_script_path,
     status_lines,
     uninstall,
+    uninstall_other,
     unit_dir,
+    windows_next_steps,
+    windows_start_script_path,
 )
 from baton_herdr.setup import Io, Paths, SetupError, ask_secret, run_setup
 
@@ -108,6 +121,12 @@ def _settings() -> BatonSettings:
 @app.callback()
 def main() -> None:
     """Orchestrate coding agents running on herdr."""
+    if sys.platform == "win32":
+        # A redirected stream on Windows writes the code page (cp1254 in Turkey), which
+        # has no emoji: every notice baton prints would fail. Write UTF-8 instead.
+        for stream in (sys.stdout, sys.stderr):
+            if isinstance(stream, io.TextIOWrapper):
+                stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 @app.command()
@@ -135,6 +154,8 @@ def detect() -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     ) as process:
         if process.stdin is None or process.stdout is None:  # pragma: no cover - PIPE
             raise typer.Exit(code=2)
@@ -525,7 +546,10 @@ def daemon(
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for signal_number in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(signal_number, stop.set)
+            try:
+                loop.add_signal_handler(signal_number, stop.set)
+            except NotImplementedError:  # Windows: no signal handlers on the event loop
+                signal.signal(signal_number, lambda *_: loop.call_soon_threadsafe(stop.set))
         async with open_runtime(settings, announce=True) as runtime:
             await serve(runtime, stop=stop, idle_s=idle)
 
@@ -614,13 +638,13 @@ def setup(
         projects_root=settings.projects.root,
         local_bin=Path.home() / ".local" / "bin",
     )
-    arch = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
     try:
         complete = run_setup(
             io,
             paths,
             timezone=local_timezone() or "UTC",
-            target=f"{arch}-unknown-linux-gnu",
+            target=release_target(),
+            version=package_version("baton-herdr"),
         )
         if service:
             _setup_service(io)
@@ -637,7 +661,13 @@ def setup(
 def _run_command(command: Sequence[str]) -> tuple[int, str]:
     try:
         done = subprocess.run(  # noqa: S603 - fixed commands, no shell
-            list(command), capture_output=True, text=True, timeout=120, check=False
+            list(command),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as err:
         return 1, str(err)
@@ -651,7 +681,11 @@ def _setup_service(io: Io) -> None:
         return
     settings = _settings()
     plan = plan_units(settings, config=config_file())
-    if running_on_wsl1():
+    kind = service_kind()
+    if kind in {"windows", "launchd"}:
+        _setup_other_service(io, plan, kind)
+        return
+    if kind == "wsl1":
         try:
             written = install_start_script(plan, force=False)
         except ServiceError:
@@ -682,6 +716,33 @@ def _setup_service(io: Io) -> None:
     io.say(f"batond is running. Watch its agents with: herdr --session {plan.session}")
 
 
+def _install_other(plan: UnitPlan, kind: ServiceKind, *, force: bool) -> list[Path]:
+    if kind == "launchd":
+        return install_launchd(plan, force=force)
+    return install_windows_start_script(plan, force=force)
+
+
+def _setup_other_service(io: Io, plan: UnitPlan, kind: ServiceKind) -> None:
+    """macOS: the launch agents, loaded now. Windows: the start script, and the
+    PowerShell command (as administrator) that registers its task."""
+    try:
+        written = _install_other(plan, kind, force=False)
+    except ServiceError:
+        if not io.confirm("The service is installed already. Update it?", default=True):
+            return
+        written = _install_other(plan, kind, force=True)
+    for path in written:
+        io.say(f"Wrote {path}.")
+    if kind == "windows":
+        io.say(windows_next_steps(written[-1], plan.session))
+        return
+    for command in launchd_commands():
+        code, output = io.run(command)
+        if code != 0 and command[1] == "bootstrap":
+            io.say(f"{' '.join(command)} failed: {output.strip()}")
+    io.say(f"batond is running. Watch its agents with: herdr --session {plan.session}")
+
+
 def _wsl1_next_steps(script: Path, session: str) -> str:
     command = scheduled_task_command(script, os.environ.get("WSL_DISTRO_NAME"))
     steps = WSL1_NEXT_STEPS.format(command=command, session=session)
@@ -705,9 +766,13 @@ def service_install(
     same one the CLI and `baton doctor` connect to.
     """
     settings = _settings()
+    kind = service_kind()
     try:
         plan = plan_units(settings, config=config_file())
-        if running_on_wsl1():
+        if kind in {"windows", "launchd"}:
+            _install_other_service(plan, kind, force=force, dry_run=dry_run)
+            return
+        if kind == "wsl1":
             if dry_run:
                 typer.echo(f"# {START_SCRIPT}\n{render_start_script(plan)}")
                 typer.echo(_wsl1_next_steps(start_script_path(), plan.session))
@@ -729,9 +794,36 @@ def service_install(
     typer.echo(NEXT_STEPS.format(baton_unit=BATON_UNIT, session=plan.session))
 
 
+def _install_other_service(
+    plan: UnitPlan, kind: ServiceKind, *, force: bool, dry_run: bool
+) -> None:
+    """``baton service install`` on Windows (a start script and its task) and macOS (two
+    launch agents)."""
+    if kind == "windows":
+        if dry_run:
+            typer.echo(f"# {WINDOWS_START_SCRIPT}\n{render_windows_start_script(plan)}")
+        else:
+            for path in install_windows_start_script(plan, force=force):
+                typer.echo(f"wrote {path}")
+        typer.echo(windows_next_steps(windows_start_script_path(), plan.session))
+        return
+    if dry_run:
+        for name, data in render_launchd(plan).items():
+            typer.echo(f"# {name}\n{data.decode()}")
+        return
+    for path in install_launchd(plan, force=force):
+        typer.echo(f"wrote {path}")
+    commands = "\n".join("  " + " ".join(c) for c in launchd_commands()[1::2])
+    typer.echo(f"Next, load them:\n{commands}")
+
+
 @service_app.command("status")
 def service_status() -> None:
     """Say what is installed, and whether herdr's server and batond run."""
+    if (kind := service_kind()) in {"windows", "launchd"}:
+        for line in other_status_lines(kind):
+            typer.echo(line)
+        return
     wsl1 = running_on_wsl1()
     installed = installed_session()
     session = installed
@@ -750,6 +842,10 @@ def service_status() -> None:
 def service_uninstall() -> None:
     """Remove what `baton service install` wrote. With systemd the units are stopped and
     disabled first; on WSL1 it says how to remove the Windows task."""
+    if (kind := service_kind()) in {"windows", "launchd"}:
+        for line in uninstall_other(kind, _run_command):
+            typer.echo(line)
+        return
     for line in uninstall(wsl1=running_on_wsl1(), run=_run_command):
         typer.echo(line)
 

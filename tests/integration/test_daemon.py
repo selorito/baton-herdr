@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shlex
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -46,6 +45,7 @@ from baton_herdr.ledger import open_event_store
 from baton_herdr.scheduler.operator import add_task
 
 from detector_binary import detector
+from platform_marks import posix_only
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
@@ -125,6 +125,12 @@ def test_slots_come_from_the_scheduler_section() -> None:
         SchedulerSettings.model_validate({"agent_slots": {"codex": 0}})
 
 
+def settings_file(args: str) -> Path:
+    """The file a ``--settings`` argument names, as typed into a POSIX shell or PowerShell."""
+    assert args.startswith("--settings ")
+    return Path(args.removeprefix("--settings ").strip("'"))
+
+
 def test_claudes_status_line_is_set_only_while_usage_is_collected(tmp_path: Path) -> None:
     binary = tmp_path / "baton-detect"
     binary.write_text("#!/bin/sh\n")
@@ -132,8 +138,10 @@ def test_claudes_status_line_is_set_only_while_usage_is_collected(tmp_path: Path
     log = tmp_path / "claude-status.jsonl"
     on = UsageSettings(binary=str(binary), claude_status_log=log)
     (args,) = claude_status_line(on).values()
-    assert args.startswith("--settings ")
-    assert str(log) in args
+    assert (
+        str(log)
+        in json.loads(settings_file(args).read_text(encoding="utf-8"))["statusLine"]["command"]
+    )
     assert claude_status_line(on.model_copy(update={"enabled": False})) == {}
     missing = on.model_copy(update={"binary": str(tmp_path / "nowhere")})
     assert claude_status_line(missing) == {}  # nothing to run: Claude's footer stays as it is
@@ -147,16 +155,15 @@ def test_a_lean_claude_session_gets_one_settings_with_the_status_line_in_it(
     binary.chmod(0o755)
     usage = UsageSettings(binary=str(binary), claude_status_log=tmp_path / "status.jsonl")
     (args,) = claude_session_args(usage, lean=True, claude_home=tmp_path).values()
-    flag, value = shlex.split(args)
-    settings = json.loads(value)
-    assert flag == "--settings"
+    settings = json.loads(settings_file(args).read_text(encoding="utf-8"))
     assert settings["disableBundledSkills"] is True
     assert settings["statusLine"]["type"] == "command"
     # Without usage only the lean part is left; with neither, nothing is added.
     (lean_only,) = claude_session_args(
         usage.model_copy(update={"enabled": False}), lean=True, claude_home=tmp_path
     ).values()
-    assert "statusLine" not in json.loads(shlex.split(lean_only)[1])
+    lean_file = settings_file(lean_only)
+    assert "statusLine" not in json.loads(lean_file.read_text(encoding="utf-8"))
     off = usage.model_copy(update={"enabled": False})
     assert claude_session_args(off, lean=False) == {}
 
@@ -337,6 +344,7 @@ async def test_an_operator_action_wakes_the_loop_before_its_idle_time(tmp_path: 
         assert project(await runtime.store.read()).tasks[task_id].attempts
 
 
+@posix_only("the fake baton-detect is a script run by its #! line")
 async def test_batond_collects_usage_while_it_serves(tmp_path: Path) -> None:
     lines = tmp_path / "lines.ndjson"
     lines.write_text(

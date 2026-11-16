@@ -96,7 +96,13 @@ async def _count_events(path: Path) -> int:
 
 def _run(command: Sequence[str]) -> str:
     result = subprocess.run(  # noqa: S603 - fixed argument lists, no shell
-        list(command), capture_output=True, text=True, timeout=15, check=True
+        list(command),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+        check=True,
     )
     return result.stdout
 
@@ -116,6 +122,8 @@ def _classify_probe(binary: Path) -> str:
         input=_PROBE_REQUEST.model_dump_json() + "\n",
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=15,
         check=True,
     )

@@ -29,3 +29,4 @@ To change a decision, add a new ADR that supersedes the old one and update the o
 | [0022](0022-reading-panes-without-herdrs-process-detection.md) | Reading panes without herdr's process detection: baton's own reading on WSL1 | accepted |
 | [0023](0023-publishing-delivered-pages-on-vercel.md) | Publishing delivered pages on Vercel, for anyone to open | accepted |
 | [0024](0024-stop-words.md) | Stop words: "dur" cancels the work under way, without a button | accepted |
+| [0025](0025-native-windows-and-macos.md) | Native Windows and macOS, behind one platform layer | accepted |

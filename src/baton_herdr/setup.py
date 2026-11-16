@@ -12,6 +12,7 @@ through an ``Io`` of prompts, commands and HTTP, which tests replace.
 from __future__ import annotations
 
 import getpass
+import hashlib
 import json
 import re
 import time
@@ -28,9 +29,10 @@ if TYPE_CHECKING:
 
 # The agents baton drives, in the order they are preferred by default.
 AGENT_ORDER = ("claude", "codex", "opencode")
-RELEASE_URL = (
-    "https://github.com/selorito/baton-herdr/releases/latest/download/baton-detect-{target}"
-)
+# The release of the baton that is installed: its baton-detect matches it (doctor checks).
+RELEASE_URL = "https://github.com/selorito/baton-herdr/releases/download/v{version}/{asset}"
+DOWNLOAD_TIMEOUT_S = 120
+DOWNLOAD_LIMIT = 64 * 1024 * 1024  # baton-detect is a few MB
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
 
 
@@ -118,6 +120,32 @@ def find_owner(updates: dict[str, Any]) -> Owner | None:
     return None
 
 
+def http_download(url: str) -> bytes:
+    """The body at ``url`` (https); raises ``SetupError`` saying why it could not be had."""
+    try:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response:  # noqa: S310 - https only
+            data: bytes = response.read(DOWNLOAD_LIMIT + 1)
+    except urllib.error.HTTPError as err:
+        msg = f"{url} answered {err.code}"
+        raise SetupError(msg) from err
+    except (urllib.error.URLError, TimeoutError, OSError) as err:
+        msg = f"{url} could not be reached: {err}"
+        raise SetupError(msg) from err
+    if len(data) > DOWNLOAD_LIMIT:
+        msg = f"{url} is larger than expected"
+        raise SetupError(msg)
+    return data
+
+
+def checksum_for(sums: str, asset: str) -> str | None:
+    """The SHA-256 ``sha256sum`` lists for ``asset`` in a SHA256SUMS file."""
+    for line in sums.splitlines():
+        digest, _, name = line.strip().partition(" ")
+        if name.strip().lstrip("*") == asset and re.fullmatch(r"[0-9a-f]{64}", digest):
+            return digest
+    return None
+
+
 def telegram_call(token: str, method: str, *, timeout: float = 30, **params: object) -> Any:
     """One Bot API call; raises ``SetupError`` with Telegram's own description."""
     url = TELEGRAM_API.format(token=token, method=method)
@@ -149,6 +177,7 @@ class Io:
     which: Callable[[str], str | None]
     telegram: Callable[..., Any] = telegram_call
     sleep: Callable[[float], None] = time.sleep
+    download: Callable[[str], bytes] = http_download
 
 
 def wait_for_owner(io: Io, token: str, *, tries: int = 40) -> Owner | None:
@@ -187,7 +216,9 @@ class Paths:
     local_bin: Path  # where a downloaded baton-detect goes
 
 
-def run_setup(io: Io, paths: Paths, *, timezone: str, target: str) -> bool:
+def run_setup(
+    io: Io, paths: Paths, *, timezone: str, target: str | None, version: str = ""
+) -> bool:
     """Every step in order. Returns False when a step was left for later (it says which)."""
     complete = True
     if io.which("herdr") is None:
@@ -198,7 +229,7 @@ def run_setup(io: Io, paths: Paths, *, timezone: str, target: str) -> bool:
         msg = "No agent is installed (claude, codex, opencode). Install one and sign in first."
         raise SetupError(msg)
     io.say(f"Agents found: {', '.join(agents)}.")
-    complete &= _detector(io, paths, target)
+    complete &= _detector(io, paths, target, version)
     _integrations(io, agents)
     _config(io, paths, agents, timezone)
     complete &= _telegram(io, paths)
@@ -207,24 +238,45 @@ def run_setup(io: Io, paths: Paths, *, timezone: str, target: str) -> bool:
     return complete
 
 
-def _detector(io: Io, paths: Paths, target: str) -> bool:
+def _detector(io: Io, paths: Paths, target: str | None, version: str) -> bool:
+    """baton-detect from the release of this baton's version, checked against the
+    release's SHA256SUMS before it is kept."""
     if io.which("baton-detect"):
         return True
-    destination = paths.local_bin / "baton-detect"
+    build = "cargo install --path crates/baton-detect --locked (from a checkout)"
+    if target is None:
+        io.say(f"No baton-detect is released for this system. Build it: {build}")
+        return False
+    windows = "windows" in target
+    asset = f"baton-detect-{target}" + (".exe" if windows else "")
+    destination = paths.local_bin / ("baton-detect.exe" if windows else "baton-detect")
+    url = RELEASE_URL.format(version=version, asset=asset)
     if not io.confirm(
-        f"baton-detect (baton's screen reader) is missing. Download it into {destination}?",
+        f"baton-detect (baton's screen reader) is missing. Download {url} into {destination}?",
         default=True,
     ):
-        io.say("Install it later: cargo install --path crates/baton-detect --locked")
+        io.say(f"Install it later: {build}")
+        return False
+    try:
+        sums = io.download(RELEASE_URL.format(version=version, asset="SHA256SUMS"))
+        expected = checksum_for(sums.decode("utf-8", errors="replace"), asset)
+        if expected is None:
+            msg = f"the release v{version} lists no checksum for {asset}"
+            raise SetupError(msg)
+        data = io.download(url)
+    except SetupError as err:
+        io.say(f"The download failed ({err}). Install it later: {build}")
+        return False
+    if hashlib.sha256(data).hexdigest() != expected:
+        io.say(f"The download of {asset} does not match its checksum; it was not kept.")
         return False
     paths.local_bin.mkdir(parents=True, exist_ok=True)
-    url = RELEASE_URL.format(target=target)
-    status, output = io.run(["curl", "-fsSL", "-o", str(destination), url])
-    if status != 0:
-        io.say(f"The download failed ({output.strip()}). Install it later from {url}.")
-        return False
-    destination.chmod(0o755)
-    io.say(f"Installed {destination}.")
+    temporary = destination.with_name(destination.name + ".part")
+    temporary.write_bytes(data)
+    if not windows:
+        temporary.chmod(0o755)
+    temporary.replace(destination)
+    io.say(f"Installed {destination} (SHA-256 checked).")
     return True
 
 

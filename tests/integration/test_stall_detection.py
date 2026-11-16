@@ -12,6 +12,10 @@ from baton_bench.sim import Setup, simulate
 from baton_bench.world import Quota, Workdir
 from baton_herdr.core.model import AgentKind, TaskStatus
 
+from platform_marks import posix_only
+
+pytestmark = posix_only("the fake agents and detector are shell scripts")
+
 if TYPE_CHECKING:
     import random
 

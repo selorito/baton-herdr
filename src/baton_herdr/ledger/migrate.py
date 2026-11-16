@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -10,7 +9,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-from baton_herdr.core.platform import running_on_wsl1
+from baton_herdr.core.platform import exclusive_lock, running_on_wsl1
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
@@ -31,12 +30,8 @@ def upgrade(db_path: Path) -> None:
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = db_path.with_name(db_path.name + ".lock")
-    with lock_path.open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            _upgrade(db_path)
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    with lock_path.open("a+", encoding="utf-8") as lock, exclusive_lock(lock):
+        _upgrade(db_path)
 
 
 def journal_mode() -> str:

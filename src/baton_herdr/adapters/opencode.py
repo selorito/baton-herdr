@@ -6,10 +6,10 @@ herdr's OpenCode plugin installed, herdr's working / blocked / idle come from th
 
 from __future__ import annotations
 
-import shlex
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.model import AgentKind
+from baton_herdr.core.platform import shell_quote
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -22,14 +22,14 @@ class OpenCodeAdapter:
         return "opencode"
 
     def resume_command(self, session_ref: str) -> str:
-        return f"opencode --session {shlex.quote(session_ref)}"
+        return f"opencode --session {shell_quote(session_ref)}"
 
     def signed_out(self, evidence: str) -> str | None:
         del evidence
         return None
 
     def model_args(self, model: str) -> str:
-        return f"--model {shlex.quote(model)}"
+        return f"--model {shell_quote(model)}"
 
     def resume_failed(self, screen: str) -> bool:
         # The wording of a failed resume has not been observed for this agent yet;

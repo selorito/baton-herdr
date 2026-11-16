@@ -41,7 +41,10 @@ impl Sources {
     /// The agents' default locations, honouring their own environment variables.
     #[must_use]
     pub fn defaults() -> Self {
-        let home = std::env::var_os("HOME").map(PathBuf::from);
+        // Windows sets USERPROFILE, not HOME; the agents keep ~/.claude and ~/.codex there.
+        let home = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from);
         let env_dir = |name: &str| std::env::var_os(name).map(PathBuf::from);
         Self {
             claude_dir: env_dir("CLAUDE_CONFIG_DIR")

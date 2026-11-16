@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import plistlib
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -16,18 +17,28 @@ from baton_herdr.service import (
     ServiceError,
     ServiceProcesses,
     UnitPlan,
+    install_launchd,
     install_start_script,
     install_units,
+    install_windows_start_script,
     installed_session,
+    launchd_session,
+    render_launchd,
     render_start_script,
     render_units,
+    render_windows_start_script,
     scheduled_task_command,
     search_path,
+    service_kind,
     service_processes,
     service_session,
     status_lines,
     uninstall,
+    windows_session,
+    windows_task_command,
 )
+
+from platform_marks import posix_only
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,6 +53,7 @@ PLAN = UnitPlan(
 )
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_units_run_herdr_in_its_own_session_and_baton_against_it() -> None:
     units = render_units(PLAN)
     herdr, baton = units[HERDR_UNIT], units[BATON_UNIT]
@@ -55,6 +67,7 @@ def test_units_run_herdr_in_its_own_session_and_baton_against_it() -> None:
     assert 'Environment="BATON_CONFIG=/srv/baton.toml"\n' in pinned[BATON_UNIT]
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_path_puts_the_found_binaries_first_without_duplicates() -> None:
     assert search_path(["/a/bin/herdr", None, "/a/bin/claude", "/b/baton"]) == (
         "/a/bin:/b:/usr/local/bin:/usr/bin:/bin"
@@ -116,6 +129,7 @@ def test_the_installed_units_session_is_read_back(
 # WSL1 (ADR 0022, amended): one start script for a Windows scheduled task, no systemd.
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_the_start_script_does_what_both_units_do(tmp_path: Path) -> None:
     config = tmp_path / "herdr-server.toml"
     script = render_start_script(replace(PLAN, herdr_config=config))
@@ -136,6 +150,7 @@ def test_the_start_script_does_what_both_units_do(tmp_path: Path) -> None:
     assert "BATON_CONFIG=/srv/baton.toml BATON_HERDR__SESSION=baton" in pinned
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_the_start_script_is_valid_bash(tmp_path: Path) -> None:
     path = tmp_path / "start"
     path.write_text(render_start_script(replace(PLAN, path="/a b/bin:/usr/bin")))
@@ -150,6 +165,7 @@ def test_a_second_start_while_one_runs_exits_and_leaves_it_alone() -> None:
     assert "exit 0" in script  # success, so the task does not restart it
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_install_writes_the_script_executable_and_never_overwrites_silently(
     tmp_path: Path,
 ) -> None:
@@ -171,6 +187,7 @@ def test_install_writes_the_script_executable_and_never_overwrites_silently(
     assert "--session work server" in script.read_text()
 
 
+@posix_only("systemd units and the WSL1 bash script")
 def test_the_scheduled_task_command_runs_the_script_under_wsl_exe() -> None:
     script = Path("/home/u/.local/bin/baton-wsl1-start")
     command = scheduled_task_command(script, "Ubuntu-24.04")
@@ -277,3 +294,89 @@ def test_uninstall_with_systemd_stops_the_units_before_removing_them(
     ]
     assert not any(path.exists() for path in written)
     assert sorted(lines) == sorted(f"removed {path}" for path in written)
+
+
+@pytest.mark.parametrize(
+    ("system", "wsl1", "kind"),
+    [
+        ("linux", False, "systemd"),
+        ("linux", True, "wsl1"),
+        ("macos", False, "launchd"),
+        ("windows", False, "windows"),
+    ],
+)
+def test_each_system_gets_its_own_service(system: str, wsl1: bool, kind: str) -> None:
+    assert service_kind(system, wsl1=wsl1) == kind  # type: ignore[arg-type]
+
+
+WINDOWS_PLAN = UnitPlan(
+    herdr=r"C:\Users\u\.local\bin\herdr.exe",
+    baton=r"C:\Users\u\.local\bin\baton.exe",
+    session="baton",
+    path=r"C:\Users\u\.local\bin;C:\Windows\system32",
+    lang="C.UTF-8",
+    config=Path(r"C:\Users\u\it's\baton.toml"),
+    herdr_config=Path(r"C:\Users\u\.config\baton\herdr-server.toml"),
+)
+
+
+def test_the_windows_start_script_does_what_both_units_do(tmp_path: Path) -> None:
+    script = render_windows_start_script(WINDOWS_PLAN)
+    assert r"$env:PATH = 'C:\Users\u\.local\bin;C:\Windows\system32'" in script
+    assert "$env:BATON_HERDR__SESSION = 'baton'" in script
+    assert r"$env:BATON_CONFIG = 'C:\Users\u\it''s\baton.toml'" in script  # quote doubled
+    assert r"$env:HERDR_CONFIG_PATH = 'C:\Users\u\.config\baton\herdr-server.toml'" in script
+    assert "$env:PYTHONUTF8 = '1'" in script
+    assert r"Start-Logged 'C:\Users\u\.local\bin\herdr.exe' @('--session', 'baton', 'server')" in (
+        script
+    )
+    assert r"Start-Logged 'C:\Users\u\.local\bin\baton.exe' @('daemon') 'daemon'" in script
+    assert "already running" in script  # a second copy leaves the first alone
+    path = tmp_path / "baton-start.ps1"
+    install_windows_start_script(replace(WINDOWS_PLAN, herdr_config=None), force=False, path=path)
+    assert path.read_bytes().startswith(b"\xef\xbb\xbf")  # PowerShell 5.1 reads it as UTF-8
+    assert windows_session(path) == "baton"
+    with pytest.raises(ServiceError, match="already exists"):
+        install_windows_start_script(WINDOWS_PLAN, force=False, path=path)
+
+
+def test_the_windows_task_runs_the_script_hidden_and_restarts_it() -> None:
+    command = windows_task_command(Path(r"C:\Users\u\.local\bin\baton-start.ps1"))
+    assert "-Execute 'powershell.exe'" in command
+    assert r'-File "C:\Users\u\.local\bin\baton-start.ps1"' in command
+    assert "-LogonType S4U" in command
+    assert "-RestartCount 9999" in command
+    assert "Start-ScheduledTask -TaskName 'baton'" in command
+
+
+def test_the_windows_path_keeps_the_found_binaries_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PATH", r"C:\Windows\system32;C:\Tools")
+    found = search_path([r"C:\Tools\herdr.exe", r"C:\bin\baton.exe"], "windows")
+    assert found == r"C:\Tools;C:\bin;C:\Windows\system32"
+
+
+def test_macos_path_has_homebrew() -> None:
+    assert search_path(["/Users/u/.local/bin/herdr"], "macos") == (
+        "/Users/u/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+    )
+
+
+def test_launch_agents_keep_herdr_and_batond_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    plan = replace(PLAN, herdr_config=tmp_path / "herdr-server.toml", config=tmp_path / "b.toml")
+    agents = {name: plistlib.loads(data) for name, data in render_launchd(plan).items()}
+    herdr = agents["dev.baton-herdr.herdr.plist"]
+    batond = agents["dev.baton-herdr.batond.plist"]
+    assert herdr["ProgramArguments"] == [PLAN.herdr, "--session", "baton", "server"]
+    assert herdr["EnvironmentVariables"]["HERDR_CONFIG_PATH"] == str(tmp_path / "herdr-server.toml")
+    assert batond["ProgramArguments"] == [PLAN.baton, "daemon"]
+    assert batond["EnvironmentVariables"]["BATON_HERDR__SESSION"] == "baton"
+    assert batond["EnvironmentVariables"]["BATON_CONFIG"] == str(tmp_path / "b.toml")
+    assert all(a["KeepAlive"] and a["RunAtLoad"] for a in agents.values())
+    written = install_launchd(plan, force=False, directory=tmp_path / "LaunchAgents")
+    assert launchd_session(tmp_path / "LaunchAgents") == "baton"
+    assert len(written) == 3  # herdr's settings and both agents
+    with pytest.raises(ServiceError, match="already exists"):
+        install_launchd(plan, force=False, directory=tmp_path / "LaunchAgents")

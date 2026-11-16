@@ -90,7 +90,9 @@ def state_of(capture: Path) -> AgentState:
 )
 def test_recorded_captures_map_to_safe_states(pattern: str, allowed: set[AgentState]) -> None:
     states = {capture: state_of(capture) for capture in captures(pattern)}
-    unexpected = {str(c.relative_to(FIXTURES)): s for c, s in states.items() if s not in allowed}
+    unexpected = {
+        c.relative_to(FIXTURES).as_posix(): s for c, s in states.items() if s not in allowed
+    }
     assert unexpected == {}
 
 
@@ -98,7 +100,7 @@ def test_no_recorded_dialog_or_picker_is_reported_idle() -> None:
     """The ADR 0004 rule in one assertion: only real prompts are ``idle``, apart from the
     dialogs herdr is known to misread."""
     idle = {
-        str(capture.relative_to(FIXTURES))
+        capture.relative_to(FIXTURES).as_posix()
         for capture in captures("*/*")
         if state_of(capture) is AgentState.IDLE
     }

@@ -8,8 +8,10 @@ depends on the protocols in ``baton_herdr.core``.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import stat
+import sys
 from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -18,7 +20,7 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
+from baton_herdr.adapters.claude import lean_settings, settings_file_args, status_line
 from baton_herdr.assistant.cards import CardStore
 from baton_herdr.assistant.conversation import Assistant, AssistantConfig
 from baton_herdr.assistant.places import LocalDirectories, Places
@@ -109,7 +111,13 @@ def claude_session_args(
     binary = detector_binary(usage.binary) if usage.enabled else None
     if binary is not None:
         settings |= status_line(binary, usage.claude_status_log)
-    return {AgentKind.CLAUDE: settings_args(settings)} if settings else {}
+    if not settings:
+        return {}
+    # A file, not JSON on the command line: PowerShell (a Windows pane) mangles the quotes.
+    path = usage.claude_status_log.with_name("claude-settings.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    return {AgentKind.CLAUDE: settings_file_args(path)}
 
 
 def runner_settings(  # noqa: PLR0913 - the settings sections and what batond adds to them
@@ -343,6 +351,14 @@ def poke(db_path: Path) -> bool:
     Writes one byte to the FIFO without blocking. False when no batond listens (no FIFO,
     or nothing reading it); the change is picked up on batond's next cycle anyway.
     """
+    if sys.platform == "win32":
+        # No FIFOs: batond watches the file's modification time instead (``listening``).
+        path = wake_path(db_path)
+        if not path.exists():
+            return False
+        with suppress(OSError):
+            os.utime(path)
+        return True
     try:
         fd = os.open(wake_path(db_path), os.O_WRONLY | os.O_NONBLOCK)
     except OSError:  # FileNotFoundError, or ENXIO: no reader
@@ -365,6 +381,10 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
     and batond falls back to its idle sleep.
     """
     log = get_logger("baton.daemon")
+    if sys.platform == "win32":
+        with _watching_mtime(fifo, wake):
+            yield
+        return
     try:
         fifo.parent.mkdir(parents=True, exist_ok=True)
         with suppress(FileExistsError):
@@ -394,6 +414,36 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
     finally:
         loop.remove_reader(fd)
         os.close(fd)
+
+
+WAKE_POLL_S = 1.0
+
+
+@contextmanager
+def _watching_mtime(path: Path, wake: asyncio.Event) -> Iterator[None]:
+    """Windows: set ``wake`` when ``path``'s modification time changes (``poke``)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+    def mtime() -> int:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    async def watch() -> None:
+        seen = mtime()
+        while True:
+            await asyncio.sleep(WAKE_POLL_S)
+            if (now := mtime()) != seen:
+                seen = now
+                wake.set()
+
+    watcher = asyncio.get_running_loop().create_task(watch(), name="baton-wake")
+    try:
+        yield
+    finally:
+        watcher.cancel()
 
 
 async def run_pending(

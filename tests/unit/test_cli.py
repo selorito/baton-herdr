@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -9,10 +10,9 @@ from baton_herdr import cli
 from baton_herdr.cli import app
 
 from detector_binary import detector
+from platform_marks import posix_only
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
 
 runner = CliRunner()
@@ -75,7 +75,7 @@ def test_policy_check_says_what_would_happen_and_why() -> None:
     tests = runner.invoke(app, ["policy", "check", "pytest -q", "--dir", "/srv/calc"])
     assert tests.stdout.splitlines()[0] == (
         "ask: pytest -q: runs the project's own code (tests, builds), so it is allowed only "
-        "in trusted_dirs, and /srv/calc is not one"
+        f"in trusted_dirs, and {Path('/srv/calc').resolve()} is not one"
     )
     asked = runner.invoke(app, ["policy", "check", "git push --force", "--agent", "codex"])
     assert asked.stdout.splitlines()[:2] == [
@@ -85,6 +85,7 @@ def test_policy_check_says_what_would_happen_and_why() -> None:
     assert runner.invoke(app, ["policy", "check", "ls", "--agent", "gpt"]).exit_code == 2
 
 
+@posix_only("the WSL1 bash script")
 def test_service_install_on_wsl1_writes_the_start_script_and_prints_the_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -93,6 +94,7 @@ def test_service_install_on_wsl1_writes_the_start_script_and_prints_the_task(
     (bin_dir / "herdr").write_text("#!/bin/sh\n")
     (bin_dir / "herdr").chmod(0o755)
     monkeypatch.setattr(cli, "running_on_wsl1", lambda: True)
+    monkeypatch.setattr(cli, "service_kind", lambda: "wsl1")
     env = {
         "HOME": str(tmp_path),
         "XDG_CONFIG_HOME": str(tmp_path / "config"),

@@ -72,7 +72,7 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseS
 
 [tool.ruff.lint.isort]
 # tools/capture/capture.py is imported by its tests as a local module.
-known-local-folder = ["capture", "detect_corpus", "detector_binary", "fake_agent", "simulated_agents"]
+known-local-folder = ["capture", "detect_corpus", "detector_binary", "fake_agent", "platform_marks", "simulated_agents"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

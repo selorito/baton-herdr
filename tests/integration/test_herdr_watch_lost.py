@@ -19,6 +19,10 @@ from baton_herdr.core.panes import PaneHostUnavailableError
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
 
+from platform_marks import posix_only
+
+pytestmark = posix_only("the fake herdr server listens on a Unix socket")
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path

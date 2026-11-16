@@ -109,7 +109,7 @@ EXPECTED = {
 
 def test_every_v1_agent_capture_is_listed() -> None:
     captures = {
-        str(p.parent.relative_to(FIXTURES))
+        p.parent.relative_to(FIXTURES).as_posix()
         for agent in ("claude", "codex", "opencode")
         for p in (FIXTURES / agent).glob("*/*/explain.json")
     }

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from baton_herdr.core.detection import one_line_summary
 from baton_herdr.core.model import AgentKind
+from baton_herdr.core.platform import shell_quote
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -67,8 +68,14 @@ def synced_skills(claude_home: Path) -> list[str]:
 
 
 def settings_args(settings: dict[str, object]) -> str:
-    """One ``--settings`` argument, quoted for the shell the command is typed into."""
+    """One ``--settings`` argument carrying the JSON itself, quoted for a POSIX shell."""
     return f"--settings {shlex.quote(json.dumps(settings, separators=(',', ':')))}"
+
+
+def settings_file_args(path: Path) -> str:
+    """``--settings`` naming a settings file, which Claude Code reads: it passes through
+    every pane shell, PowerShell included, where JSON on the command line does not."""
+    return f"--settings {shell_quote(str(path))}"
 
 
 class ClaudeAdapter:
@@ -78,7 +85,7 @@ class ClaudeAdapter:
         return "claude"
 
     def resume_command(self, session_ref: str) -> str:
-        return f"claude --resume {shlex.quote(session_ref)}"
+        return f"claude --resume {shell_quote(session_ref)}"
 
     def signed_out(self, evidence: str) -> str | None:
         del evidence

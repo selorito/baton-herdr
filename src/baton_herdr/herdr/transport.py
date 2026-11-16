@@ -1,4 +1,5 @@
-"""herdr's socket protocol: newline-delimited JSON over a Unix socket.
+"""herdr's socket protocol: newline-delimited JSON over a Unix socket, or on Windows
+over the named pipe herdr serves for its socket path (``core.platform.pipe_name``).
 
 Shapes verified against herdr 0.9.1 (``fixtures/herdr/api-schema-0.9.1.json``):
 a request is ``{"id", "method", "params"}``; a reply is ``{"id", "result"}`` or
@@ -12,8 +13,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import sys
 from itertools import count
 from typing import TYPE_CHECKING, Any
+
+from baton_herdr.core.platform import pipe_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -22,6 +26,8 @@ if TYPE_CHECKING:
 DEFAULT_TIMEOUT_S = 10.0
 # pane.read replies can be large; asyncio's default line limit is 64 KiB.
 LINE_LIMIT = 16 * 1024 * 1024
+# Windows: every instance of herdr's pipe is in use; another frees within milliseconds.
+PIPE_BUSY_RETRY_S = 0.05
 
 
 class HerdrApiError(Exception):
@@ -86,6 +92,8 @@ class HerdrSocket:
 
     async def _connect(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
         try:
+            if sys.platform == "win32":
+                return await _open_pipe(pipe_name(self._path))
             return await asyncio.open_unix_connection(str(self._path), limit=LINE_LIMIT)
         except OSError as err:
             msg = f"cannot connect to herdr at {self._path}: {err}"
@@ -163,3 +171,24 @@ async def _close(writer: asyncio.StreamWriter) -> None:
     writer.close()
     with contextlib.suppress(OSError):
         await writer.wait_closed()
+
+
+if sys.platform == "win32":
+    _ERROR_PIPE_BUSY = 231
+
+    async def _open_pipe(name: str) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """A stream over a named pipe; needs the proactor loop, Windows' default."""
+        loop = asyncio.get_running_loop()
+        reader = asyncio.StreamReader(limit=LINE_LIMIT)
+        protocol = asyncio.StreamReaderProtocol(reader)
+        while True:
+            try:
+                transport, _ = await loop.create_pipe_connection(  # type: ignore[attr-defined]
+                    lambda: protocol, name
+                )
+                break
+            except OSError as err:
+                if getattr(err, "winerror", None) != _ERROR_PIPE_BUSY:
+                    raise
+                await asyncio.sleep(PIPE_BUSY_RETRY_S)  # bounded by the caller's timeout
+        return reader, asyncio.StreamWriter(transport, protocol, reader, loop)

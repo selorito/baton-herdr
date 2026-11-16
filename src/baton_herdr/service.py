@@ -21,29 +21,36 @@ script that does what both units do, and prints the PowerShell command that regi
 Windows scheduled task to run it under ``wsl.exe``: WSL1 ends every process of the
 distribution when the last ``wsl.exe`` attached to it exits, so the script stays in the
 foreground for as long as baton should run. baton never runs a Windows command itself.
+
+On macOS the same two programs run as launchd agents (``~/Library/LaunchAgents``), and on
+native Windows a PowerShell start script does what the units do, run by the same kind of
+scheduled task (ADR 0025). ``service_kind`` says which applies.
 """
 
 from __future__ import annotations
 
 import os
+import plistlib
 import re
 import shlex
 import shutil
 import sys
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, Literal
 
 from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind
+from baton_herdr.core.platform import current_system, running_on_wsl1
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from baton_herdr.core.config import BatonSettings
+    from baton_herdr.core.platform import System
     from baton_herdr.core.processes import ProcessTable
 
 HERDR_UNIT = "baton-herdr.service"
@@ -62,6 +69,8 @@ START_SCRIPT = "baton-wsl1-start"
 TASK_NAME = "baton"
 _SESSION_ARGUMENT = re.compile(r"--session\s+'?([^\s']+)'?\s+server")
 _SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin")
+# Homebrew on Apple Silicon; /usr/local/bin is Intel's.
+_MACOS_PATH = ("/opt/homebrew/bin",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,15 +139,23 @@ def unit_dir() -> Path:
     return (Path(base) if base else Path.home() / ".config") / "systemd" / "user"
 
 
-def search_path(binaries: Iterable[str | None]) -> str:
-    """PATH with the directories of ``binaries`` first, then the system's."""
+def search_path(binaries: Iterable[str | None], system: System | None = None) -> str:
+    """PATH with the directories of ``binaries`` first, then the system's. On Windows the
+    system's are the current PATH's: a task's environment has no shell profile to add them."""
+    system = system or current_system()
+    kind = PureWindowsPath if system == "windows" else PurePosixPath
     dirs: list[str] = []
     for binary in binaries:
         if binary:
-            parent = str(Path(binary).parent)
+            parent = str(kind(binary).parent)
             if parent not in dirs:
                 dirs.append(parent)
-    dirs.extend(d for d in _SYSTEM_PATH if d not in dirs)
+    if system == "windows":
+        rest = [d for d in os.environ.get("PATH", "").split(";") if d]
+        dirs.extend(d for d in rest if d not in dirs)
+        return ";".join(dirs)
+    system_path = (*_MACOS_PATH, *_SYSTEM_PATH) if system == "macos" else _SYSTEM_PATH
+    dirs.extend(d for d in system_path if d not in dirs)
     return ":".join(dirs)
 
 
@@ -335,10 +352,14 @@ def scheduled_task_command(script: Path, distro: str | None) -> str:
     """PowerShell, run as administrator, that registers and starts the task running
     ``script`` on WSL1: at boot and at logon, signed in or not (S4U), without a time limit,
     restarted every minute after a failure."""
-    arguments = f"-d {distro or '<distro>'} -- {script}"
+    return scheduled_task_command_for("wsl.exe", f"-d {distro or '<distro>'} -- {script}")
+
+
+def scheduled_task_command_for(execute: str, arguments: str) -> str:
+    """The PowerShell that registers and starts the task ``baton`` running ``execute``."""
     task = _powershell_quote(TASK_NAME)
     return (
-        f"$action = New-ScheduledTaskAction -Execute 'wsl.exe' "
+        f"$action = New-ScheduledTaskAction -Execute {_powershell_quote(execute)} "
         f"-Argument {_powershell_quote(arguments)}\n"
         "$triggers = @((New-ScheduledTaskTrigger -AtStartup), "
         "(New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME))\n"
@@ -404,6 +425,295 @@ def _running(pids: Sequence[int]) -> str:
     if not pids:
         return "not running"
     return f"running (pid {', '.join(str(pid) for pid in pids)})"
+
+
+# --- Which service mechanism this system has -------------------------------------------
+
+type ServiceKind = Literal["systemd", "wsl1", "launchd", "windows"]
+
+
+def service_kind(system: System | None = None, *, wsl1: bool | None = None) -> ServiceKind:
+    """systemd on Linux, the WSL1 start script, a launchd agent on macOS, or a scheduled
+    task on Windows: what ``baton service install`` writes here."""
+    system = system or current_system()
+    if system == "windows":
+        return "windows"
+    if system == "macos":
+        return "launchd"
+    return "wsl1" if (running_on_wsl1() if wsl1 is None else wsl1) else "systemd"
+
+
+# --- Windows: a PowerShell start script run by a scheduled task ------------------------
+
+WINDOWS_START_SCRIPT = "baton-start.ps1"
+
+
+def windows_start_script_path() -> Path:
+    return Path.home() / ".local" / "bin" / WINDOWS_START_SCRIPT
+
+
+def render_windows_start_script(plan: UnitPlan) -> str:
+    """What the two units run elsewhere, for Windows: herdr's server and batond, each
+    started again after it exits. Run by the scheduled task {TASK_NAME}; a second copy
+    started while one runs (the task fires at boot and at logon) exits at once.
+
+    Each start moves the previous log aside (``*.log.1``): Windows cannot rename a file a
+    running process writes, so that is where a log is bounded."""
+    q = _powershell_quote
+    env = [
+        f"$env:PATH = {q(plan.path)}",
+        "$env:PYTHONUTF8 = '1'",
+        f"$env:BATON_HERDR__SESSION = {q(plan.session)}",
+    ]
+    if plan.herdr_config:
+        env.append(f"$env:HERDR_CONFIG_PATH = {q(str(plan.herdr_config))}")
+    if plan.config:
+        env.append(f"$env:BATON_CONFIG = {q(str(plan.config))}")
+    environment = "\n".join(env)
+    server = f"@('--session', {q(plan.session)}, 'server')"
+    return f"""\
+# Starts herdr and batond on Windows. Written by baton service install; run by the
+# scheduled task {TASK_NAME!r}. Mirrors {HERDR_UNIT} and {BATON_UNIT}: each restarts after
+# it exits.
+$ErrorActionPreference = 'Continue'
+{environment}
+$log = Join-Path $HOME '.local\\state\\baton'
+New-Item -ItemType Directory -Force $log | Out-Null
+
+function Write-StartLog([string] $text) {{
+    Add-Content -Encoding utf8 (Join-Path $log 'windows-start.log') "$(Get-Date -Format o) $text"
+}}
+
+function Start-Logged([string] $exe, [string[]] $arguments, [string] $name) {{
+    $out = Join-Path $log "$name.log"
+    $err = Join-Path $log "$name.err.log"
+    foreach ($file in $out, $err) {{
+        if (Test-Path $file) {{ Move-Item -Force $file "$file.1" }}
+    }}
+    Start-Process -PassThru -WindowStyle Hidden -FilePath $exe -ArgumentList $arguments `
+        -RedirectStandardOutput $out -RedirectStandardError $err
+}}
+
+$others = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+    Where-Object {{ $_.ProcessId -ne $PID -and $_.CommandLine -like '*{WINDOWS_START_SCRIPT}*' }}
+if ($others) {{ Write-StartLog 'already running'; exit 0 }}
+Write-StartLog 'starting'
+
+$herdr = $null
+$batond = $null
+while ($true) {{
+    if ($null -eq $herdr -or $herdr.HasExited) {{
+        if ($herdr) {{ Write-StartLog "herdr server exited: $($herdr.ExitCode)" }}
+        $herdr = Start-Logged {q(plan.herdr)} {server} 'herdr-server'
+        # The socket may take a moment to appear after the server starts.
+        Start-Sleep -Seconds 5
+    }}
+    if ($null -eq $batond -or $batond.HasExited) {{
+        if ($batond) {{ Write-StartLog "batond exited: $($batond.ExitCode)" }}
+        $batond = Start-Logged {q(plan.baton)} @('daemon') 'daemon'
+    }}
+    Start-Sleep -Seconds 10
+}}
+"""
+
+
+def install_windows_start_script(
+    plan: UnitPlan, *, force: bool, path: Path | None = None
+) -> list[Path]:
+    script = path or windows_start_script_path()
+    _refuse_existing([script], force=force)
+    written = _write_herdr_config(plan)
+    script.parent.mkdir(parents=True, exist_ok=True)
+    # UTF-8 with a byte order mark: Windows PowerShell 5.1 reads a file without one in the
+    # system's code page.
+    script.write_text(render_windows_start_script(plan), encoding="utf-8-sig")
+    written.append(script)
+    return written
+
+
+def windows_task_command(script: Path) -> str:
+    """PowerShell, run as administrator, that registers and starts the task running
+    ``script``: at boot and at logon, signed in or not (S4U), without a time limit,
+    restarted every minute after a failure."""
+    arguments = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{script}"'
+    return scheduled_task_command_for("powershell.exe", arguments)
+
+
+WINDOWS_NEXT_STEPS = """\
+On Windows a scheduled task runs the start script.
+Next, in PowerShell as administrator:
+
+{command}
+Then:
+  baton service status                         # is the task there?
+  herdr --session {session}                    # watch the agents work
+Logs: {logs} (daemon.log, herdr-server.log, windows-start.log)
+"""
+
+
+def windows_next_steps(script: Path, session: str) -> str:
+    return WINDOWS_NEXT_STEPS.format(
+        command=windows_task_command(script),
+        session=session,
+        logs=Path.home() / ".local" / "state" / "baton",
+    )
+
+
+# --- macOS: two launchd agents ----------------------------------------------------------
+
+LAUNCHD_HERDR = "dev.baton-herdr.herdr"
+LAUNCHD_BATON = "dev.baton-herdr.batond"
+
+
+def launchd_dir() -> Path:
+    return Path.home() / "Library" / "LaunchAgents"
+
+
+def launchd_log_dir() -> Path:
+    return Path.home() / "Library" / "Logs" / "baton"
+
+
+def render_launchd(plan: UnitPlan) -> dict[str, bytes]:
+    """The two launch agents' property lists, by file name: herdr's server and batond, each
+    kept alive by launchd and started at login."""
+    logs = launchd_log_dir()
+    shared = {"PATH": plan.path, "LANG": plan.lang, "TERM": "xterm-256color"}
+    herdr_env = dict(shared)
+    if plan.herdr_config:
+        herdr_env["HERDR_CONFIG_PATH"] = str(plan.herdr_config)
+    baton_env = {**shared, "BATON_HERDR__SESSION": plan.session}
+    if plan.config:
+        baton_env["BATON_CONFIG"] = str(plan.config)
+
+    def agent(label: str, arguments: list[str], env: dict[str, str], log: str) -> bytes:
+        return plistlib.dumps(
+            {
+                "Label": label,
+                "ProgramArguments": arguments,
+                "EnvironmentVariables": env,
+                "RunAtLoad": True,
+                "KeepAlive": True,
+                # Not again at once after a quick exit (the socket may not be there yet).
+                "ThrottleInterval": 10,
+                "StandardOutPath": str(logs / log),
+                "StandardErrorPath": str(logs / log),
+            }
+        )
+
+    return {
+        f"{LAUNCHD_HERDR}.plist": agent(
+            LAUNCHD_HERDR,
+            [plan.herdr, "--session", plan.session, "server"],
+            herdr_env,
+            "herdr-server.log",
+        ),
+        f"{LAUNCHD_BATON}.plist": agent(
+            LAUNCHD_BATON, [plan.baton, "daemon"], baton_env, "daemon.log"
+        ),
+    }
+
+
+def install_launchd(plan: UnitPlan, *, force: bool, directory: Path | None = None) -> list[Path]:
+    directory = directory or launchd_dir()
+    files = render_launchd(plan)
+    _refuse_existing([directory / name for name in files], force=force)
+    directory.mkdir(parents=True, exist_ok=True)
+    launchd_log_dir().mkdir(parents=True, exist_ok=True)
+    written = _write_herdr_config(plan)
+    for name, data in files.items():
+        path = directory / name
+        path.write_bytes(data)
+        written.append(path)
+    return written
+
+
+def launchd_commands(directory: Path | None = None) -> list[list[str]]:
+    """Load (again) both agents into the user's GUI session."""
+    domain = f"gui/{os.getuid()}" if hasattr(os, "getuid") else "gui/<uid>"
+    directory = directory or launchd_dir()
+    commands = []
+    for label in (LAUNCHD_HERDR, LAUNCHD_BATON):
+        plist = str(directory / f"{label}.plist")
+        commands += [
+            ["launchctl", "bootout", domain, plist],
+            ["launchctl", "bootstrap", domain, plist],
+        ]
+    return commands
+
+
+def launchd_session(directory: Path | None = None) -> str | None:
+    """The herdr session the installed launch agent runs, if one is installed."""
+    path = (directory or launchd_dir()) / f"{LAUNCHD_HERDR}.plist"
+    try:
+        arguments = plistlib.loads(path.read_bytes()).get("ProgramArguments", [])
+    except (OSError, plistlib.InvalidFileException, AttributeError):
+        return None
+    if len(arguments) >= 3 and arguments[1] == "--session":
+        return str(arguments[2])
+    return None
+
+
+def windows_session(script: Path | None = None) -> str | None:
+    try:
+        text = (script or windows_start_script_path()).read_text(encoding="utf-8-sig")
+    except OSError:
+        return None
+    match = re.search(r"@\('--session', '([^']+)', 'server'\)", text)
+    return match.group(1) if match else None
+
+
+def other_status_lines(kind: ServiceKind) -> list[str]:
+    """``baton service status`` on macOS and Windows, where baton does not read the
+    process table: what is installed, and the command that shows whether it runs."""
+    if kind == "launchd":
+        session, files = launchd_session(), [launchd_dir() / f"{LAUNCHD_HERDR}.plist"]
+        check = f"launchctl: launchctl print gui/$(id -u)/{LAUNCHD_BATON}"
+        what = "launch agents"
+    else:
+        session, files = windows_session(), [windows_start_script_path()]
+        check = (
+            "Windows task: in PowerShell, "
+            f"Get-ScheduledTask -TaskName {_powershell_quote(TASK_NAME)} | Get-ScheduledTaskInfo"
+        )
+        what = "start script"
+    where = ", ".join(str(path) for path in files)
+    return [
+        f"{what}: {where} (herdr session {session!r})"
+        if session is not None
+        else f"{what}: not installed ({where}); run baton service install",
+        check,
+    ]
+
+
+def uninstall_other(
+    kind: ServiceKind, run: Callable[[Sequence[str]], tuple[int, str]]
+) -> list[str]:
+    """``baton service uninstall`` on macOS (the agents are unloaded first) and Windows
+    (the lines say how to remove the task, which needs an administrator)."""
+    if kind == "launchd":
+        lines: list[str] = []
+        directory = launchd_dir()
+        domain = f"gui/{os.getuid()}" if hasattr(os, "getuid") else "gui/<uid>"
+        for label in (LAUNCHD_BATON, LAUNCHD_HERDR):
+            path = directory / f"{label}.plist"
+            if not path.exists():
+                continue
+            run(["launchctl", "bootout", domain, str(path)])
+            path.unlink()
+            lines.append(f"removed {path}")
+        return lines or [f"nothing to remove: no launch agents in {directory}"]
+    path = windows_start_script_path()
+    if not path.exists():
+        return [f"nothing to remove: {path} does not exist"]
+    path.unlink()
+    task = _powershell_quote(TASK_NAME)
+    return [
+        f"removed {path}",
+        "The scheduled task still exists; remove it in PowerShell as administrator:",
+        f"  Stop-ScheduledTask -TaskName {task}; "
+        f"Unregister-ScheduledTask -TaskName {task} -Confirm:$false",
+        "  Get-Process herdr, baton -ErrorAction SilentlyContinue | Stop-Process",
+    ]
 
 
 def status_lines(

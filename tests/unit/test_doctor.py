@@ -233,7 +233,7 @@ async def test_the_classifier_must_run_and_read_a_test_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rust = by_name(await diagnose(probes()))["detector"]
-    assert (rust.level, rust.detail) == (Level.OK, "/opt/baton-detect")
+    assert (rust.level, rust.detail) == (Level.OK, str(Path("/opt/baton-detect")))
 
     missing = by_name(await diagnose(probes(detector=None)))["detector"]
     assert missing.level is Level.FAIL
@@ -317,7 +317,7 @@ async def test_projects_are_checked_for_trust_reach_and_pictures(
     assert checks["projects"].level is Level.WARN
     assert "trusted_dirs" in checks["projects"].hint
     assert checks["project preview"].detail == "http://127.0.0.1:8765/ (this machine only)"
-    assert checks["screenshots"].detail == "/usr/bin/chromium"
+    assert checks["screenshots"].detail == str(Path("/usr/bin/chromium"))
 
     policy = tmp_path / "policy.yaml"
     policy.write_text(f"trusted_dirs: [{tmp_path}]\n", encoding="utf-8")

@@ -29,8 +29,12 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from baton_herdr.core.platform import herdr_config_dir
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from baton_herdr.core.platform import System
 
 CONFIG_PATH_ENV_VAR = "BATON_CONFIG"
 DEFAULT_CONFIG_FILE = Path("baton.toml")
@@ -104,7 +108,8 @@ class HerdrSettings(_Section):
 #   1. HERDR_SOCKET_PATH (src/api/mod.rs SOCKET_PATH_ENV_VAR)
 #   2. HERDR_SESSION=<name> -> <config_dir>/sessions/<name>/herdr.sock
 #   3. <config_dir>/herdr.sock
-# where <config_dir> is $XDG_CONFIG_HOME/herdr, else ~/.config/herdr.
+# where <config_dir> is $XDG_CONFIG_HOME/herdr, else ~/.config/herdr; on Windows
+# %APPDATA%\\herdr (``core.platform.herdr_config_dir``).
 # herdr injects HERDR_SOCKET_PATH into every pane it launches
 # (src/integration/env.rs apply_pane_base_env) and into plugin panes
 # (src/app/api/plugins/panes.rs), so when baton runs inside herdr, step 1 is
@@ -128,7 +133,7 @@ def is_valid_herdr_session_name(name: str) -> bool:
 
 
 def resolve_herdr_socket_path(
-    settings: HerdrSettings, *, env: Mapping[str, str], home: Path
+    settings: HerdrSettings, *, env: Mapping[str, str], home: Path, system: System | None = None
 ) -> Path:
     """Return the herdr API socket baton should connect to.
 
@@ -143,8 +148,7 @@ def resolve_herdr_socket_path(
     if socket_from_env := env.get(HERDR_SOCKET_PATH_ENV_VAR):
         return Path(socket_from_env)
 
-    xdg_config_home = env.get("XDG_CONFIG_HOME")
-    config_dir = (Path(xdg_config_home) if xdg_config_home else home / ".config") / "herdr"
+    config_dir = herdr_config_dir(env, home, system)
 
     session = settings.session or env.get(HERDR_SESSION_ENV_VAR)
     # Like herdr's session::active_name: "default" and invalid names mean no session.

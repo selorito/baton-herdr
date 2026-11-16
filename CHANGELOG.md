@@ -13,6 +13,14 @@ is:
 
 ### Added
 
+- **Native Windows and macOS (ADR 0025).**
+  - baton runs on Windows without WSL: herdr's named pipe, a scheduled-task start script,
+    and UTF-8 output on every code page.
+  - On macOS it runs as two launchd agents.
+  - `baton setup` downloads the `baton-detect` of the installed version for this system,
+    checked against the release's SHA256SUMS.
+  - Releases build Linux, macOS and Windows binaries.
+
 - **Stop words** (ADR 0024). "dur", "iptal", "stop" (alone, or with "hemen", "hepsini",
   an id) cancel the work under way at once, as `/cancel` does, read by baton before the
   assistant and without a button. Several pieces of work running: a button for each, and
@@ -52,6 +60,10 @@ is:
   creates, moves and deletes no directory for it.
 
 ### Fixed
+
+- A trusted directory written with `~`, through a link, or on Windows without its drive
+  now matches the workdir it holds (both sides are resolved).
+- The assistant takes a Windows path (`C:\Users\…`) as absolute.
 
 - An attempt waiting for a person no longer loops: a re-attach that changed nothing does
   not wake the daemon, so it is looked at again after the idle time, not ~once a second.
