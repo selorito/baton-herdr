@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ from baton_herdr.core.model import TaskId
 from baton_herdr.core.notify import Notice, NoticeKind
 from baton_herdr.core.projection import project
 from baton_herdr.projects.deliver import (
+    PORT_TRIES,
     PreviewServer,
     Showcase,
     find_browser,
@@ -265,3 +267,17 @@ async def test_a_page_that_could_not_be_published_is_still_delivered(tmp_path: P
     assert notice.kind is NoticeKind.PROJECT_DELIVERED
     assert notice.details[0] == "Not published: Vercel refused (403)."
     assert notice.details[1].startswith("Preview: ")
+
+
+def test_a_preview_port_another_program_holds_moves_to_the_next_free_one(tmp_path: Path) -> None:
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", 0))
+        holder.listen()
+        taken = holder.getsockname()[1]
+        preview = PreviewServer(tmp_path, host="127.0.0.1", port=taken)
+        try:
+            assert preview.start()
+            assert preview.port != taken
+            assert taken < preview.port < taken + PORT_TRIES
+        finally:
+            preview.stop()

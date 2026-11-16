@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
+import os
 import shutil
 import socket
+import sys
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -22,8 +25,11 @@ from urllib.parse import quote, unquote, urlsplit
 
 from baton_herdr.core.logging import get_logger
 
+# Ports tried from the configured one up, when another program holds it.
+PORT_TRIES = 10
+
 if TYPE_CHECKING:
-    import os
+    from collections.abc import Callable
     from typing import Any
 
 # Where a project's page may be, in this order.
@@ -72,8 +78,28 @@ def find_browser(configured: str | None) -> Path | None:
     cache = Path.home() / ".cache" / "ms-playwright"
     playwright = sorted(cache.glob("chromium-*/chrome-linux/chrome"))[-1:]
     snaps = [p for p in on_path if _is_snap(p)]
-    ordered = [*(p for p in on_path if p not in snaps), *playwright, *snaps]
+    installed = [p for p in _installed_browsers() if p.is_file()]
+    ordered = [*(p for p in on_path if p not in snaps), *installed, *playwright, *snaps]
     return ordered[0] if ordered else None
+
+
+def _installed_browsers() -> list[Path]:
+    """Where Chrome and Chromium install themselves off PATH: macOS's app bundles, and
+    Windows' Program Files and the user's own (Chrome installed without administrator)."""
+    if sys.platform == "darwin":
+        return [
+            Path(f"/Applications/{app}.app/Contents/MacOS/{app}")
+            for app in ("Google Chrome", "Chromium")
+        ]
+    if sys.platform == "win32":
+        roots = [os.environ.get(v) for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        return [
+            Path(root) / vendor / "Application" / "chrome.exe"
+            for root in roots
+            if root
+            for vendor in ("Google/Chrome", "Chromium")
+        ]
+    return []
 
 
 def _is_snap(path: Path) -> bool:
@@ -193,7 +219,7 @@ class PreviewServer:
         handler = partial(_PreviewHandler, directory=str(self.root))
         try:
             self.root.mkdir(parents=True, exist_ok=True)
-            self._server = ThreadingHTTPServer((self.host, self.port), handler)
+            self._server = self._bind(handler)
         except OSError as err:
             if not self._warned:
                 get_logger("baton.projects").warning(
@@ -210,6 +236,18 @@ class PreviewServer:
         )
         self._thread.start()
         return True
+
+    def _bind(self, handler: Callable[..., _PreviewHandler]) -> ThreadingHTTPServer:
+        """The configured port, or one of the next few when another program (a second
+        user's batond) holds it; the notice links whichever it got."""
+        ports = [self.port] if self.port == 0 else range(self.port, self.port + PORT_TRIES)
+        for port in ports:
+            try:
+                return ThreadingHTTPServer((self.host, port), handler)
+            except OSError as err:
+                if err.errno != errno.EADDRINUSE or port == ports[-1]:
+                    raise
+        raise AssertionError  # pragma: no cover - the loop returns or raises
 
     @property
     def running(self) -> bool:

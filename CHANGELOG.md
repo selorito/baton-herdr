@@ -61,6 +61,14 @@ is:
 
 ### Fixed
 
+- Telegram works behind a proxy: `HTTPS_PROXY` / `ALL_PROXY` (unless `NO_PROXY` names
+  Telegram), or `[telegram] proxy`. aiohttp reads none of them itself.
+- `baton doctor` names the system and processor, requires git, holds herdr to the versions
+  baton was tested with (0.9.1 to 0.9.5), and points to `baton setup` for baton-detect.
+- On WSL1 the start script keeps each log under 20 MB; `daemon.log` had no bound.
+- A preview port another program holds moves to the next free one; Chrome is found in its
+  macOS and Windows install locations.
+
 - A trusted directory written with `~`, through a link, or on Windows without its drive
   now matches the workdir it holds (both sides are resolved).
 - The assistant takes a Windows path (`C:\Users\…`) as absolute.
