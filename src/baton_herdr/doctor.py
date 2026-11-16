@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import shutil
 import socket
 import subprocess
@@ -31,15 +30,23 @@ from baton_herdr.core.config import (
     HERDR_SOCKET_PATH_ENV_VAR,
     AssistantSettings,
     BatonSettings,
+    ConfigFileError,
     HerdrSettings,
     config_file,
+    load_settings,
     resolve_herdr_socket_path,
     telegram_proxy,
 )
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
-from baton_herdr.core.platform import current_system, describe, release_target, running_on_wsl1
+from baton_herdr.core.platform import (
+    current_system,
+    describe,
+    release_target,
+    running_on_wsl1,
+    shell_split,
+)
 from baton_herdr.ollama.client import OllamaAssistant
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.deliver import find_browser, local_address
@@ -202,7 +209,13 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     probes = probes or Probes()
     path = config_file()
     try:
-        settings = BatonSettings()
+        settings = load_settings()
+    except ConfigFileError as err:
+        return [
+            Check(
+                "config", Level.FAIL, str(err), "Fix the file, or compare with baton.example.toml."
+            )
+        ]
     except ValidationError as err:
         first = err.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
@@ -399,8 +412,11 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
         checks.append(Check("herdr server", Level.OK, f"reachable at {socket}"))
     except Exception as err:  # noqa: BLE001 - any failure is the finding
         start = f"herdr --session {session} server" if session else "herdr server"
+        manager = {"windows": "a scheduled task", "macos": "launchd"}.get(
+            probes.system(), "systemd"
+        )
         if not probes.on_wsl1():
-            hint = f"Start it ({start}), or run `baton service install` to have systemd do it."
+            hint = f"Start it ({start}), or run `baton service install` to have {manager} do it."
         elif probes.installed_session() is None:
             hint = (
                 "WSL1 has no systemd: run `baton service install`; it writes a start script "
@@ -487,7 +503,7 @@ def _agents(settings: BatonSettings, probes: Probes) -> list[Check]:
     for name in settings.scheduler.agents:
         agent = AgentKind(name)
         command = settings.scheduler.launch_commands.get(name) or ADAPTERS[agent].launch_command()
-        program = shlex.split(command)[0]
+        program = shell_split(command)[0]
         found = probes.which(program)
         checks.append(
             Check(name, Level.OK, f"{command!r} -> {found}")

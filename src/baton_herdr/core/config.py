@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import os
 import re
+import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
@@ -33,6 +34,7 @@ from baton_herdr.core.platform import herdr_config_dir
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from importlib.resources.abc import Traversable
 
     from baton_herdr.core.platform import System
 
@@ -425,6 +427,27 @@ class AssistantSettings(_Section):
         return self.backend is not None
 
 
+class _TomlSource(TomlConfigSettingsSource):
+    """baton.toml, also as Windows editors save it: with a UTF-8 byte order mark, which
+    tomllib refuses (PowerShell 5.1's Set-Content -Encoding utf8, older Notepad)."""
+
+    def _read_file(self, file_path: Path | Traversable) -> dict[str, Any]:
+        return tomllib.loads(file_path.read_bytes().decode("utf-8-sig"))
+
+
+class ConfigFileError(Exception):
+    """baton.toml cannot be read; the message names the file and what is wrong."""
+
+
+def load_settings() -> BatonSettings:
+    """The settings, or :class:`ConfigFileError` for a config file that is not TOML."""
+    try:
+        return BatonSettings()
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as err:
+        msg = f"{config_file()}: not valid TOML ({err}); fix it, or start from baton.example.toml"
+        raise ConfigFileError(msg) from err
+
+
 class BatonSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BATON_",
@@ -461,6 +484,6 @@ class BatonSettings(BaseSettings):
             init_settings,
             env_settings,
             DotEnvSettingsSource(settings_cls, env_file=dotenv_files()),
-            TomlConfigSettingsSource(settings_cls, toml_file=config_file()),
+            _TomlSource(settings_cls, toml_file=config_file()),
             file_secret_settings,
         )

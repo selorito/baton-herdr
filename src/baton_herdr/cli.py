@@ -23,7 +23,13 @@ from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.budget.report import budget_lines
 from baton_herdr.core.clock import SystemClock
-from baton_herdr.core.config import BatonSettings, config_file, user_config_dir
+from baton_herdr.core.config import (
+    BatonSettings,
+    ConfigFileError,
+    config_file,
+    load_settings,
+    user_config_dir,
+)
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import configure_logging
 from baton_herdr.core.model import AgentKind, OperatorAction, TaskId
@@ -113,7 +119,11 @@ app.add_typer(agent_app)
 
 
 def _settings() -> BatonSettings:
-    settings = BatonSettings()
+    try:
+        settings = load_settings()
+    except ConfigFileError as err:
+        typer.echo(str(err), err=True)
+        raise typer.Exit(code=2) from err
     configure_logging(settings.logging.level)
     return settings
 
