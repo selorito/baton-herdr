@@ -67,6 +67,8 @@ BATON_UNIT = "baton.service"
 # WSL1: the script a Windows scheduled task runs, and that task's name.
 START_SCRIPT = "baton-wsl1-start"
 TASK_NAME = "baton"
+# The WSL1 start script keeps each log under this size (without systemd, nothing else does).
+LOG_LIMIT_BYTES = 20 * 1024 * 1024
 _SESSION_ARGUMENT = re.compile(r"--session\s+'?([^\s']+)'?\s+server")
 _SYSTEM_PATH = ("/usr/local/bin", "/usr/bin", "/bin")
 # Homebrew on Apple Silicon; /usr/local/bin is Intel's.
@@ -306,6 +308,19 @@ if pgrep -f -- {_pgrep_pattern(server)} >/dev/null \\
     exit 0
 fi
 echo "$(date -Is) starting" >>"$LOG/wsl1-start.log"
+
+# Each log is kept under {LOG_LIMIT_BYTES // 1024 // 1024} MB: copied aside (*.1) and emptied
+# in place, which its writer follows (it appends, >>). There is no journal here to do it.
+(
+    while true; do
+        for log in "$LOG/daemon.log" "$LOG/herdr-server.log" "$LOG/wsl1-start.log"; do
+            if [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt {LOG_LIMIT_BYTES} ]; then
+                cp -f "$log" "$log.1" && : >"$log"
+            fi
+        done
+        sleep 600
+    done
+) &
 
 (
     while true; do

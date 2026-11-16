@@ -14,6 +14,7 @@ from baton_herdr.core.processes import ProcessEntry
 from baton_herdr.service import (
     BATON_UNIT,
     HERDR_UNIT,
+    LOG_LIMIT_BYTES,
     ServiceError,
     ServiceProcesses,
     UnitPlan,
@@ -143,7 +144,7 @@ def test_the_start_script_does_what_both_units_do(tmp_path: Path) -> None:
         replace(PLAN, home=Path("/home/u"))
     )
     # Each restarts after it exits, as Restart= does, with the units' delays.
-    assert script.count("while true; do") == 2
+    assert script.count("while true; do") == 3  # herdr, batond, and the log bound
     assert "sleep 5\n" in script
     assert "sleep 10\n" in script
     pinned = render_start_script(replace(PLAN, config=Path("/srv/baton.toml")))
@@ -380,3 +381,9 @@ def test_launch_agents_keep_herdr_and_batond_running(
     assert len(written) == 3  # herdr's settings and both agents
     with pytest.raises(ServiceError, match="already exists"):
         install_launchd(plan, force=False, directory=tmp_path / "LaunchAgents")
+
+
+def test_the_wsl1_start_script_keeps_its_logs_bounded() -> None:
+    script = render_start_script(PLAN)
+    assert f"-gt {LOG_LIMIT_BYTES} ]" in script
+    assert 'cp -f "$log" "$log.1" && : >"$log"' in script  # its writers append, so follow
