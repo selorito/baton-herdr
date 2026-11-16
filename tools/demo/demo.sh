@@ -100,6 +100,8 @@ level = "warning"
 agents = ["claude", "codex"]
 timezone = "UTC"
 poll_interval_seconds = 0.5
+# Keep the agents' panes on screen after their attempts end: the viewer is to see both.
+close_finished_panes = false
 [scheduler.launch_commands]
 claude = "env TZ=UTC $WORK/agents/claude $REPO/tools/fake-agent/scripts/claude-limit.toml"
 codex = "env TZ=UTC $WORK/agents/codex $REPO/tools/fake-agent/scripts/codex-finish.toml"
@@ -155,7 +157,7 @@ show() {  # bring the tab where $1 runs to the front
     local tab
     tab=$(tab_of "$1")
     say "showing $1 in tab ${tab:-(none)}"
-    [[ -n "$tab" ]] && herdr tab focus "$tab" >/dev/null
+    if [[ -n "$tab" ]]; then herdr tab focus "$tab" >/dev/null || true; fi
 }
 
 hand_over() {  # show the new agent's tab once the hand-off made one
@@ -165,7 +167,7 @@ hand_over() {  # show the new agent's tab once the hand-off made one
     say "claude's tab $old is done; codex works in $new"
     # An attached client keeps its own tab within a workspace and does not follow
     # `tab focus`; closing the tab of the stopped attempt makes it show the new one.
-    [[ -n "$new" ]] && herdr tab close "$old" >/dev/null
+    if [[ -n "$new" && -n "$old" ]]; then herdr tab close "$old" >/dev/null || true; fi
 }
 
 workspace() {  # the id of the workspace labelled $1
@@ -190,7 +192,8 @@ drive() {
 }
 
 say "recording"
-drive &
+# Whatever happens to the driver, it ends the recording.
+{ drive || say "the driver stopped early"; herdr server stop >/dev/null 2>&1 || true; } &
 DRIVER=$!
 uvx --quiet --from asciinema asciinema rec --quiet --overwrite --cols "$COLS" --rows "$ROWS" \
     -c "herdr --session $SESSION" "$WORK/demo.cast" </dev/null
