@@ -5,12 +5,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from baton_herdr.doctor import Check, Level, Probes, diagnose, parse_integration_status, render
+import pytest
+
+from baton_herdr.doctor import (
+    Check,
+    Level,
+    Probes,
+    _without_credentials,
+    diagnose,
+    parse_integration_status,
+    render,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-    import pytest
 
     from baton_herdr.core.config import HerdrSettings, TelegramSettings
 
@@ -34,11 +42,13 @@ def test_integration_status_lines_are_parsed() -> None:
 NOW = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
 
 
-def probes(
+def probes(  # noqa: PLR0913 - one knob per probe a test turns
     *,
     status_lines: Mapping[Path, str] | None = None,
     herdr_up: bool = True,
-    on_path: Sequence[str] = ("herdr", "claude"),
+    on_path: Sequence[str] = ("herdr", "claude", "git"),
+    herdr_version: str = "herdr 0.9.1",
+    system: str = "linux",
     detector: str | None = "baton-detect 0.1.0",
     classified: str = (
         '{"contract":1,"state":"rate_limited","evidence":"baton:claude_usage_limit",'
@@ -61,10 +71,12 @@ def probes(
             return STATUS
         if command[0].endswith("baton-detect"):
             return f"{detector}\n"
-        return "herdr 0.9.1\n"
+        return f"{herdr_version}\n"
 
     status_lines = status_lines or {}
     return Probes(
+        system=lambda: system,  # type: ignore[return-value,arg-type]
+        release_target=lambda: "x86_64-unknown-linux-gnu",
         which=lambda name: f"/bin/{name}" if name in on_path else None,
         run=run,
         ping_herdr=ping,
@@ -103,7 +115,7 @@ async def test_a_healthy_setup_with_one_outdated_integration(
     (tmp_path / "baton.db").touch()
     monkeypatch.setenv("BATON_DATABASE__PATH", str(tmp_path / "baton.db"))
 
-    checks = by_name(await diagnose(probes(on_path=("herdr", "claude", "codex"))))
+    checks = by_name(await diagnose(probes(on_path=("herdr", "claude", "codex", "git"))))
 
     assert {name: c.level for name, c in checks.items() if c.level is not Level.OK} == {
         "codex integration": Level.FAIL,
@@ -336,3 +348,35 @@ async def test_projects_are_checked_for_trust_reach_and_pictures(
     monkeypatch.setenv("BATON_PROJECTS__PREVIEW_HOST", "0.0.0.0")  # noqa: S104 - the setting under test
     checks = by_name(await diagnose(probes()))
     assert "192.168.1.165" in checks["project preview"].detail
+
+
+@pytest.mark.parametrize(
+    ("reported", "level"),
+    [
+        ("herdr 0.9.0", Level.FAIL),
+        ("herdr 0.9.1", Level.OK),
+        ("herdr 0.9.5", Level.OK),
+        ("herdr 0.10.0", Level.WARN),
+        ("herdr", Level.WARN),
+    ],
+)
+async def test_herdr_s_version_is_held_to_what_baton_was_tested_with(
+    reported: str, level: Level
+) -> None:
+    assert by_name(await diagnose(probes(herdr_version=reported)))["herdr"].level is level
+
+
+async def test_git_is_required_and_its_install_is_said_per_system() -> None:
+    linux = by_name(await diagnose(probes(on_path=("herdr", "claude"))))["git"]
+    assert linux.level is Level.FAIL
+    assert "apt install git" in linux.hint
+    windows = by_name(await diagnose(probes(on_path=("herdr", "claude"), system="windows")))
+    assert "Git for Windows" in windows["git"].hint
+    assert windows["system"].level is Level.WARN  # native Windows is beta
+    mac = by_name(await diagnose(probes(on_path=("herdr", "claude"), system="macos")))["git"]
+    assert "xcode-select --install" in mac.hint
+
+
+def test_a_proxy_is_shown_without_its_credentials() -> None:
+    assert _without_credentials("http://me:s3cret@proxy.corp:3128") == "http://proxy.corp:3128"
+    assert _without_credentials("http://proxy.corp:3128") == "http://proxy.corp:3128"
