@@ -45,7 +45,11 @@ PROCESS_PROBE_TIMEOUT_S = 2.0
 # terminal up, ending the agent and its shell (seen live with Claude Code: 4000 bytes
 # pass, 4500 do not). A longer prompt is pasted in pieces below that; the agent joins
 # consecutive pastes into one prompt.
-PASTE_CHUNK_BYTES = 2048
+PASTE_CHUNK_BYTES = 1024
+# Between pieces: the agent drains its terminal before the next arrives. Without it a long
+# step prompt (request, plan and step, ~10 KB) filled WSL1's pty while the agent was still
+# starting, and the pane hung up.
+PASTE_PIECE_DELAY_S = 0.25
 
 
 class HerdrPaneHost:
@@ -161,7 +165,9 @@ class HerdrPaneHost:
         if observation.state.needs_human:
             msg = f"agent {pane_id} is blocked and requires interactive input"
             raise AgentBlockedError(msg, code="agent_blocked")
-        for piece in paste_pieces(text):
+        for index, piece in enumerate(paste_pieces(text)):
+            if index:
+                await asyncio.sleep(PASTE_PIECE_DELAY_S)
             await self._call("pane.send_input", {"pane_id": pane_id, "text": piece})
         await asyncio.sleep(PROMPT_SUBMIT_DELAY_S)
         await self._call("pane.send_input", {"pane_id": pane_id, "keys": ["Enter"]})

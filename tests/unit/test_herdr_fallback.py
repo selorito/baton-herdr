@@ -479,7 +479,7 @@ async def test_a_long_prompt_is_pasted_in_pieces_then_entered() -> None:
     pieces = [params["text"] for params in inputs[:-1]]
     assert "".join(pieces) == prompt
     assert all(len(piece.encode()) <= PASTE_CHUNK_BYTES for piece in pieces)
-    assert len(pieces) == 3
+    assert len(pieces) == -(-6000 // PASTE_CHUNK_BYTES)
     assert inputs[-1] == {"pane_id": "w1:p2", "keys": ["Enter"]}
 
 
