@@ -13,6 +13,16 @@ is:
 
 ### Added
 
+- **One-command install**: `install.sh` (Linux, WSL, macOS) and `install.ps1` (Windows).
+  - They install uv, herdr 0.9.5 (SHA-256 checked) and baton, then run `baton setup`.
+  - Each step is shown and asked first; they use no sudo or administrator rights, and
+    change nothing outside the user's home.
+- `tools/e2e`: a clean machine end to end in a container (Ubuntu 24.04, Debian 12,
+  Fedora 42, Arch). The run is install, then `baton doctor`, then a task queued and
+  completed in herdr. CI runs it.
+- CI runs the Python suite on Linux x86_64 and aarch64, macOS (Apple Silicon and Intel)
+  and Windows, and the Rust checks on Linux, macOS and Windows.
+
 - **Native Windows and macOS (ADR 0025).**
   - baton runs on Windows without WSL: herdr's named pipe, a scheduled-task start script,
     and UTF-8 output on every code page.
@@ -60,6 +70,13 @@ is:
   creates, moves and deletes no directory for it.
 
 ### Fixed
+
+- Linux release binaries are static (musl): one built on a new glibc refused to start on
+  older distributions.
+- A `baton.toml` saved with a UTF-8 byte order mark (PowerShell 5.1, older Notepad) is
+  read. One that is not TOML is named in one line instead of a traceback.
+- Agent commands are split by the pane's shell's rules: on Windows a backslash is a path
+  separator, so `doctor` found `C:\...\codex.exe` again.
 
 - Telegram works behind a proxy: `HTTPS_PROXY` / `ALL_PROXY` (unless `NO_PROXY` names
   Telegram), or `[telegram] proxy`. aiohttp reads none of them itself.

@@ -41,10 +41,13 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          # Static (musl): runs on any Linux, whatever its glibc, and on Alpine.
+          - target: x86_64-unknown-linux-musl
             runner: ubuntu-24.04
-          - target: aarch64-unknown-linux-gnu
+            musl: true
+          - target: aarch64-unknown-linux-musl
             runner: ubuntu-24.04-arm
+            musl: true
           # Each on its own system: rusqlite compiles SQLite's C, so no cross toolchain.
           - target: aarch64-apple-darwin
             runner: macos-15
@@ -60,12 +63,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --release --locked -p baton-detect
+        with:
+          targets: ${{ matrix.target }}
+      - if: matrix.musl
+        run: sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+      - run: cargo build --release --locked -p baton-detect --target ${{ matrix.target }}
       - name: The binary runs and reports the tag's version
-        run: ./target/release/baton-detect${{ matrix.exe }} --version | tr -d '\r' | grep -qx "baton-detect ${{ needs.check.outputs.version }}"
+        run: ./target/${{ matrix.target }}/release/baton-detect${{ matrix.exe }} --version | tr -d '\r' | grep -qx "baton-detect ${{ needs.check.outputs.version }}"
       - run: |
           mkdir dist
-          cp "target/release/baton-detect${{ matrix.exe }}" "dist/baton-detect-${{ matrix.target }}${{ matrix.exe }}"
+          cp "target/${{ matrix.target }}/release/baton-detect${{ matrix.exe }}" "dist/baton-detect-${{ matrix.target }}${{ matrix.exe }}"
       - uses: actions/upload-artifact@v4
         with:
           name: baton-detect-${{ matrix.target }}
