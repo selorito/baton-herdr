@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from aiogram.client.session.aiohttp import AiohttpSession
 from pydantic import SecretStr
 
 from baton_herdr.core.config import TelegramSettings, telegram_proxy
@@ -33,6 +34,7 @@ def test_the_setting_wins_and_empty_means_none() -> None:
 async def test_the_bot_goes_through_the_proxy() -> None:
     bot = telegram_bot(TelegramSettings(bot_token=SecretStr("1:x"), proxy=PROXY))
     try:
+        assert isinstance(bot.session, AiohttpSession)
         assert bot.session.proxy == PROXY
     finally:
         await bot.session.close()

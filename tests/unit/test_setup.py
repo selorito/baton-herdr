@@ -163,7 +163,7 @@ def test_a_fresh_machine_is_set_up_in_one_pass(tmp_path: Path) -> None:
     script.answers["dirs"] = f"{tmp_path}/repo"
     where = paths(tmp_path)
     assert run_setup(
-        script.io(), where, timezone="Europe/Istanbul", target="x86_64-unknown-linux-gnu"
+        script.io(), where, timezone="Europe/Istanbul", target="x86_64-unknown-linux-musl"
     )
 
     settings = BatonSettings.model_validate(tomllib.loads(where.config.read_text()))
@@ -200,8 +200,8 @@ def test_what_cannot_be_done_is_said() -> None:
 
 BINARY = b"\x7fELF baton-detect"
 SUMS = (
-    f"{hashlib.sha256(BINARY).hexdigest()}  baton-detect-x86_64-unknown-linux-gnu\n"
-    f"{'0' * 64}  baton-detect-aarch64-unknown-linux-gnu\n"
+    f"{hashlib.sha256(BINARY).hexdigest()}  baton-detect-x86_64-unknown-linux-musl\n"
+    f"{'0' * 64}  baton-detect-aarch64-unknown-linux-musl\n"
 )
 
 
@@ -221,9 +221,9 @@ def test_a_missing_baton_detect_is_downloaded_from_this_version_and_checked(
     where = paths(tmp_path)
     urls: list[str] = []
     io = replace(script.io(), download=downloads(urls))
-    run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-gnu", version="1.4.0")
+    run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-musl", version="1.4.0")
     release = "https://github.com/selorito/baton-herdr/releases/download/v1.4.0/"
-    assert urls == [f"{release}SHA256SUMS", f"{release}baton-detect-x86_64-unknown-linux-gnu"]
+    assert urls == [f"{release}SHA256SUMS", f"{release}baton-detect-x86_64-unknown-linux-musl"]
     assert (where.local_bin / "baton-detect").read_bytes() == BINARY
     assert (where.local_bin / "baton-detect").stat().st_mode & stat.S_IXUSR
     assert not any(command[0] == "curl" for command in script.ran)
@@ -233,7 +233,7 @@ def test_a_download_that_does_not_match_its_checksum_is_not_kept(tmp_path: Path)
     script = Script(found=("herdr", "claude"))
     where = paths(tmp_path)
     io = replace(script.io(), download=downloads([], binary=b"something else"))
-    assert not run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-gnu")
+    assert not run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-musl")
     assert not (where.local_bin / "baton-detect").exists()
     assert any("does not match its checksum" in line for line in script.said)
 

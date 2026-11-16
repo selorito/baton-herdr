@@ -32,10 +32,11 @@ _MACHINES = {
     "aarch64": "aarch64",
     "arm64": "aarch64",
 }
-# Release targets of baton-detect, by (system, processor).
+# Release targets of baton-detect, by (system, processor). Linux's are static (musl): they
+# run on any distribution, whatever its C library's version, Alpine's included.
 RELEASE_TARGETS: dict[tuple[System, str], str] = {
-    ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
-    ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    ("linux", "x86_64"): "x86_64-unknown-linux-musl",
+    ("linux", "aarch64"): "aarch64-unknown-linux-musl",
     ("macos", "x86_64"): "x86_64-apple-darwin",
     ("macos", "aarch64"): "aarch64-apple-darwin",
     ("windows", "x86_64"): "x86_64-pc-windows-msvc",
@@ -176,3 +177,12 @@ def shell_quote(text: str, system: System | None = None) -> str:
 
 def shell_join(words: Sequence[str], system: System | None = None) -> str:
     return " ".join(shell_quote(word, system) for word in words)
+
+
+def shell_split(text: str, system: System | None = None) -> list[str]:
+    """``text`` split into words as the pane's shell would: POSIX rules, or on Windows
+    PowerShell's, where a backslash is a path separator and only quotes group."""
+    if (system or current_system()) != "windows":
+        return shlex.split(text)
+    words = shlex.split(text, posix=False)
+    return [w[1:-1] if len(w) >= 2 and w[0] == w[-1] and w[0] in "'\"" else w for w in words]

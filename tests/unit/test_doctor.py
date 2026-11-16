@@ -76,7 +76,7 @@ def probes(  # noqa: PLR0913 - one knob per probe a test turns
     status_lines = status_lines or {}
     return Probes(
         system=lambda: system,  # type: ignore[return-value,arg-type]
-        release_target=lambda: "x86_64-unknown-linux-gnu",
+        release_target=lambda: "x86_64-unknown-linux-musl",
         which=lambda name: f"/bin/{name}" if name in on_path else None,
         run=run,
         ping_herdr=ping,

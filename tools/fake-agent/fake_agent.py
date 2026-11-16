@@ -216,7 +216,11 @@ def play(script: Script, *, session_id: str, reporter: Reporter, terminal: Termi
 
 def tty_key(stdin: TextIO) -> Callable[[], str]:
     """Read one key from a terminal without waiting for Enter, as a TUI does."""
-    import termios  # noqa: PLC0415 - POSIX terminals only; the fake agent runs in one
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415 - Windows consoles (herdr's ConPTY panes)
+
+        return msvcrt.getwch
+    import termios  # noqa: PLC0415 - POSIX terminals
     import tty  # noqa: PLC0415
 
     fd = stdin.fileno()

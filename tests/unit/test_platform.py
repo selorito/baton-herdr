@@ -20,6 +20,7 @@ from baton_herdr.core.platform import (
     running_on_wsl1,
     shell_join,
     shell_quote,
+    shell_split,
 )
 
 
@@ -41,8 +42,8 @@ def test_processors_have_one_name_each(raw: str, expected: str) -> None:
 @pytest.mark.parametrize(
     ("system", "processor", "target"),
     [
-        ("linux", "x86_64", "x86_64-unknown-linux-gnu"),
-        ("linux", "aarch64", "aarch64-unknown-linux-gnu"),
+        ("linux", "x86_64", "x86_64-unknown-linux-musl"),
+        ("linux", "aarch64", "aarch64-unknown-linux-musl"),
         ("macos", "aarch64", "aarch64-apple-darwin"),
         ("macos", "x86_64", "x86_64-apple-darwin"),
         ("windows", "x86_64", "x86_64-pc-windows-msvc"),
@@ -140,3 +141,13 @@ def test_the_lock_is_held_by_one_holder_at_a_time(tmp_path: Path) -> None:
     for thread in threads:
         thread.join(5)
     assert order == ["first in", "first out", "second in"]
+
+
+def test_a_command_is_split_as_its_shell_would() -> None:
+    windows = r"C:\Users\me\py\codex.exe C:\src\fake_agent.py 'C:\my dir\x.toml'"
+    assert shell_split(windows, "windows") == [
+        r"C:\Users\me\py\codex.exe",
+        r"C:\src\fake_agent.py",
+        r"C:\my dir\x.toml",
+    ]
+    assert shell_split("env TZ=UTC 'a b' c", "linux") == ["env", "TZ=UTC", "a b", "c"]

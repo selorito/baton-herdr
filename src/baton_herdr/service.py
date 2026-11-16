@@ -44,7 +44,7 @@ from baton_herdr.adapters import ADAPTERS
 from baton_herdr.core.config import HERDR_DEFAULT_SESSION_NAME, user_config_dir
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind
-from baton_herdr.core.platform import current_system, running_on_wsl1
+from baton_herdr.core.platform import current_system, running_on_wsl1, shell_split
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
@@ -218,7 +218,7 @@ def plan_units(settings: BatonSettings, *, config: Path) -> UnitPlan:
             settings.scheduler.launch_commands.get(name)
             or ADAPTERS[AgentKind(name)].launch_command()
         )
-        agents.append(shutil.which(shlex.split(command)[0]))
+        agents.append(shutil.which(shell_split(command)[0]))
     detector = detector_binary(settings.usage.binary) if settings.usage.enabled else None
     default_config = Path.home() / ".config" / "baton" / "baton.toml"
     pinned = config.resolve() if config.is_file() and config.resolve() != default_config else None

@@ -9,7 +9,7 @@ from pathlib import Path
 
 def detector_binary(name: str) -> Path | None:
     """``name`` as a path to an executable, or found on PATH."""
-    if os.sep in name:
+    if os.sep in name or (os.altsep is not None and os.altsep in name):
         path = Path(name).expanduser()
         return path if path.is_file() and os.access(path, os.X_OK) else None
     found = shutil.which(name)
