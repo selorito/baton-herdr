@@ -10,7 +10,8 @@
 
 From version 1.5.0, baton is source-available under the
 [Business Source License 1.1](LICENSE): you may read, copy, modify and test the code, but
-not use it in production. Production use needs a license, which you can buy on
+not use it in production. Production use needs the
+[commercial license](LICENSE-COMMERCIAL.md), which you can buy on
 [Agensi](https://www.agensi.io/r/SELMANZDEMIR). Each version becomes Apache-2.0 four years
 after it is published.
 

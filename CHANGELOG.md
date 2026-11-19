@@ -15,7 +15,8 @@ is:
 
 - **License: Business Source License 1.1 from 1.5.0**, in place of Apache-2.0. The code
   stays readable, and may be copied, modified and used outside production. Production use
-  needs a license bought on [Agensi](https://www.agensi.io/r/SELMANZDEMIR). Each version
+  needs the commercial license (`LICENSE-COMMERCIAL.md`), bought on
+  [Agensi](https://www.agensi.io/r/SELMANZDEMIR). Each version
   becomes Apache-2.0 four years after it is published. 1.4.0 and earlier stay Apache-2.0.
   The package metadata (`pyproject.toml`, `Cargo.toml`) says `BUSL-1.1`. Contributions
   need their author's agreement to this (`CONTRIBUTING.md`).
