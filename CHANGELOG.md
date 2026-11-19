@@ -13,6 +13,16 @@ is:
 
 ### Changed
 
+- **License: Business Source License 1.1 from 1.5.0**, in place of Apache-2.0. The code
+  stays readable, and may be copied, modified and used outside production. Production use
+  needs the commercial license (`LICENSE-COMMERCIAL.md`), bought on
+  [Agensi](https://www.agensi.io/r/SELMANZDEMIR). Each version
+  becomes Apache-2.0 four years after it is published. 1.4.0 and earlier stay Apache-2.0.
+  The package metadata (`pyproject.toml`, `Cargo.toml`) says `BUSL-1.1`. Contributions
+  need their author's agreement to this (`CONTRIBUTING.md`).
+- `CONTRIBUTORS.md` lists who contributed. It restores Berra's (berrayckts) credit for
+  the test infrastructure, which a rebase had dropped.
+
 - **The install scripts check baton's wheel** against its SHA-256 (known for 1.4.0, else
   the release's `SHA256SUMS`), as they already did herdr's.
 - **Run without a terminal** (by a coding agent, by CI), the install scripts answer every
