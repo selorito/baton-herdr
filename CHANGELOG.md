@@ -103,7 +103,12 @@ word. macOS and native Windows are beta.
   baton was tested with (0.9.1 to 0.9.5), and points to `baton setup` for baton-detect.
 - On WSL1 the start script keeps each log under 20 MB; `daemon.log` had no bound.
 - A preview port another program holds moves to the next free one; Chrome is found in its
-  macOS and Windows install locations.
+  macOS and Windows install locations. On Windows the port is bound exclusively: a shared
+  bind had let a second batond take the same port, and a held port was not recognised.
+- baton-detect knows every zone baton accepts. It falls back to the time zone database
+  built into it where the system has none, or lacks old names such as `US/Eastern`
+  (Ubuntu moved them to `tzdata-legacy`). Before, it stopped on them while `doctor`
+  said the zone was fine.
 
 - A trusted directory written with `~`, through a link, or on Windows without its drive
   now matches the workdir it holds (both sides are resolved).
