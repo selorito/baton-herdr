@@ -11,7 +11,19 @@ is:
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-19
+
+Install with one command on Linux, WSL, macOS and Windows; cancel a task, change its tier
+or start work in an existing directory by writing to the bot; stop everything with one
+word. macOS and native Windows are beta.
+
 ### Added
+
+- **`docs/INSTALL.md`** (per system, with the support matrix and the release binaries) and
+  **`docs/TROUBLESHOOTING.md`** (symptom, cause and fix per system, and `doctor`'s
+  failures).
+- **`skills/baton/`**, a skill that teaches a coding agent to install, check and drive
+  baton. It is published as `baton-skill-1.4.0.zip` with the release.
 
 - **One-command install**: `install.sh` (Linux, WSL, macOS) and `install.ps1` (Windows).
   - They install uv, herdr 0.9.5 (SHA-256 checked) and baton, then run `baton setup`.
@@ -71,6 +83,13 @@ is:
 
 ### Fixed
 
+- **baton installs on a fresh machine.** uv picked CPython 3.15, for which `pydantic-core`
+  and `aiohttp` have no wheels, and the build from source failed. `requires-python` is
+  now `>=3.12,<3.15`, and the install scripts pin 3.12.
+- Time zones are known where the system has no tz database (containers, Windows):
+  baton depends on `tzdata`.
+- The assistant no longer narrows a status answer to an id it invented. Only an id the
+  operator wrote counts.
 - Linux release binaries are static (musl): one built on a new glibc refused to start on
   older distributions.
 - A `baton.toml` saved with a UTF-8 byte order mark (PowerShell 5.1, older Notepad) is
@@ -98,7 +117,8 @@ is:
   the rollback journal.
 - **WSL1: a prompt over 4 KB ended the agent and its pane.** WSL1 hangs a terminal up on
   a write that large; every project step failed with "the claude pane is gone". Long
-  prompts are now pasted in pieces.
+  prompts are now pasted in 1 KiB pieces, 0.25 s apart, so that the agent drains its
+  terminal while it starts.
 - **A subscription that ended mid-turn failed the task's run.** herdr's watch subscribed
   again after `events_lost`, but not after its connection ended: the run stopped with
   `herdr closed the connection` until batond's next cycle re-attached. It now subscribes
@@ -426,7 +446,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/selorito/baton-herdr/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/selorito/baton-herdr/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/selorito/baton-herdr/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/selorito/baton-herdr/compare/v1.0.1...v1.1.0
