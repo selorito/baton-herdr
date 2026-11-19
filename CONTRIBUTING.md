@@ -33,4 +33,8 @@ just check           # lint, format, types, import contracts, Python and Rust te
   shows what changed.
 - User-visible changes get a line under `[Unreleased]` in `CHANGELOG.md`.
 
-Contributions are licensed under Apache-2.0, as the project is.
+baton is under the Business Source License 1.1 ([LICENSE](LICENSE)), and licenses for
+production use are sold. A pull request can be merged only if its author agrees, in the
+pull request, that Selman Özdemir may distribute the contribution under the Business
+Source License 1.1, under the commercial licenses sold for baton, and under Apache-2.0 from each version's
+Change Date. Contributors are listed in [CONTRIBUTORS.md](CONTRIBUTORS.md).

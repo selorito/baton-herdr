@@ -2,9 +2,20 @@
 
 [![CI](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/selorito/baton-herdr)](https://github.com/selorito/baton-herdr/releases/latest)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](Cargo.toml)
+
+## Licensing
+
+From version 1.5.0, baton is source-available under the
+[Business Source License 1.1](LICENSE): you may read, copy, modify and test the code, but
+not use it in production. Production use needs a license, which you can buy on
+[Agensi](https://www.agensi.io/r/SELMANZDEMIR). Each version becomes Apache-2.0 four years
+after it is published.
+
+baton 1.4.0 and earlier stay under [Apache-2.0](https://github.com/selorito/baton-herdr/blob/v1.4.0/LICENSE).
+The files in `fixtures/herdr/` are herdr's, under its own Apache-2.0 license.
 
 **Coding agents that keep working while you are away.** baton runs a queue of coding tasks on
 Claude Code, Codex CLI and OpenCode in [herdr](https://github.com/herdrdev/herdr), several at
@@ -570,9 +581,11 @@ just smoke       # optional: live test against an installed herdr, in a throwawa
 of CI.
 
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
+- Contributors: [CONTRIBUTORS.md](CONTRIBUTORS.md).
 - Guidelines for coding agents: [CLAUDE.md](CLAUDE.md).
 - Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-[Apache-2.0](LICENSE).
+Business Source License 1.1 from 1.5.0 ([LICENSE](LICENSE)); 1.4.0 and earlier
+are Apache-2.0. See [Licensing](#licensing).
