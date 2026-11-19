@@ -30,8 +30,9 @@ from baton_herdr.core.notify import NoticeKind
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.routing import LaunchProfile, ModelSpec, Tier
 from baton_herdr.core.usage import UsageRecord, UsageTokens
-from baton_herdr.daemon import add_task, runner_settings
+from baton_herdr.daemon import runner_settings
 from baton_herdr.scheduler.backend import DirectBackend
+from baton_herdr.scheduler.operator import add_task
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
 from detector_binary import rust_detector

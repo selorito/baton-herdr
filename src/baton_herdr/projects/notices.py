@@ -63,15 +63,21 @@ def plan_unreadable(task: TaskView, reason: str) -> Notice:
     )
 
 
-def delivered(
+def delivered(  # noqa: PLR0913 - what the delivery says: changes, preview, picture, public link
     plan_task: TaskView,
     steps: Sequence[TaskView],
     *,
     changes: Changes | None,
     url: str | None,
     image: Path | None,
+    public_url: str | None = None,
+    publish_error: str | None = None,
 ) -> Notice:
-    details = [f"Preview: {url}"] if url else []
+    details = [f"Public link: {public_url}"] if public_url else []
+    if publish_error:
+        details.append(f"Not published: {publish_error}.")
+    if url:
+        details.append(f"Preview: {url}")
     if url and image is None:
         details.append("No screenshot: no browser was found, or it could not open the page.")
     details.append(f"Directory: {plan_task.workdir}")

@@ -14,9 +14,22 @@ concurrency:
 
 jobs:
   # The Python tests classify screens with baton-detect, as batond does (ADR 0011), so
-  # this job builds it first and fails rather than skips without it.
+  # each job builds it first and fails rather than skips without it. Linting, types and
+  # import boundaries do not depend on the system: they run once, on Linux.
   python:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      BATON_REQUIRE_DETECT: "1"
+      # The tests read and write fixture files without naming an encoding; baton itself
+      # names one everywhere (ADR 0025).
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -26,12 +39,19 @@ jobs:
           enable-cache: true
       - uses: extractions/setup-just@v4
       - run: cargo build --locked -p baton-detect
-      - run: just check-py fixtures-audit
-        env:
-          BATON_REQUIRE_DETECT: "1"
+      - if: matrix.os == 'ubuntu-latest'
+        run: just check-py fixtures-audit
+      - if: matrix.os != 'ubuntu-latest'
+        run: |
+          uv sync --locked
+          uv run pytest
 
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -40,3 +60,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v4
       - run: just check-rs
+
+  # install.sh on a clean machine, then one task queued and completed (tools/e2e).
+  clean-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: mkdir -p target && tools/e2e/run.sh ubuntu:24.04 debian:12 fedora:42 archlinux:latest | tee target/e2e-summary.txt
+      - run: "! grep -q FAILED target/e2e-summary.txt"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-install-logs
+          path: target/e2e-*.log

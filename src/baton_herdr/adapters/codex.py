@@ -5,11 +5,11 @@ Its screen rules are baton-detect's (crates/baton-detect/rules/codex.toml).
 
 from __future__ import annotations
 
-import shlex
 from typing import TYPE_CHECKING
 
 from baton_herdr.core.detection import one_line_summary
 from baton_herdr.core.model import AgentKind
+from baton_herdr.core.platform import shell_quote
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,7 +31,7 @@ class CodexAdapter:
         return "codex"
 
     def resume_command(self, session_ref: str) -> str:
-        return f"codex resume {shlex.quote(session_ref)}"
+        return f"codex resume {shell_quote(session_ref)}"
 
     def signed_out(self, evidence: str) -> str | None:
         # Its sign-in screen (fixtures/codex/signed_out/), seen when a refresh token had
@@ -44,7 +44,7 @@ class CodexAdapter:
         return None
 
     def model_args(self, model: str) -> str:
-        return f"--model {shlex.quote(model)}"
+        return f"--model {shell_quote(model)}"
 
     def resume_failed(self, screen: str) -> bool:
         # The wording of a failed resume has not been observed for this agent yet;

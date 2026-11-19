@@ -1,13 +1,14 @@
 [project]
 name = "baton-herdr"
-version = "1.3.0"
+version = "1.4.0"
 description = "Orchestrator that keeps coding agents running on herdr until their tasks are done."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "aiogram>=3.31.0",
+    "aiohttp-socks>=0.12.0",
     "aiosqlite>=0.22.1",
     "alembic>=1.20.0",
     "pydantic>=2.13.5",
@@ -16,6 +17,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.1",
     "structlog>=26.1.0",
     "typer>=0.27.2",
+    "tzdata>=2026.6",
 ]
 
 [project.urls]
@@ -63,6 +65,7 @@ ignore = ["PLR2004"]
 "bench/**" = ["S311", "RUF001"]
 # The assistant answers in Turkish too, and Turkish writes the dotless i (U+0131).
 "src/baton_herdr/assistant/conversation.py" = ["RUF001", "RUF003"]
+"src/baton_herdr/assistant/stop.py" = ["RUF001", "RUF003"]
 
 [tool.ruff.lint.flake8-type-checking]
 # pydantic evaluates annotations at runtime; keep their imports out of TYPE_CHECKING blocks.
@@ -70,7 +73,7 @@ runtime-evaluated-base-classes = ["pydantic.BaseModel", "pydantic_settings.BaseS
 
 [tool.ruff.lint.isort]
 # tools/capture/capture.py is imported by its tests as a local module.
-known-local-folder = ["capture", "detect_corpus", "detector_binary", "fake_agent", "simulated_agents"]
+known-local-folder = ["capture", "detect_corpus", "detector_binary", "fake_agent", "platform_marks", "simulated_agents"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

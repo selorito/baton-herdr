@@ -41,7 +41,10 @@ impl Sources {
     /// The agents' default locations, honouring their own environment variables.
     #[must_use]
     pub fn defaults() -> Self {
-        let home = std::env::var_os("HOME").map(PathBuf::from);
+        // Windows sets USERPROFILE, not HOME; the agents keep ~/.claude and ~/.codex there.
+        let home = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(PathBuf::from);
         let env_dir = |name: &str| std::env::var_os(name).map(PathBuf::from);
         Self {
             claude_dir: env_dir("CLAUDE_CONFIG_DIR")
@@ -218,6 +221,19 @@ impl<W: Write> Collector<W> {
     /// # Errors
     /// When stdout cannot be written, or no file watcher can be created.
     pub fn follow(&mut self, poll: Duration, rescan: Duration) -> io::Result<()> {
+        // Events name the real path: macOS's FSEvents reports /private/var/... for a
+        // directory given as /var/..., and a path that differs from the scanned one is not
+        // recognised as a source, so its lines waited for the next rescan.
+        self.sources.claude_dir = self.sources.claude_dir.take().map(real_path);
+        self.sources.codex_dir = self.sources.codex_dir.take().map(real_path);
+        self.sources.claude_status =
+            self.sources
+                .claude_status
+                .take()
+                .map(|log| match (log.parent(), log.file_name()) {
+                    (Some(dir), Some(name)) => real_path(dir.to_path_buf()).join(name),
+                    _ => log,
+                });
         let (sender, events) = mpsc::channel();
         let mut watcher = notify::recommended_watcher(sender).map_err(io::Error::other)?;
         let mut watching: HashSet<PathBuf> = HashSet::new();
@@ -233,6 +249,10 @@ impl<W: Write> Collector<W> {
                     collect_paths(event, &mut paths);
                 }
             }
+            // Every followed file whose length changed, whether or not an event said so:
+            // the watcher's events alone missed appended lines on macOS and Windows (CI),
+            // which then waited for the rescan.
+            paths.extend(self.changed_files());
             paths.sort();
             paths.dedup();
             self.read_paths(&paths)?;
@@ -244,6 +264,14 @@ impl<W: Write> Collector<W> {
                 self.poll_opencode(false)?;
             }
         }
+    }
+
+    fn changed_files(&self) -> Vec<PathBuf> {
+        self.files
+            .iter()
+            .filter(|(_, followed)| followed.tail.has_changed())
+            .map(|(path, _)| path.clone())
+            .collect()
     }
 
     fn follow_file(&mut self, path: PathBuf, kind: Kind) {
@@ -414,6 +442,11 @@ fn jsonl_files(dir: &Path, kind: Kind, found: &mut Vec<PathBuf>) {
             _ => {}
         }
     }
+}
+
+/// The path with its links resolved, or as given when it does not exist (yet).
+fn real_path(path: PathBuf) -> PathBuf {
+    std::fs::canonicalize(&path).unwrap_or(path)
 }
 
 fn collect_paths(event: notify::Result<notify::Event>, paths: &mut Vec<PathBuf>) {

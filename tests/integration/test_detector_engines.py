@@ -22,6 +22,7 @@ from baton_herdr.detector import DetectorUnavailableError, FallbackDetector, Pro
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
 
 from detector_binary import detector
+from platform_marks import posix_only
 from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
@@ -91,6 +92,7 @@ async def test_the_process_answers_and_starts_again_after_a_bad_request() -> Non
         await process.aclose()
 
 
+@posix_only("the slow and garbled binaries are shell scripts")
 async def test_a_missing_slow_or_garbled_binary_is_unavailable(tmp_path: Path) -> None:
     with pytest.raises(DetectorUnavailableError, match="not found"):
         await ProcessDetector(str(tmp_path / "nowhere")).classify(LIMIT)

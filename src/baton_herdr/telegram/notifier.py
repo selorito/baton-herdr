@@ -12,9 +12,11 @@ Secrets are masked first.
 from __future__ import annotations
 
 import html
+import os
 import re
 from typing import TYPE_CHECKING
 
+from baton_herdr.core.config import telegram_proxy
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import OperatorAction
 from baton_herdr.core.redact import redact
@@ -155,14 +157,24 @@ class TelegramNotifier:
             await self._bot.session.close()
 
 
+def telegram_bot(settings: TelegramSettings) -> Bot:
+    """The Bot API client, through the proxy the settings or the environment name."""
+    from aiogram import Bot  # noqa: PLC0415 - only import aiogram when Telegram is used
+    from aiogram.client.session.aiohttp import AiohttpSession  # noqa: PLC0415
+
+    assert settings.bot_token is not None  # noqa: S101 - callers check
+    proxy = telegram_proxy(settings, os.environ)
+    session = AiohttpSession(proxy=proxy) if proxy else None
+    return Bot(token=settings.bot_token.get_secret_value(), session=session)
+
+
 def telegram_notifier(settings: TelegramSettings) -> TelegramNotifier | None:
     """A notifier for the configured chat, or ``None`` when Telegram is not configured."""
     if settings.bot_token is None or settings.chat_id is None:
         return None
-    from aiogram import Bot  # noqa: PLC0415 - only import aiogram when Telegram is used
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup  # noqa: PLC0415
 
-    bot = Bot(token=settings.bot_token.get_secret_value())
+    bot = telegram_bot(settings)
 
     async def send(chat_id: int, text: str, buttons: Buttons, silent: bool) -> object:  # noqa: FBT001 - matches SendMessage
         markup = (

@@ -96,7 +96,11 @@ class Policy:
         if workdir is None:
             return False
         where = Path(workdir).expanduser().resolve()
-        return any(where.is_relative_to(trusted) for trusted in self.trusted_dirs)
+        # Both sides resolved: a trusted directory written with ~, through a link, or on
+        # Windows without its drive (/work) names the same place as the workdir.
+        return any(
+            where.is_relative_to(trusted.expanduser().resolve()) for trusted in self.trusted_dirs
+        )
 
 
 def load_policy(path: Path) -> Policy:

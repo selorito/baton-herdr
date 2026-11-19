@@ -125,6 +125,9 @@ async def test_a_plain_why_goes_straight_to_the_explanation() -> None:
         ("p-1a2b3c projesi ne aşamada?", True),
         ("bugün ne yapsam?", False),  # names nothing, asks no status
         ("t-1a2b3c4d hakkında ne düşünüyorsun", False),  # neither how nor why
+        ("t-1a2b3c4d durumu ne, iptal et", False),  # asks for a cancel
+        ("is t-1a2b3c4d done? then stop it", False),
+        ("t-1a2b3c4d durumda mı, ucuz modele al", False),  # asks for a tier
     ],
 )
 def test_only_plain_status_questions_skip_the_model(message: str, *, plain: bool) -> None:
@@ -138,6 +141,15 @@ async def test_a_status_question_the_model_reads_needs_no_second_call() -> None:
     assert answer.startswith(f"{TASK}  waiting  claude, stopped: stalled  menu")
     assert "stopped: stalled" in answer
     assert len(fake.turns) == 1
+
+
+async def test_an_id_the_model_made_up_does_not_narrow_the_answer() -> None:
+    # Seen live: "why did the site project stall?" came back with an invented p-b3c4d5.
+    fake = FakeAssistant(intent(intent="status", status={"ids": ["p-b3c4d5"]}))
+    talk = assistant(fake, await store_with_a_stalled_task())
+    answer = (await talk.answer("menü işi ne durumda?")).text
+    assert answer.startswith(f"{TASK}  waiting")
+    assert "p-b3c4d5" not in answer
 
 
 async def test_a_why_is_explained_from_the_digest_with_only_real_citations() -> None:

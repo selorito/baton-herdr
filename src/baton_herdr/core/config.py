@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import os
 import re
+import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
@@ -29,8 +30,13 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from baton_herdr.core.platform import herdr_config_dir
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from importlib.resources.abc import Traversable
+
+    from baton_herdr.core.platform import System
 
 CONFIG_PATH_ENV_VAR = "BATON_CONFIG"
 DEFAULT_CONFIG_FILE = Path("baton.toml")
@@ -85,6 +91,11 @@ class HerdrSettings(_Section):
     socket_path: Path | None = None
     # "default" means herdr's own default socket (no named session).
     session: str | None = BATON_HERDR_SESSION
+    # Who tells which agent runs in a pane (ADR 0022). With "herdr", herdr's process
+    # detection does. With "baton", baton reads the process table and has herdr classify the
+    # screen from a file, for systems where herdr cannot see a pane's processes. "auto" means
+    # "baton" on WSL1 and "herdr" elsewhere.
+    process_detection: Literal["auto", "herdr", "baton"] = "auto"
 
     @field_validator("session")
     @classmethod
@@ -99,7 +110,8 @@ class HerdrSettings(_Section):
 #   1. HERDR_SOCKET_PATH (src/api/mod.rs SOCKET_PATH_ENV_VAR)
 #   2. HERDR_SESSION=<name> -> <config_dir>/sessions/<name>/herdr.sock
 #   3. <config_dir>/herdr.sock
-# where <config_dir> is $XDG_CONFIG_HOME/herdr, else ~/.config/herdr.
+# where <config_dir> is $XDG_CONFIG_HOME/herdr, else ~/.config/herdr; on Windows
+# %APPDATA%\\herdr (``core.platform.herdr_config_dir``).
 # herdr injects HERDR_SOCKET_PATH into every pane it launches
 # (src/integration/env.rs apply_pane_base_env) and into plugin panes
 # (src/app/api/plugins/panes.rs), so when baton runs inside herdr, step 1 is
@@ -123,7 +135,7 @@ def is_valid_herdr_session_name(name: str) -> bool:
 
 
 def resolve_herdr_socket_path(
-    settings: HerdrSettings, *, env: Mapping[str, str], home: Path
+    settings: HerdrSettings, *, env: Mapping[str, str], home: Path, system: System | None = None
 ) -> Path:
     """Return the herdr API socket baton should connect to.
 
@@ -138,8 +150,7 @@ def resolve_herdr_socket_path(
     if socket_from_env := env.get(HERDR_SOCKET_PATH_ENV_VAR):
         return Path(socket_from_env)
 
-    xdg_config_home = env.get("XDG_CONFIG_HOME")
-    config_dir = (Path(xdg_config_home) if xdg_config_home else home / ".config") / "herdr"
+    config_dir = herdr_config_dir(env, home, system)
 
     session = settings.session or env.get(HERDR_SESSION_ENV_VAR)
     # Like herdr's session::active_name: "default" and invalid names mean no session.
@@ -296,6 +307,13 @@ class ProjectsSettings(_Section):
     preview_port: int = Field(default=8765, ge=0, le=65535)
     # A Chromium or Chrome for the page's screenshot; unset: looked up on PATH.
     browser: str | None = None
+    # Where a delivered project's page is also published for anyone to open (ADR 0023).
+    # "off": the preview only. "vercel": deployed to Vercel as a project of its own, with
+    # vercel_token (BATON_PROJECTS__VERCEL_TOKEN in .env); its link comes with the delivery.
+    publish: Literal["off", "vercel"] = "off"
+    vercel_token: SecretStr | None = None
+    # A team's id (team_…) or slug; unset: the token's personal account.
+    vercel_team: str | None = None
 
     @field_validator("root")
     @classmethod
@@ -310,6 +328,25 @@ class TelegramSettings(_Section):
     # The only Telegram user whose commands and buttons are handled (ADR 0009).
     # Without it the bot only sends notices.
     owner_id: int | None = None
+    # An HTTP(S) proxy for Telegram (http://host:port). Unset: HTTPS_PROXY or ALL_PROXY
+    # from the environment, unless NO_PROXY names Telegram; "" for none at all.
+    proxy: str | None = None
+
+
+_PROXY_VARIABLES = ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")
+
+
+def telegram_proxy(settings: TelegramSettings, env: Mapping[str, str]) -> str | None:
+    """The proxy Telegram is reached through, if any."""
+    if settings.proxy is not None:
+        return settings.proxy or None
+    bypass = {
+        h.strip().lstrip(".").lower()
+        for h in env.get("NO_PROXY", env.get("no_proxy", "")).split(",")
+    }
+    if bypass & {"*", "telegram.org", "api.telegram.org"}:
+        return None
+    return next((env[name] for name in _PROXY_VARIABLES if env.get(name)), None)
 
 
 _Agent = Literal["claude", "codex", "opencode"]
@@ -390,6 +427,27 @@ class AssistantSettings(_Section):
         return self.backend is not None
 
 
+class _TomlSource(TomlConfigSettingsSource):
+    """baton.toml, also as Windows editors save it: with a UTF-8 byte order mark, which
+    tomllib refuses (PowerShell 5.1's Set-Content -Encoding utf8, older Notepad)."""
+
+    def _read_file(self, file_path: Path | Traversable) -> dict[str, Any]:
+        return tomllib.loads(file_path.read_bytes().decode("utf-8-sig"))
+
+
+class ConfigFileError(Exception):
+    """baton.toml cannot be read; the message names the file and what is wrong."""
+
+
+def load_settings() -> BatonSettings:
+    """The settings, or :class:`ConfigFileError` for a config file that is not TOML."""
+    try:
+        return BatonSettings()
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as err:
+        msg = f"{config_file()}: not valid TOML ({err}); fix it, or start from baton.example.toml"
+        raise ConfigFileError(msg) from err
+
+
 class BatonSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BATON_",
@@ -426,6 +484,6 @@ class BatonSettings(BaseSettings):
             init_settings,
             env_settings,
             DotEnvSettingsSource(settings_cls, env_file=dotenv_files()),
-            TomlConfigSettingsSource(settings_cls, toml_file=config_file()),
+            _TomlSource(settings_cls, toml_file=config_file()),
             file_secret_settings,
         )

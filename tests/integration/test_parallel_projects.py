@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -53,7 +54,6 @@ from simulated_agents import SimulatedAgents
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from baton_herdr.core.projection import TaskView
 
@@ -139,7 +139,7 @@ async def test_independent_steps_run_side_by_side_and_meet_in_the_project(tmp_pa
     assert all(s.after is None for s in steps)
     assert index.needs == (menu.task_id, hours.task_id)
     assert check.needs == (index.task_id,)
-    assert menu.workdir == str(tmp_path / ".worktrees" / main.rsplit("/", 1)[-1] / "step-1")
+    assert menu.workdir == str(tmp_path / ".worktrees" / Path(main).name / "step-1")
     assert "At the same time other agents are doing step 2" in menu.instructions
     # Nothing starts before its worktree is open.
     assert await ready(store) == ()

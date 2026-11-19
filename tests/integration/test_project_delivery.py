@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
@@ -13,11 +14,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from baton_herdr.core.commands import complete_task
+from baton_herdr.core.events import ProjectDelivered
 from baton_herdr.core.fakes import FixedClock, InMemoryEventStore
 from baton_herdr.core.model import TaskId
 from baton_herdr.core.notify import Notice, NoticeKind
 from baton_herdr.core.projection import project
 from baton_herdr.projects.deliver import (
+    PORT_TRIES,
     PreviewServer,
     Showcase,
     find_browser,
@@ -27,6 +30,7 @@ from baton_herdr.projects.deliver import (
     screenshot,
 )
 from baton_herdr.projects.flow import approve_plan, deliver_projects, propose_plans, start_project
+from baton_herdr.projects.publish import PublishError
 from baton_herdr.telegram.notifier import Buttons, TelegramNotifier
 from baton_herdr.workdir import GitWorkspace
 
@@ -207,3 +211,73 @@ def test_a_preview_whose_address_is_not_there_yet_is_tried_again(tmp_path: Path)
     server.host = "127.0.0.1"  # the address is there now
     assert server.start()
     server.stop()
+
+
+class FakePublisher:
+    def __init__(self, error: str | None = None) -> None:
+        self.published: list[Path] = []
+        self._error = error
+
+    async def publish(self, workdir: Path) -> str:
+        self.published.append(workdir)
+        if self._error is not None:
+            raise PublishError(self._error)
+        return f"https://{workdir.name}.vercel.app"
+
+
+async def delivered_with(
+    tmp_path: Path, publisher: FakePublisher
+) -> tuple[Notice, Path, str | None]:
+    store, clock = InMemoryEventStore(), FixedClock(NOW)
+    _, plan_id, workdir = await start_project(
+        store, root=tmp_path / "projects", request="A cafe page", clock=clock
+    )
+    (workdir / ".baton" / "plan.json").write_text(json.dumps(PLAN))
+    await finish(store, plan_id, clock)
+    await propose_plans(store, clock=clock, read_text=lambda p: p.read_text())
+    first, last = await approve_plan(store, plan_id, by="cli", clock=clock)
+    (workdir / "index.html").write_text("<h1>Cafe</h1>\n")
+    await finish(store, first, clock)
+    await finish(store, last, clock)
+    (notice,) = await deliver_projects(
+        store, clock=clock, show=FakeShow(tmp_path / "shot.png"), publisher=publisher
+    )
+    (stored,) = [e.event for e in await store.read() if isinstance(e.event, ProjectDelivered)]
+    return notice, workdir, stored.public_url
+
+
+async def test_a_delivered_page_is_published_and_its_public_link_comes_first(
+    tmp_path: Path,
+) -> None:
+    publisher = FakePublisher()
+    notice, workdir, recorded = await delivered_with(tmp_path, publisher)
+
+    assert publisher.published == [workdir]
+    assert recorded == f"https://{workdir.name}.vercel.app"
+    assert notice.details[0] == f"Public link: https://{workdir.name}.vercel.app"
+    assert notice.details[1].startswith("Preview: ")
+
+
+async def test_a_page_that_could_not_be_published_is_still_delivered(tmp_path: Path) -> None:
+    notice, _, recorded = await delivered_with(
+        tmp_path, FakePublisher(error="Vercel refused (403)")
+    )
+
+    assert recorded is None
+    assert notice.kind is NoticeKind.PROJECT_DELIVERED
+    assert notice.details[0] == "Not published: Vercel refused (403)."
+    assert notice.details[1].startswith("Preview: ")
+
+
+def test_a_preview_port_another_program_holds_moves_to_the_next_free_one(tmp_path: Path) -> None:
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", 0))
+        holder.listen()
+        taken = holder.getsockname()[1]
+        preview = PreviewServer(tmp_path, host="127.0.0.1", port=taken)
+        try:
+            assert preview.start()
+            assert preview.port != taken
+            assert taken < preview.port < taken + PORT_TRIES
+        finally:
+            preview.stop()

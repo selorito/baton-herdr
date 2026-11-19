@@ -55,8 +55,12 @@ async def test_fake_claude_hits_its_limit_and_baton_sees_it(
     await host.send_text(pane_id, command)
     await host.send_keys(pane_id, ["Enter"])
 
+    # The agent reports its session a moment after it starts; baton's own process reading
+    # (ADR 0022) can see the agent before that report arrives.
     async with asyncio.timeout(10):
-        while (observation := await host.observe(pane_id)).agent is not AgentKind.CLAUDE:
+        while (
+            observation := await host.observe(pane_id)
+        ).agent is not AgentKind.CLAUDE or observation.session_ref is None:
             await asyncio.sleep(0.1)
     assert observation.session_ref == "fake-session-1"
 

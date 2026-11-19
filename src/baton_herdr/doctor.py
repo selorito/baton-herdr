@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
+import re
 import shutil
 import socket
 import subprocess
+import urllib.parse
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -29,23 +30,35 @@ from baton_herdr.core.config import (
     HERDR_SOCKET_PATH_ENV_VAR,
     AssistantSettings,
     BatonSettings,
+    ConfigFileError,
     HerdrSettings,
     config_file,
+    load_settings,
     resolve_herdr_socket_path,
+    telegram_proxy,
 )
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.model import AgentKind, AgentState
+from baton_herdr.core.platform import (
+    current_system,
+    describe,
+    release_target,
+    running_on_wsl1,
+    shell_split,
+)
 from baton_herdr.ollama.client import OllamaAssistant
 from baton_herdr.policy.load import PolicyError, load_policy
 from baton_herdr.projects.deliver import find_browser, local_address
-from baton_herdr.service import installed_session
+from baton_herdr.service import TASK_NAME, installed_session
+from baton_herdr.telegram.notifier import telegram_bot
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping, Sequence
 
     from baton_herdr.core.assistant import AssistantHealth
     from baton_herdr.core.config import TelegramSettings
+    from baton_herdr.core.platform import System
 
 
 class Level(StrEnum):
@@ -71,11 +84,9 @@ async def _ping_herdr(settings: HerdrSettings) -> str:
 
 
 async def _telegram_bot_name(settings: TelegramSettings) -> str:
-    from aiogram import Bot  # noqa: PLC0415 - only when Telegram is configured
-
     if settings.bot_token is None:
         return ""
-    bot = Bot(token=settings.bot_token.get_secret_value())
+    bot = telegram_bot(settings)
     try:
         me = await bot.get_me()
     finally:
@@ -95,7 +106,13 @@ async def _count_events(path: Path) -> int:
 
 def _run(command: Sequence[str]) -> str:
     result = subprocess.run(  # noqa: S603 - fixed argument lists, no shell
-        list(command), capture_output=True, text=True, timeout=15, check=True
+        list(command),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+        check=True,
     )
     return result.stdout
 
@@ -115,6 +132,8 @@ def _classify_probe(binary: Path) -> str:
         input=_PROBE_REQUEST.model_dump_json() + "\n",
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=15,
         check=True,
     )
@@ -180,6 +199,9 @@ class Probes:
     can_bind: Callable[[str], bool] = _can_bind
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     assistant_health: Callable[[AssistantSettings], Awaitable[AssistantHealth]] = _assistant_health
+    system: Callable[[], System] = current_system
+    release_target: Callable[[], str | None] = release_target
+    on_wsl1: Callable[[], bool] = running_on_wsl1
 
 
 async def diagnose(probes: Probes | None = None) -> list[Check]:
@@ -187,7 +209,13 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
     probes = probes or Probes()
     path = config_file()
     try:
-        settings = BatonSettings()
+        settings = load_settings()
+    except ConfigFileError as err:
+        return [
+            Check(
+                "config", Level.FAIL, str(err), "Fix the file, or compare with baton.example.toml."
+            )
+        ]
     except ValidationError as err:
         first = err.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
@@ -209,9 +237,13 @@ async def diagnose(probes: Probes | None = None) -> list[Check]:
             f"Copy baton.example.toml to {path} and edit it.",
         )
     ]
+    checks.append(_system(probes))
+    if probes.on_wsl1():
+        checks.append(_wsl1(settings))
     checks.append(await _database(settings, probes))
     checks.extend(await _herdr(settings, probes))
     checks.extend(_agents(settings, probes))
+    checks.append(_git(probes))
     checks.append(_detector(settings, probes))
     checks.append(_classifier(settings, probes))
     if (limits := _claude_limits(settings, probes)) is not None:
@@ -239,6 +271,25 @@ async def _assistant(settings: BatonSettings, probes: Probes) -> Check:
     )
 
 
+def _wsl1(settings: BatonSettings) -> Check:
+    """What baton does differently on WSL1 (ADR 0022)."""
+    if settings.herdr.process_detection == "herdr":
+        return Check(
+            "wsl1",
+            Level.WARN,
+            'WSL1 detected, but [herdr] process_detection = "herdr": herdr cannot see a '
+            "pane's processes here, so no agent will be seen to start",
+            'Set [herdr] process_detection = "auto" (or remove it).',
+        )
+    return Check(
+        "wsl1",
+        Level.OK,
+        "WSL1 detected: baton reads pane processes itself ([herdr] process_detection), "
+        "the database uses the rollback journal, and a Windows scheduled task runs the "
+        "service",
+    )
+
+
 async def _database(settings: BatonSettings, probes: Probes) -> Check:
     path = settings.database.path
     if not path.exists():
@@ -258,6 +309,84 @@ async def _database(settings: BatonSettings, probes: Probes) -> Check:
     return Check("database", Level.OK, f"{path} ({count} events)")
 
 
+# herdr versions baton is known to work with: 0.9.1 everywhere (protocol 22), 0.9.5 on
+# Windows 11 (its pipe API, panes and agent detection).
+HERDR_MINIMUM = (0, 9, 1)
+HERDR_NEWEST_TESTED = (0, 9, 5)
+
+
+def _herdr_version(reported: str, binary: str) -> Check:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", reported)
+    if match is None:
+        return Check("herdr", Level.WARN, f"{reported} at {binary}", "Could not read its version.")
+    found = tuple(int(part) for part in match.groups())
+    tested = ".".join(map(str, HERDR_NEWEST_TESTED))
+    if found < HERDR_MINIMUM:
+        return Check(
+            "herdr",
+            Level.FAIL,
+            f"{reported} at {binary}: older than {'.'.join(map(str, HERDR_MINIMUM))}",
+            "Update herdr: herdr update (or the release binary for this system).",
+        )
+    if found > HERDR_NEWEST_TESTED:
+        return Check(
+            "herdr",
+            Level.WARN,
+            f"{reported} at {binary}: newer than baton was tested with ({tested})",
+            "It likely works; if panes misbehave, report it with `baton doctor` and the herdr "
+            f"version, or install herdr {tested}.",
+        )
+    return Check("herdr", Level.OK, f"{reported} at {binary}")
+
+
+def _system(probes: Probes) -> Check:
+    """The system baton runs on, and whether it is one baton is known to run on."""
+    system = probes.system()
+    if system == "windows":
+        return Check(
+            "system",
+            Level.WARN,
+            f"{describe(system)}: native Windows support is new (beta)",
+            "WSL is the proven way on Windows; native runs are welcome, report what breaks.",
+        )
+    if probes.release_target() is None:
+        return Check(
+            "system",
+            Level.WARN,
+            f"{describe(system)}: no baton-detect is released for this processor",
+            "Build it: cargo install --path crates/baton-detect --locked (from a checkout).",
+        )
+    return Check("system", Level.OK, describe(system))
+
+
+def _without_credentials(url: str) -> str:
+    """A proxy URL fit to print: ``http://user:secret@host:3128`` as ``http://host:3128``."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.username is None and parts.password is None:
+        return url
+    host = parts.hostname or ""
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    return urllib.parse.urlunsplit(parts._replace(netloc=netloc))
+
+
+def _git(probes: Probes) -> Check:
+    """git: projects (ADR 0016) are made as repositories, and changes are read with it."""
+    found = probes.which("git")
+    if found:
+        return Check("git", Level.OK, found)
+    hints = {
+        "windows": "Install Git for Windows (https://git-scm.com/download/win); Claude Code "
+        "needs its Git Bash too.",
+        "macos": "Install the command line tools: xcode-select --install",
+    }
+    return Check(
+        "git",
+        Level.FAIL,
+        "git is not on PATH: projects cannot be made, and a task's changes are not shown",
+        hints.get(probes.system(), "Install git with your package manager (apt install git)."),
+    )
+
+
 async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
     binary = probes.which("herdr")
     if binary is None:
@@ -273,7 +402,7 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
         version = probes.run([binary, "--version"]).strip()
     except (OSError, subprocess.SubprocessError) as err:
         version = f"version unknown ({err})"
-    checks = [Check("herdr", Level.OK, f"{version} at {binary}")]
+    checks = [_herdr_version(version, binary)]
     if (service := _service_session(settings, probes)) is not None:
         checks.append(service)
 
@@ -283,13 +412,25 @@ async def _herdr(settings: BatonSettings, probes: Probes) -> list[Check]:
         checks.append(Check("herdr server", Level.OK, f"reachable at {socket}"))
     except Exception as err:  # noqa: BLE001 - any failure is the finding
         start = f"herdr --session {session} server" if session else "herdr server"
-        checks.append(
-            Check(
-                "herdr server",
-                Level.FAIL,
-                f"not reachable ({type(err).__name__})",
-                f"Start it ({start}), or run `baton service install` to have systemd do it.",
+        manager = {"windows": "a scheduled task", "macos": "launchd"}.get(
+            probes.system(), "systemd"
+        )
+        if not probes.on_wsl1():
+            hint = f"Start it ({start}), or run `baton service install` to have {manager} do it."
+        elif probes.installed_session() is None:
+            hint = (
+                "WSL1 has no systemd: run `baton service install`; it writes a start script "
+                "and prints the PowerShell command that registers a Windows scheduled task "
+                "to run it."
             )
+        else:
+            hint = (
+                "The Windows scheduled task should run the start script; in PowerShell: "
+                f"Start-ScheduledTask -TaskName '{TASK_NAME}'. Its log: "
+                "~/.local/state/baton/wsl1-start.log"
+            )
+        checks.append(
+            Check("herdr server", Level.FAIL, f"not reachable ({type(err).__name__})", hint)
         )
 
     try:
@@ -362,7 +503,7 @@ def _agents(settings: BatonSettings, probes: Probes) -> list[Check]:
     for name in settings.scheduler.agents:
         agent = AgentKind(name)
         command = settings.scheduler.launch_commands.get(name) or ADAPTERS[agent].launch_command()
-        program = shlex.split(command)[0]
+        program = shell_split(command)[0]
         found = probes.which(program)
         checks.append(
             Check(name, Level.OK, f"{command!r} -> {found}")
@@ -387,8 +528,8 @@ def _detector(settings: BatonSettings, probes: Probes) -> Check:
             "baton-detect",
             Level.FAIL,
             f"{settings.usage.binary} not found; usage is not collected",
-            "cargo install --path crates/baton-detect --locked (from the baton-herdr "
-            "checkout), or set [usage] binary to its path.",
+            "Run `baton setup`: it downloads the one for this system. Or build it "
+            "(cargo install --path crates/baton-detect --locked), or set [usage] binary.",
         )
     try:
         reported = probes.run([str(binary), "--version"]).strip()
@@ -400,7 +541,7 @@ def _detector(settings: BatonSettings, probes: Probes) -> Check:
             "baton-detect",
             Level.WARN,
             f"{reported} at {binary}, but baton is {expected}",
-            "Install the matching version: cargo install --path crates/baton-detect --locked",
+            "Install the matching version: delete it and run `baton setup`, which downloads it.",
         )
     return Check("baton-detect", Level.OK, f"{reported} at {binary}")
 
@@ -546,7 +687,7 @@ def _policy(settings: BatonSettings) -> Check:
 
 def _classifier(settings: BatonSettings, probes: Probes) -> Check:
     """The screen classifier batond uses: baton-detect classify (ADR 0011)."""
-    install = "cargo install --path crates/baton-detect --locked, or set [detector] binary."
+    install = "Run `baton setup`: it downloads it. Or set [detector] binary to its path."
     without = "batond falls back to herdr's state: limits and prompt kinds go unrecognised"
     binary = probes.detector(settings.detector.binary)
     if binary is None:
@@ -560,14 +701,14 @@ def _classifier(settings: BatonSettings, probes: Probes) -> Check:
             "detector",
             Level.FAIL,
             f"{binary} does not classify ({type(err).__name__}); {without}",
-            "Install the matching version: cargo install --path crates/baton-detect --locked",
+            "Install the matching version: delete it and run `baton setup`, which downloads it.",
         )
     if answer.evidence != "baton:claude_usage_limit":
         return Check(
             "detector",
             Level.FAIL,
             f"{binary} misreads a test screen ({answer.evidence})",
-            "Install the matching version: cargo install --path crates/baton-detect --locked",
+            "Install the matching version: delete it and run `baton setup`, which downloads it.",
         )
     if settings.detector.engine != "rust":
         return Check(
@@ -615,7 +756,10 @@ async def _telegram(settings: BatonSettings, probes: Probes) -> Check:
         name = await probes.telegram_bot_name(telegram)
     except Exception as err:  # noqa: BLE001 - any failure is the finding
         return Check(
-            "telegram", Level.FAIL, f"bot not reachable ({type(err).__name__})", "Check the token."
+            "telegram",
+            Level.FAIL,
+            f"bot not reachable ({type(err).__name__})",
+            "Check the token. Behind a proxy: set HTTPS_PROXY, or [telegram] proxy.",
         )
     if telegram.owner_id is None:
         return Check(
@@ -624,7 +768,9 @@ async def _telegram(settings: BatonSettings, probes: Probes) -> Check:
             f"@{name}, notices only",
             "Set [telegram] owner_id to your user id to approve, deny and answer from Telegram.",
         )
-    return Check("telegram", Level.OK, f"@{name}, actions from user {telegram.owner_id}")
+    proxy = telegram_proxy(telegram, probes.environ())
+    via = f", through {_without_credentials(proxy)}" if proxy else ""
+    return Check("telegram", Level.OK, f"@{name}, actions from user {telegram.owner_id}{via}")
 
 
 _MARKS = {Level.OK: "ok  ", Level.WARN: "warn", Level.FAIL: "FAIL"}

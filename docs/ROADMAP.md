@@ -106,7 +106,7 @@ test keeps passing throughout.
 | 3. Policy engine (permissions ✅, ADR 0013) | Scheduler and recovery | Wait for reset vs. hand off, context-full handling, crash restart in a fresh pane, the resume caps of ADR 0005, what is handed over to the next agent. |
 | 4. Telegram interaction | Telegram | Approve / deny buttons for permission prompts, free-text replies for questions, status commands. Security design first: chat lock, callbacks bound to a task and attempt, no free-form shell. |
 | 5. Benchmark ✅ | `bench/` | baton's own loop against simulated agents on simulated time: limits, crashes, hangs, consecutive limits, waiting for a reset, and budget-aware choice on or off. `just bench`, reproducible per seed; results in `bench/results/`. |
-| 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load, documentation, first tagged release. |
+| 6. Hardening and v1 | Everything | Restart safety (replay the log on start), `events_lost` reconciliation under load (✅ 2026-11-10, tested with fakes; see the devlog), documentation, first tagged release. |
 
 ### baton-detect in Rust (ADR 0011)
 
@@ -161,8 +161,13 @@ test keeps passing throughout.
 - A3–A4: projects described in words, confirmed on a card, planned before anything is
   coded.
 - A5: documentation, and a demo scenario (`docs/devlog/2026-10-22-assistant-demo.md`).
-- Not yet: work in an existing directory from words (the schema has it already), more
-  than one allowed user, `cancel` and `set_tier` as intents.
+- A6: `cancel` and `set_tier` as intents: a card naming the task and what will happen,
+  done by what `/cancel` and `/tier` do; baton finds the task, and asks when it is not
+  plain.
+- Work in an existing directory from words: a card with the directory, the title and the
+  instructions, offered only inside the policy's `trusted_dirs` or in a project baton
+  made; a task there once the owner presses Start.
+- Not yet: more than one allowed user.
 
 ## After v1
 

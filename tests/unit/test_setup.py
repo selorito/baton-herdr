@@ -4,8 +4,10 @@ there."""
 
 from __future__ import annotations
 
+import hashlib
 import stat
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -26,8 +28,10 @@ from baton_herdr.setup import (
     set_toml_value,
 )
 
+from platform_marks import posix_only
+
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 TOKEN = "123456:ABC-not-a-real-token"  # noqa: S105 - a test value
 
@@ -153,12 +157,13 @@ def paths(tmp_path: Path) -> Paths:
     )
 
 
+@posix_only("file modes (600 for .env, 755 for the binary)")
 def test_a_fresh_machine_is_set_up_in_one_pass(tmp_path: Path) -> None:
     script = Script()
     script.answers["dirs"] = f"{tmp_path}/repo"
     where = paths(tmp_path)
     assert run_setup(
-        script.io(), where, timezone="Europe/Istanbul", target="x86_64-unknown-linux-gnu"
+        script.io(), where, timezone="Europe/Istanbul", target="x86_64-unknown-linux-musl"
     )
 
     settings = BatonSettings.model_validate(tomllib.loads(where.config.read_text()))
@@ -193,15 +198,66 @@ def test_what_cannot_be_done_is_said() -> None:
         run_setup(Script(found=("herdr",)).io(), paths(Path("/x")), timezone="UTC", target="x")
 
 
-def test_a_missing_baton_detect_is_downloaded_when_asked(tmp_path: Path) -> None:
+BINARY = b"\x7fELF baton-detect"
+SUMS = (
+    f"{hashlib.sha256(BINARY).hexdigest()}  baton-detect-x86_64-unknown-linux-musl\n"
+    f"{'0' * 64}  baton-detect-aarch64-unknown-linux-musl\n"
+)
+
+
+def downloads(urls: list[str], *, binary: bytes = BINARY) -> Callable[[str], bytes]:
+    def download(url: str) -> bytes:
+        urls.append(url)
+        return SUMS.encode() if url.endswith("/SHA256SUMS") else binary
+
+    return download
+
+
+@posix_only("file modes (600 for .env, 755 for the binary)")
+def test_a_missing_baton_detect_is_downloaded_from_this_version_and_checked(
+    tmp_path: Path,
+) -> None:
     script = Script(found=("herdr", "claude"))
     where = paths(tmp_path)
-    where.local_bin.mkdir()
-    (where.local_bin / "baton-detect").write_bytes(b"\x7fELF")  # what curl would leave
-    run_setup(script.io(), where, timezone="UTC", target="x86_64-unknown-linux-gnu")
-    (download,) = [c for c in script.ran if c[0] == "curl"]
-    assert download[-1].endswith("/baton-detect-x86_64-unknown-linux-gnu")
+    urls: list[str] = []
+    io = replace(script.io(), download=downloads(urls))
+    run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-musl", version="1.4.0")
+    release = "https://github.com/selorito/baton-herdr/releases/download/v1.4.0/"
+    assert urls == [f"{release}SHA256SUMS", f"{release}baton-detect-x86_64-unknown-linux-musl"]
+    assert (where.local_bin / "baton-detect").read_bytes() == BINARY
     assert (where.local_bin / "baton-detect").stat().st_mode & stat.S_IXUSR
+    assert not any(command[0] == "curl" for command in script.ran)
+
+
+def test_a_download_that_does_not_match_its_checksum_is_not_kept(tmp_path: Path) -> None:
+    script = Script(found=("herdr", "claude"))
+    where = paths(tmp_path)
+    io = replace(script.io(), download=downloads([], binary=b"something else"))
+    assert not run_setup(io, where, timezone="UTC", target="x86_64-unknown-linux-musl")
+    assert not (where.local_bin / "baton-detect").exists()
+    assert any("does not match its checksum" in line for line in script.said)
+
+
+def test_a_system_without_a_released_binary_is_told_how_to_build_one(tmp_path: Path) -> None:
+    script = Script(found=("herdr", "claude"))
+    assert not run_setup(script.io(), paths(tmp_path), timezone="UTC", target=None)
+    assert any("cargo install" in line for line in script.said)
+
+
+def test_windows_gets_an_exe(tmp_path: Path) -> None:
+    script = Script(found=("herdr", "claude"))
+    where = paths(tmp_path)
+    urls: list[str] = []
+    sums = f"{hashlib.sha256(BINARY).hexdigest()}  baton-detect-x86_64-pc-windows-msvc.exe\n"
+
+    def download(url: str) -> bytes:
+        urls.append(url)
+        return sums.encode() if url.endswith("/SHA256SUMS") else BINARY
+
+    io = replace(script.io(), download=download)
+    run_setup(io, where, timezone="UTC", target="x86_64-pc-windows-msvc", version="1.4.0")
+    assert urls[-1].endswith("/baton-detect-x86_64-pc-windows-msvc.exe")
+    assert (where.local_bin / "baton-detect.exe").read_bytes() == BINARY
 
 
 def test_without_ollama_the_assistant_is_only_mentioned(tmp_path: Path) -> None:

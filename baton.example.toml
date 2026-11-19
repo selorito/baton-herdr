@@ -12,6 +12,11 @@ session = "baton"
 # HERDR_SOCKET_PATH (set by herdr inside its panes) and an explicit socket_path take
 # precedence over the session; `baton doctor` says when that misses the service.
 # socket_path = "~/.config/herdr/herdr.sock"
+# Who tells which agent runs in a pane. herdr reads the terminal's foreground process,
+# which WSL1 does not provide; there baton reads the process table itself and has herdr
+# classify the screen from a file. "auto" (the default) does that on WSL1 only;
+# "herdr" or "baton" forces one.
+# process_detection = "auto"
 
 [database]
 path = "~/.local/share/baton/baton.db"
@@ -141,3 +146,10 @@ timezone = "UTC"
 # preview_port = 8765
 # A Chromium or Chrome for the page's screenshot; unset: looked up.
 # browser = "chromium"
+# Also publish a delivered page where anyone can open it (ADR 0023). "off": the preview
+# only. "vercel": each project's page becomes a Vercel project of its own, and the
+# delivery carries its https://<project>.vercel.app link. The token goes in .env as
+# BATON_PROJECTS__VERCEL_TOKEN (vercel.com/account/tokens). `baton project publish p-…`
+# publishes one project now, whatever this says.
+# publish = "off"
+# vercel_team = "team_…"

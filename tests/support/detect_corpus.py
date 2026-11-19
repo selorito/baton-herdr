@@ -149,7 +149,7 @@ def _captures() -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for explain_path in sorted(FIXTURES.glob("*/*/*/explain.json")):
         directory = explain_path.parent
-        capture = str(directory.relative_to(FIXTURES))
+        capture = directory.relative_to(FIXTURES).as_posix()
         agent = capture.split("/", maxsplit=1)[0]
         pane = json.loads((directory / "pane.json").read_text())
         explain = json.loads(explain_path.read_text())
@@ -160,7 +160,7 @@ def _captures() -> list[dict[str, Any]]:
         for source in ("screen.detection.txt", "screen.txt"):
             if not (directory / source).is_file():
                 continue
-            screen_file = str((directory / source).relative_to(REPO))
+            screen_file = (directory / source).relative_to(REPO).as_posix()
             base = {"agent": agent, "observed_at": OBSERVED["now"], "timezone": "Europe/Istanbul"}
             cases.append(
                 _case(

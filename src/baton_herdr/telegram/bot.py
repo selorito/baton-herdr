@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from baton_herdr.assistant.cards import PREFIX as CARD_PREFIX
-from baton_herdr.assistant.conversation import CardContext
+from baton_herdr.assistant.cards import Card, CardKind
+from baton_herdr.assistant.conversation import CardContext, Reply
+from baton_herdr.assistant.stop import STOP_TEXTS, StopRequest, Target, read_stop, stop_targets
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.choice import choose_agent
 from baton_herdr.budget.report import budget_lines, when
@@ -41,6 +43,7 @@ from baton_herdr.scheduler.notices import tier_mark
 from baton_herdr.scheduler.operator import (
     ActionRefusedError,
     act,
+    add_task,
     cancel,
     find_blocker,
     set_tier,
@@ -55,7 +58,7 @@ if TYPE_CHECKING:
     from aiogram import Bot
     from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
-    from baton_herdr.assistant.conversation import Assistant, Reply
+    from baton_herdr.assistant.conversation import Assistant
     from baton_herdr.budget.load import BudgetReader
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.model import AgentKind
@@ -71,7 +74,8 @@ HELP = (
     "/budget: what each agent has left.\n"
     "/tier <task> economy|premium: the tier it runs in from its next attempt.\n"
     "With the assistant on ([assistant]), just write: 'why is t-1a2b3c4d stuck?', "
-    "'what is running?', or what to build.\n"
+    "'what is running?', 'cancel the cafe task', 'run t-1a2b3c4d on economy', "
+    "or what to build.\n"
     "Approve or Deny under a permission prompt; reply to a question to answer it."
 )
 # A word of its own: "#economy", not "cafe#economy".
@@ -88,6 +92,9 @@ MENU = (
 PLAN_STARTED = "Started."
 PLAN_CANCELLED = "Cancelled."
 TASK_CANCELLED = "Task cancelled."
+STOP_PREFIX = "stop:all:"
+# Buttons a stop offers at most, one per piece of work, before "all".
+STOP_CHOICES = 6
 # Said to a message that is neither a command nor a reply: it reached no agent.
 NOT_A_REPLY = "That message went to no agent. To answer a question, reply to its message."
 _DONE = {
@@ -106,9 +113,11 @@ class BotSettings:
     # Zone for the times shown, as configured for the scheduler.
     timezone: str = "UTC"
     # For the assistant's cards (ADR 0021): the reserve agent choice keeps, and the tier a
-    # project's plan runs in unless the request says (#economy).
+    # project's plan, or a task in an existing directory, runs in unless the request says
+    # so with a tag such as #economy.
     reserve_percent: float = 10
     plan_tier: str = "premium"
+    task_tier: str = "premium"
 
 
 class OperatorBot:
@@ -161,10 +170,41 @@ class OperatorBot:
         if name == "/tier":
             return await self.tier(text.split()[1:])
         if not name.startswith("/"):
+            if (stopped := await self.stop(text)) is not None:
+                return stopped.text
             if self.assistant is not None and text.strip():
                 return (await self.converse(text)).text
             return f"{NOT_A_REPLY}\n\n{HELP}"
         return HELP
+
+    async def stop(self, text: str) -> Reply | None:
+        """A stop word (ADR 0024), read by baton, not the model: the one piece of work
+        running, or every one with "hepsini" / "all", cancelled at once, as /cancel does; a
+        choice when several run. None: the message is not a stop."""
+        request = read_stop(text)
+        if request is None:
+            return None
+        targets = stop_targets(project(await self._store.read()), request)
+        language = request.language
+        if not targets:
+            return Reply(STOP_TEXTS["none"][language])
+        if len(targets) > 1 and not request.everything and not request.ids:
+            buttons = tuple(
+                (f"🛑 {t.target} {_short(t.title)}", f"task:cancel:{t.target}")
+                for t in targets[:STOP_CHOICES]
+            )
+            every = (STOP_TEXTS["all"][language], f"{STOP_PREFIX}{language}")
+            question = STOP_TEXTS["which"][language].format(count=len(targets))
+            return Reply(question, (*buttons, every))
+        return Reply(await self._stop_all(targets, language))
+
+    async def _stop_all(self, targets: list[Target], language: str) -> str:
+        lines = [STOP_TEXTS["done"][language]]
+        for target in targets:
+            done, said = await self._cancel(target.target)
+            lines.append(f"• {target.target} {_short(target.title)}" if done else f"⚠️ {said}")
+        self._log.info("stopped by a stop word", targets=[t.target for t in targets])
+        return "\n".join(lines)
 
     async def converse(self, text: str) -> Reply:
         """A plain message, answered by the assistant (ADR 0021), with a card's buttons when
@@ -172,7 +212,7 @@ class OperatorBot:
         assert self.assistant is not None  # noqa: S101 - only called with one
         return await self.assistant.answer(text.strip(), context=self._card_context)
 
-    async def _card_context(self, request: str) -> CardContext:
+    async def _card_context(self, request: str, workdir: str | None) -> CardContext:
         where = str(self._projects_root) if self._projects_root else "-"
         agents = list(self._settings.agents)
         budgets = (
@@ -184,13 +224,34 @@ class OperatorBot:
             agents, budgets, reserve_percent=self._settings.reserve_percent, zone=self._zone
         ).reason
         tier = split_tier(request)[1]
-        named = tier.value if tier else self._settings.plan_tier
+        usual = self._settings.plan_tier if workdir is None else self._settings.task_tier
+        named = tier.value if tier else usual
         return CardContext(where=where, agent=agent, tier=named)
 
-    async def _start_from_card(self, request: str) -> tuple[bool, str]:
-        """A card's Start: exactly what /new does with the request."""
-        said = await self.new_project(request)
+    async def _start_from_card(self, card: Card) -> tuple[bool, str]:
+        """A card's Start: exactly what its command does, /new with the request, or /cancel
+        and /tier with their arguments."""
+        if card.kind is CardKind.CANCEL:
+            return await self._cancel(card.request)
+        if card.kind is CardKind.TIER:
+            return await self._tier(card.request.split())
+        said = await self.new_project(card.request)
         return said.startswith("Project p-"), said
+
+    async def _add_from_card(self, title: str, instructions: str, workdir: str) -> tuple[bool, str]:
+        """A card's Start for work in a directory that exists: a task, as ``baton task add``
+        adds one. The assistant has checked the directory; nothing is made or moved."""
+        instructions, tier = split_tier(instructions)
+        task_id = await add_task(
+            self._store,
+            title=title,
+            instructions=instructions,
+            workdir=workdir,
+            clock=self._clock,
+            tier=tier,
+        )
+        self._on_action()
+        return True, f"Task {task_id} in {workdir}: {title}."
 
     async def budget(self) -> str:
         if self._budget is None:
@@ -250,8 +311,12 @@ class OperatorBot:
 
     async def tier(self, args: list[str]) -> str:
         """``/tier t-… economy|premium`` (ADR 0020)."""
+        return (await self._tier(args))[1]
+
+    async def _tier(self, args: list[str]) -> tuple[bool, str]:
+        """``/tier``: whether the tier was set, and what to tell."""
         if len(args) != 2 or args[1] not in {t.value for t in Tier}:
-            return "Say which task and tier: /tier t-1a2b3c4d economy, or premium."
+            return False, "Say which task and tier: /tier t-1a2b3c4d economy, or premium."
         task_id, tier = TaskId(args[0]), Tier(args[1])
         try:
             running = await set_tier(
@@ -262,13 +327,17 @@ class OperatorBot:
                 by=f"telegram:{self._settings.owner_id}",
             )
         except ActionRefusedError as err:
-            return str(err)
+            return False, str(err)
         self._on_action()
         later = " from its next attempt; the one under way runs on" if running else ""
-        return f"{task_id} runs {tier.value}{later}."
+        return True, f"{task_id} runs {tier.value}{later}."
 
     async def cancel(self, target: str) -> str:
         """``/cancel t-…`` drops a task, ``/cancel p-…`` a whole project."""
+        return (await self._cancel(target))[1]
+
+    async def _cancel(self, target: str) -> tuple[bool, str]:
+        """``/cancel``: whether it was cancelled, and what to tell."""
         by = f"telegram:{self._settings.owner_id}"
         try:
             if target.startswith("p-"):
@@ -286,11 +355,14 @@ class OperatorBot:
                 )
                 result = f"{TASK_CANCELLED} {target}" + ("; its pane is closed." if closed else ".")
             else:
-                return "Say what to cancel: /cancel t-1a2b3c4d, or /cancel p-1a2b3c for a project."
+                return (
+                    False,
+                    "Say what to cancel: /cancel t-1a2b3c4d, or /cancel p-1a2b3c for a project.",
+                )
         except (ActionRefusedError, ProjectError) as err:
-            return str(err)
+            return False, str(err)
         self._on_action()
-        return result
+        return True, result
 
     async def plan_choice(self, data: str) -> str:
         """A press on a plan's Start or Cancel; ``data`` is ``plan:start:t-1a2b3c4d``."""
@@ -320,7 +392,14 @@ class OperatorBot:
         if data.startswith(CARD_PREFIX):
             if self.assistant is None:
                 return "This card has expired; send the request again."
-            return await self.assistant.press(data, self._start_from_card)
+            return await self.assistant.press(data, self._start_from_card, self._add_from_card)
+        if data.startswith(STOP_PREFIX):
+            request = StopRequest(language="tr" if data.endswith(":tr") else "en", everything=True)
+            language = request.language
+            targets = stop_targets(project(await self._store.read()), request)
+            if not targets:
+                return STOP_TEXTS["none"][language]
+            return await self._stop_all(targets, language)
         if data.startswith("task:cancel:"):
             return await self.cancel(data.removeprefix("task:cancel:"))
         try:
@@ -470,6 +549,10 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
         if not operator.authorized(message.chat.id, sender(message)):
             return
         text = message.text or ""
+        if not text.startswith("/") and (stopped := await operator.stop(text)) is not None:
+            # A stop word, before the assistant: it must not wait on the model (ADR 0024).
+            await message.answer(stopped.text, reply_markup=_markup(stopped.buttons))
+            return
         if operator.assistant is not None and not text.startswith("/") and text.strip():
             async with _typing(bot, message.chat.id):
                 reply = await operator.converse(text)
@@ -488,6 +571,7 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
             result in _DONE.values()
             or result.startswith((PLAN_STARTED, PLAN_CANCELLED, TASK_CANCELLED, "Project "))
             or (query.data or "").startswith(CARD_PREFIX)  # a card is pressed once (ADR 0021)
+            or (query.data or "").startswith(STOP_PREFIX)
         )
         await query.answer(result, show_alert=not final)
         if query.message is not None and final:
@@ -505,3 +589,8 @@ async def run_bot(bot: Bot, operator: OperatorBot) -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     await dispatcher.start_polling(bot, handle_signals=False, close_bot_session=False)
+
+
+def _short(title: str, limit: int = 40) -> str:
+    """A title cut to fit a button."""
+    return title if len(title) <= limit else title[: limit - 1] + "…"

@@ -8,9 +8,10 @@ depends on the protocols in ``baton_herdr.core``.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import stat
-import uuid
+import sys
 from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -19,16 +20,16 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from baton_herdr.adapters import ADAPTERS
-from baton_herdr.adapters.claude import lean_settings, settings_args, status_line
+from baton_herdr.adapters.claude import lean_settings, settings_file_args, status_line
 from baton_herdr.assistant.cards import CardStore
 from baton_herdr.assistant.conversation import Assistant, AssistantConfig
+from baton_herdr.assistant.places import LocalDirectories, Places
 from baton_herdr.budget.availability import fold_availability
 from baton_herdr.budget.load import BudgetReader
 from baton_herdr.collector import UsageCollector
 from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.config import BudgetSettings, DetectorSettings, TierSettings
 from baton_herdr.core.detector import HostDetector
-from baton_herdr.core.events import TaskCreated
 from baton_herdr.core.executables import detector_binary
 from baton_herdr.core.logging import get_logger
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
@@ -46,6 +47,7 @@ from baton_herdr.projects.flow import (
     halt_stopped_projects,
     propose_plans,
 )
+from baton_herdr.projects.publish import publisher_for
 from baton_herdr.scheduler.dispatch import Dispatcher
 from baton_herdr.scheduler.queue import Signature, next_wake
 from baton_herdr.scheduler.runner import RunnerSettings, TaskRunner
@@ -68,6 +70,7 @@ if TYPE_CHECKING:
     from baton_herdr.core.notify import Notifier
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore, Repository, UsageStore
+    from baton_herdr.projects.flow import Publisher
 
 
 def make_detector(settings: DetectorSettings) -> Detector:
@@ -108,7 +111,13 @@ def claude_session_args(
     binary = detector_binary(usage.binary) if usage.enabled else None
     if binary is not None:
         settings |= status_line(binary, usage.claude_status_log)
-    return {AgentKind.CLAUDE: settings_args(settings)} if settings else {}
+    if not settings:
+        return {}
+    # A file, not JSON on the command line: PowerShell (a Windows pane) mangles the quotes.
+    path = usage.claude_status_log.with_name("claude-settings.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    return {AgentKind.CLAUDE: settings_file_args(path)}
 
 
 def runner_settings(  # noqa: PLR0913 - the settings sections and what batond adds to them
@@ -160,8 +169,15 @@ def runner_settings(  # noqa: PLR0913 - the settings sections and what batond ad
     )
 
 
-def assistant_for(settings: BatonSettings, store: EventStore, clock: Clock) -> Assistant | None:
-    """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model."""
+def assistant_for(
+    settings: BatonSettings,
+    store: EventStore,
+    clock: Clock,
+    trusted_dirs: tuple[str, ...] = (),
+) -> Assistant | None:
+    """The Telegram assistant (ADR 0021), when [assistant] names a backend and a model.
+    It offers work in an existing directory only inside ``trusted_dirs`` (the policy's) or
+    in a project baton made."""
     config = settings.assistant
     if not config.enabled or config.model is None:
         return None
@@ -182,6 +198,7 @@ def assistant_for(settings: BatonSettings, store: EventStore, clock: Clock) -> A
             zone=ZoneInfo(settings.scheduler.timezone),
         ),
         cards=CardStore(clock=clock, ttl=timedelta(minutes=config.card_ttl_minutes)),
+        places=Places(directories=LocalDirectories(), trusted=trusted_dirs),
     )
 
 
@@ -208,6 +225,8 @@ class Runtime:
     # A finished project's page: the preview batond serves, and a browser for its picture.
     preview: PreviewServer | None = None
     browser: Path | None = None
+    # Where a delivered page is published for anyone to open; None: not published (ADR 0023).
+    publisher: Publisher | None = None
     # Parallel steps' worktrees and merges (ADR 0017).
     repository: Repository = field(default_factory=GitRepository)
 
@@ -280,11 +299,12 @@ async def open_runtime(
                     timezone=scheduling.timezone,
                     reserve_percent=settings.budget.reserve_percent,
                     plan_tier=settings.tiers.roles.get("plan", "premium"),
+                    task_tier=settings.tiers.roles.get("task", "premium"),
                 ),
                 budget=budget,
                 on_action=wake.set,
                 projects_root=settings.projects.root,
-                assistant=assistant_for(settings, store, clock),
+                assistant=assistant_for(settings, store, clock, scheduling.trusted_dirs),
             )
         yield Runtime(
             store=store,
@@ -310,6 +330,7 @@ async def open_runtime(
                 port=settings.projects.preview_port,
             ),
             browser=find_browser(settings.projects.browser),
+            publisher=publisher_for(settings.projects),
         )
     finally:
         await detector.aclose()
@@ -330,6 +351,14 @@ def poke(db_path: Path) -> bool:
     Writes one byte to the FIFO without blocking. False when no batond listens (no FIFO,
     or nothing reading it); the change is picked up on batond's next cycle anyway.
     """
+    if sys.platform == "win32":
+        # No FIFOs: batond watches the file's modification time instead (``listening``).
+        path = wake_path(db_path)
+        if not path.exists():
+            return False
+        with suppress(OSError):
+            os.utime(path)
+        return True
     try:
         fd = os.open(wake_path(db_path), os.O_WRONLY | os.O_NONBLOCK)
     except OSError:  # FileNotFoundError, or ENXIO: no reader
@@ -352,6 +381,10 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
     and batond falls back to its idle sleep.
     """
     log = get_logger("baton.daemon")
+    if sys.platform == "win32":
+        with _watching_mtime(fifo, wake):
+            yield
+        return
     try:
         fifo.parent.mkdir(parents=True, exist_ok=True)
         with suppress(FileExistsError):
@@ -383,30 +416,34 @@ def listening(fifo: Path, wake: asyncio.Event) -> Iterator[None]:
         os.close(fd)
 
 
-async def add_task(  # noqa: PLR0913 - the store and each field of the task
-    store: EventStore,
-    *,
-    title: str,
-    instructions: str,
-    workdir: str,
-    clock: Clock | None = None,
-    tier: Tier | None = None,
-) -> TaskId:
-    task_id = TaskId(f"t-{uuid.uuid4().hex[:8]}")
-    now = (clock or SystemClock()).now()
-    await store.append(
-        [
-            TaskCreated(
-                occurred_at=now,
-                task_id=task_id,
-                title=title,
-                instructions=instructions,
-                workdir=workdir,
-                tier=tier,
-            )
-        ]
-    )
-    return task_id
+WAKE_POLL_S = 1.0
+
+
+@contextmanager
+def _watching_mtime(path: Path, wake: asyncio.Event) -> Iterator[None]:
+    """Windows: set ``wake`` when ``path``'s modification time changes (``poke``)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+    def mtime() -> int:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    async def watch() -> None:
+        seen = mtime()
+        while True:
+            await asyncio.sleep(WAKE_POLL_S)
+            if (now := mtime()) != seen:
+                seen = now
+                wake.set()
+
+    watcher = asyncio.get_running_loop().create_task(watch(), name="baton-wake")
+    try:
+        yield
+    finally:
+        watcher.cancel()
 
 
 async def run_pending(
@@ -569,6 +606,7 @@ async def advance_projects(runtime: Runtime) -> None:
         clock=runtime.clock,
         workspace=GitWorkspace(),
         show=Showcase(runtime.preview, runtime.browser),
+        publisher=runtime.publisher,
     )
     for notice in [*proposed, *halted, *merged, *delivered]:
         if runtime.notifier is not None:

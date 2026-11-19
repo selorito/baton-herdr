@@ -61,8 +61,7 @@ pub fn parse_clock(text: &str) -> Option<Time> {
     let minute = caps.get(2).map_or(Some(0), |m| number(m.as_str()))?;
     let meridiem = caps
         .get(3)
-        .map(|m| m.as_str().to_lowercase().replace('.', ""))
-        .unwrap_or_default();
+        .map_or_else(String::new, |m| m.as_str().to_lowercase().replace('.', ""));
     if !meridiem.is_empty() {
         if !(1..=12).contains(&hour) {
             return None;

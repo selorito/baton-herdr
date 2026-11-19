@@ -38,6 +38,13 @@ impl Tail {
         &self.path
     }
 
+    /// Whether the file's length differs from what was read: lines were added, or it
+    /// started over. A file that cannot be read counts as unchanged.
+    #[must_use]
+    pub fn has_changed(&self) -> bool {
+        std::fs::metadata(&self.path).is_ok_and(|meta| meta.len() != self.offset)
+    }
+
     /// The complete lines written since the last call.
     ///
     /// # Errors
@@ -99,6 +106,20 @@ mod tests {
         assert_eq!(tail.read_lines().unwrap().lines, Vec::<String>::new());
         append(&path, "o\n\nthree\n");
         assert_eq!(tail.read_lines().unwrap().lines, ["two", "three"]);
+    }
+
+    #[test]
+    fn a_change_in_length_is_seen_until_it_is_read() {
+        let path = temp_file("changed.jsonl");
+        let mut tail = Tail::new(path.clone());
+        assert!(!tail.has_changed());
+        append(&path, "one\n");
+        assert!(tail.has_changed());
+        tail.read_lines().unwrap();
+        assert!(!tail.has_changed());
+        std::fs::write(&path, "").unwrap();
+        assert!(tail.has_changed());
+        assert!(!Tail::new(path.with_extension("missing")).has_changed());
     }
 
     #[test]

@@ -197,13 +197,23 @@ fn detect(request: &Request, rules: &RuleSet) -> Result<Outcome, ClassifyError> 
 
 /// An IANA zone by its exact name, as Python's `zoneinfo` finds it on Linux (jiff alone
 /// would also accept other spellings of the name).
+///
+/// The system's database first, then the copy built in, as `zoneinfo` falls back to the
+/// `tzdata` package baton depends on. Systems without a database (minimal containers) or
+/// without the old names (`US/Eastern`: Ubuntu moved them to `tzdata-legacy`) would
+/// otherwise know zones that batond accepts and the classifier refuses.
 #[must_use]
 pub fn time_zone(name: &str) -> Option<TimeZone> {
+    static BUILT_IN: std::sync::LazyLock<jiff::tz::TimeZoneDatabase> =
+        std::sync::LazyLock::new(jiff::tz::TimeZoneDatabase::bundled);
     if name == "UTC" {
         return Some(TimeZone::UTC);
     }
-    let zone = TimeZone::get(name).ok()?;
-    (zone.iana_name() == Some(name)).then_some(zone)
+    let exact = |zone: TimeZone| (zone.iana_name() == Some(name)).then_some(zone);
+    TimeZone::get(name)
+        .ok()
+        .and_then(exact)
+        .or_else(|| BUILT_IN.get(name).ok().and_then(exact))
 }
 
 /// The reset time a limit message names, from the rule's named groups: `clock` (with
@@ -238,6 +248,19 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::*;
+
+    #[test]
+    fn the_built_in_database_knows_the_old_names_and_exact_spelling() {
+        // What time_zone falls back to where the system lacks a name (US/Eastern on
+        // Ubuntu without tzdata-legacy).
+        let built_in = jiff::tz::TimeZoneDatabase::bundled();
+        for name in ["US/Eastern", "Europe/Istanbul", "America/New_York"] {
+            let zone = built_in.get(name).unwrap();
+            assert_eq!(zone.iana_name(), Some(name));
+        }
+        assert!(time_zone("us/eastern").is_none());
+        assert!(time_zone("Not/AZone").is_none());
+    }
 
     fn request(agent: AgentKind, screen: String) -> Request {
         Request {

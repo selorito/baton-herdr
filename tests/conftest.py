@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,13 +14,14 @@ import pytest
 from baton_herdr.core import config
 from baton_herdr.core.config import HerdrSettings, resolve_herdr_socket_path
 from baton_herdr.core.panes import PaneHostUnavailableError
+from baton_herdr.herdr import process_fallback, reads_processes_itself
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
 
 from detector_binary import close_detectors
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Iterator
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +47,19 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("BATON_PROJECTS__PREVIEW_PORT", "0")
     user_dir = tmp_path / "user-config" / "baton"
     monkeypatch.setattr(config, "user_config_dir", lambda: user_dir)
+
+
+@pytest.fixture
+def socket_dir() -> Iterator[Path]:
+    """A short directory for a stand-in herdr's Unix socket. pytest's tmp_path on macOS
+    (/private/var/folders/.../pytest-of-<user>/pytest-N/<test name>/) passes the 104
+    bytes macOS allows a socket path."""
+    short = "/tmp" if os.name == "posix" else None  # noqa: S108 - mkdtemp: unique, mode 0700
+    path = Path(tempfile.mkdtemp(prefix="baton-", dir=short))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 # herdr sets these inside its panes; they would point the CLI at the user's server.
@@ -91,7 +106,9 @@ async def isolated_host() -> AsyncIterator[HerdrPaneHost]:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    host = HerdrPaneHost(HerdrSocket(socket_path, timeout_s=5))
+    # Where herdr cannot see a pane's processes, read them as batond would (ADR 0022).
+    fallback = process_fallback() if reads_processes_itself(HerdrSettings()) else None
+    host = HerdrPaneHost(HerdrSocket(socket_path, timeout_s=5), fallback=fallback)
     try:
         for _ in range(100):
             try:

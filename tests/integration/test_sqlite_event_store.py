@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -88,3 +90,63 @@ def test_processes_opening_a_new_database_together_all_get_the_schema(tmp_path: 
     errors = [run.communicate(timeout=60)[1] for run in runs]
     failures = [e[-300:] for run, e in zip(runs, errors, strict=True) if run.returncode != 0]
     assert not failures, failures
+
+
+@pytest.mark.parametrize(("on_wsl1", "expected"), [(False, "wal"), (True, "delete")])
+def test_the_journal_suits_the_system(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, on_wsl1: bool, expected: str
+) -> None:
+    """WSL1's shared memory does not hold WAL together across processes (ADR 0022)."""
+    monkeypatch.setattr("baton_herdr.ledger.migrate.running_on_wsl1", lambda: on_wsl1)
+    db = tmp_path / "baton.db"
+
+    upgrade(db)
+
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone() == (expected,)
+
+
+def test_a_wal_database_moved_to_wsl1_leaves_wal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = tmp_path / "baton.db"
+    monkeypatch.setattr("baton_herdr.ledger.migrate.running_on_wsl1", lambda: False)
+    upgrade(db)
+    monkeypatch.setattr("baton_herdr.ledger.migrate.running_on_wsl1", lambda: True)
+
+    upgrade(db)
+
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone() == ("delete",)
+
+
+async def test_another_process_reads_the_log_batond_holds_open(tmp_path: Path) -> None:
+    """The CLI reads and appends while batond keeps its store open. With WAL on WSL1
+    the second process failed with "locking protocol"."""
+    db = tmp_path / "baton.db"
+    held = await open_event_store(db)
+    await held.append([created("t1")])
+    code = (
+        "import asyncio, sys; from pathlib import Path; "
+        "from baton_herdr.ledger import open_event_store\n"
+        "async def main():\n"
+        "    store = await open_event_store(Path(sys.argv[1]))\n"
+        "    print(len(await store.read()))\n"
+        "    await store.close()\n"
+        "asyncio.run(main())"
+    )
+    try:
+        run = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            code,
+            str(db),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await asyncio.wait_for(run.communicate(), 60)
+    finally:
+        await held.close()
+
+    assert run.returncode == 0, err.decode()[-500:]
+    assert out.decode().strip() == "1"

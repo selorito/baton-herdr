@@ -13,6 +13,7 @@ from baton_herdr.core.model import AgentKind, AgentState
 
 import fake_agent
 from detector_binary import classify_one
+from platform_marks import posix_only
 
 SCRIPTS = Path(__file__).parents[2] / "tools" / "fake-agent" / "scripts"
 NOW = datetime(2026, 10, 1, 14, 15, tzinfo=UTC)
@@ -159,6 +160,7 @@ def test_reporting_targets_herdr_only_inside_a_pane() -> None:
     assert isinstance(fake_agent.reporter_for("codex", {}), fake_agent.SilentReporter)
 
 
+@posix_only("the launcher is a shell script")
 def test_launcher_runs_the_fake_under_the_agent_name(tmp_path: Path) -> None:
     launcher = fake_agent.make_launcher(tmp_path / "bin", "claude")
 

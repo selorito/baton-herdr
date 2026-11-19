@@ -145,6 +145,8 @@ class ProjectDelivered(_Event):
     type: Literal["project.delivered"] = "project.delivered"
     project: str
     preview_url: str | None = None
+    # Where the page was published for anyone to open (ADR 0023).
+    public_url: str | None = None
 
 
 class StepWorktreeOpened(_Event):

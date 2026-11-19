@@ -8,10 +8,12 @@ action fits the blocker, and only into a pane verified to host the attempt.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from baton_herdr.budget.availability import fold_availability
+from baton_herdr.core.clock import SystemClock
 from baton_herdr.core.commands import cancel_task
 from baton_herdr.core.contract import ANSWERABLE_EVIDENCE, one_line
 from baton_herdr.core.events import (
@@ -20,9 +22,16 @@ from baton_herdr.core.events import (
     AttemptInterrupted,
     AttemptStarted,
     OperatorActed,
+    TaskCreated,
     TaskTierChanged,
 )
-from baton_herdr.core.model import AgentState, AttemptStatus, InterruptReason, OperatorAction
+from baton_herdr.core.model import (
+    AgentState,
+    AttemptStatus,
+    InterruptReason,
+    OperatorAction,
+    TaskId,
+)
 from baton_herdr.core.panes import PaneHostError
 from baton_herdr.core.projection import InvalidEventError, project
 from baton_herdr.core.targeting import resolve_target
@@ -33,7 +42,7 @@ if TYPE_CHECKING:
 
     from baton_herdr.core.agents import AgentAdapter
     from baton_herdr.core.events import StoredEvent
-    from baton_herdr.core.model import AgentKind, AttemptId, TaskId
+    from baton_herdr.core.model import AgentKind, AttemptId
     from baton_herdr.core.panes import PaneHost
     from baton_herdr.core.ports import Clock, EventStore
     from baton_herdr.core.routing import Tier
@@ -265,3 +274,30 @@ async def release_agent(
         ]
     )
     return until
+
+
+async def add_task(  # noqa: PLR0913 - the store and each field of the task
+    store: EventStore,
+    *,
+    title: str,
+    instructions: str,
+    workdir: str,
+    clock: Clock | None = None,
+    tier: Tier | None = None,
+) -> TaskId:
+    """A task in ``workdir``, as ``baton task add`` and the assistant's cards add one."""
+    task_id = TaskId(f"t-{uuid.uuid4().hex[:8]}")
+    now = (clock or SystemClock()).now()
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=now,
+                task_id=task_id,
+                title=title,
+                instructions=instructions,
+                workdir=workdir,
+                tier=tier,
+            )
+        ]
+    )
+    return task_id

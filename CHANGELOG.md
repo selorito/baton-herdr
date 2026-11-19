@@ -11,6 +11,127 @@ is:
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-19
+
+Install with one command on Linux, WSL, macOS and Windows; cancel a task, change its tier
+or start work in an existing directory by writing to the bot; stop everything with one
+word. macOS and native Windows are beta.
+
+### Added
+
+- **`docs/INSTALL.md`** (per system, with the support matrix and the release binaries) and
+  **`docs/TROUBLESHOOTING.md`** (symptom, cause and fix per system, and `doctor`'s
+  failures).
+- **`skills/baton/`**, a skill that teaches a coding agent to install, check and drive
+  baton. It is published as `baton-skill-1.4.0.zip` with the release.
+
+- **One-command install**: `install.sh` (Linux, WSL, macOS) and `install.ps1` (Windows).
+  - They install uv, herdr 0.9.5 (SHA-256 checked) and baton, then run `baton setup`.
+  - Each step is shown and asked first; they use no sudo or administrator rights, and
+    change nothing outside the user's home.
+- `tools/e2e`: a clean machine end to end in a container (Ubuntu 24.04, Debian 12,
+  Fedora 42, Arch). The run is install, then `baton doctor`, then a task queued and
+  completed in herdr. CI runs it.
+- CI runs the Python suite on Linux x86_64 and aarch64, macOS (Apple Silicon and Intel)
+  and Windows, and the Rust checks on Linux, macOS and Windows.
+
+- **Native Windows and macOS (ADR 0025).**
+  - baton runs on Windows without WSL: herdr's named pipe, a scheduled-task start script,
+    and UTF-8 output on every code page.
+  - On macOS it runs as two launchd agents.
+  - `baton setup` downloads the `baton-detect` of the installed version for this system,
+    checked against the release's SHA256SUMS.
+  - Releases build Linux, macOS and Windows binaries.
+
+- **Stop words** (ADR 0024). "dur", "iptal", "stop" (alone, or with "hemen", "hepsini",
+  an id) cancel the work under way at once, as `/cancel` does, read by baton before the
+  assistant and without a button. Several pieces of work running: a button for each, and
+  one for all.
+- **Delivered pages on Vercel** (ADR 0023). With `[projects] publish = "vercel"` and a
+  token in `.env` (`BATON_PROJECTS__VERCEL_TOKEN`), a finished project's page is deployed
+  to Vercel as a project of its own, and the delivery notice leads with its public link,
+  which opens from any phone. Off by default. `baton project publish p-…` publishes one
+  project at any time.
+- **WSL1** (ADR 0022). herdr cannot see a pane's processes on WSL1, so it named no agent
+  and baton never saw one start. There baton now reads the pane itself: the agent from
+  the process table under the pane's shell, the state from herdr's own rules applied to
+  the screen (`herdr agent explain --file`) and to the terminal title, prompts pasted the
+  way `agent.prompt` pastes them. `[herdr] process_detection` chooses: `"auto"` (the
+  default: baton's reading on WSL1 only), `"herdr"` or `"baton"`.
+- **`baton service install` on WSL1** (ADR 0022, amended). WSL1 has no systemd, so there
+  it writes one start script, `~/.local/bin/baton-wsl1-start`, that runs the herdr server
+  and batond and restarts each after it exits, and prints the PowerShell command that
+  registers a Windows scheduled task to run it under `wsl.exe`. baton runs no Windows
+  command itself. `baton setup` does the same on WSL1.
+- **`baton service status` and `baton service uninstall`.** Status says what is installed
+  and whether herdr's server and batond run. Uninstall stops, disables and removes the
+  systemd units; on WSL1 it removes the start script and prints how to remove the task.
+- **`baton doctor` on WSL1** shows a `wsl1` line (pane processes read by baton, the
+  rollback journal) and, when the herdr server is unreachable, recommends the scheduled
+  task instead of systemd.
+- **Cancel a task and change its tier in words** (ADR 0021, amended). "t-1a2b3c4d'yi
+  iptal et", "cancel the cafe task", "t-1a2b3c4d ucuz modelde çalışsın": the assistant
+  shows a card naming the task and what will happen, and its button does what `/cancel`
+  or `/tier` does. baton finds the task from the id or the words; a name that fits no
+  open task, or several, gets a question, and the id written in reply answers it.
+- **The assistant starts work in an existing directory** (ADR 0021, amended). "~/src/calc
+  içinde calc.py'ye bölme ekle", or a project's id, comes as a card with the directory,
+  the title and the instructions; Start adds one task there, as `baton task add` does.
+  Only a directory inside the policy's `trusted_dirs`, or a project baton made, is
+  offered, and only once it exists; anything else is refused with the reason. baton
+  creates, moves and deletes no directory for it.
+
+### Fixed
+
+- **baton installs on a fresh machine.** uv picked CPython 3.15, for which `pydantic-core`
+  and `aiohttp` have no wheels, and the build from source failed. `requires-python` is
+  now `>=3.12,<3.15`, and the install scripts pin 3.12.
+- Time zones are known where the system has no tz database (containers, Windows):
+  baton depends on `tzdata`.
+- The assistant no longer narrows a status answer to an id it invented. Only an id the
+  operator wrote counts.
+- Linux release binaries are static (musl): one built on a new glibc refused to start on
+  older distributions.
+- A `baton.toml` saved with a UTF-8 byte order mark (PowerShell 5.1, older Notepad) is
+  read. One that is not TOML is named in one line instead of a traceback.
+- Agent commands are split by the pane's shell's rules: on Windows a backslash is a path
+  separator, so `doctor` found `C:\...\codex.exe` again.
+
+- Telegram works behind a proxy: `HTTPS_PROXY` / `ALL_PROXY` (unless `NO_PROXY` names
+  Telegram), or `[telegram] proxy`. aiohttp reads none of them itself.
+- `baton doctor` names the system and processor, requires git, holds herdr to the versions
+  baton was tested with (0.9.1 to 0.9.5), and points to `baton setup` for baton-detect.
+- On WSL1 the start script keeps each log under 20 MB; `daemon.log` had no bound.
+- A preview port another program holds moves to the next free one; Chrome is found in its
+  macOS and Windows install locations. On Windows the port is bound exclusively: a shared
+  bind had let a second batond take the same port, and a held port was not recognised.
+- baton-detect reads new usage lines within one poll (2 s) on every system. On macOS and
+  Windows the file watcher's events missed appended lines, which then waited for the
+  30 s rescan. It now also reads every followed file whose length changed.
+- baton-detect knows every zone baton accepts. It falls back to the time zone database
+  built into it where the system has none, or lacks old names such as `US/Eastern`
+  (Ubuntu moved them to `tzdata-legacy`). Before, it stopped on them while `doctor`
+  said the zone was fine.
+
+- A trusted directory written with `~`, through a link, or on Windows without its drive
+  now matches the workdir it holds (both sides are resolved).
+- The assistant takes a Windows path (`C:\Users\…`) as absolute.
+
+- An attempt waiting for a person no longer loops: a re-attach that changed nothing does
+  not wake the daemon, so it is looked at again after the idle time, not ~once a second.
+
+- **WSL1: the CLI could not open the log batond held** (`locking protocol`). SQLite's WAL
+  needs shared memory WSL1 does not share across processes; on WSL1 the database now uses
+  the rollback journal.
+- **WSL1: a prompt over 4 KB ended the agent and its pane.** WSL1 hangs a terminal up on
+  a write that large; every project step failed with "the claude pane is gone". Long
+  prompts are now pasted in 1 KiB pieces, 0.25 s apart, so that the agent drains its
+  terminal while it starts.
+- **A subscription that ended mid-turn failed the task's run.** herdr's watch subscribed
+  again after `events_lost`, but not after its connection ended: the run stopped with
+  `herdr closed the connection` until batond's next cycle re-attached. It now subscribes
+  again and reads the pane, as after lost events.
+
 ## [1.3.0] - 2026-10-23
 
 Ask baton in your own words, run routine work on a cheaper model, and start tasks side by
@@ -333,7 +454,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/selorito/baton-herdr/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/selorito/baton-herdr/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/selorito/baton-herdr/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/selorito/baton-herdr/compare/v1.0.1...v1.1.0

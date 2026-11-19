@@ -19,6 +19,10 @@ from baton_herdr.core.panes import (
 from baton_herdr.herdr.host import HerdrPaneHost
 from baton_herdr.herdr.transport import HerdrSocket
 
+from platform_marks import posix_only
+
+pytestmark = posix_only("the fake herdr server listens on a Unix socket")
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
@@ -84,9 +88,9 @@ class StandInHerdr:
 
 
 @pytest.fixture
-async def herdr(tmp_path: Path) -> AsyncIterator[tuple[StandInHerdr, HerdrPaneHost]]:
+async def herdr(socket_dir: Path) -> AsyncIterator[tuple[StandInHerdr, HerdrPaneHost]]:
     stand_in = StandInHerdr()
-    socket_path = tmp_path / "herdr.sock"
+    socket_path = socket_dir / "herdr.sock"
     server = await asyncio.start_unix_server(stand_in.handle, path=str(socket_path))
     async with server:
         yield stand_in, HerdrPaneHost(HerdrSocket(socket_path, timeout_s=2))
@@ -260,12 +264,12 @@ async def test_an_unreachable_socket_is_reported_as_unavailable(tmp_path: Path) 
         await host.observe("w1:p6")
 
 
-async def test_a_server_that_never_answers_times_out(tmp_path: Path) -> None:
+async def test_a_server_that_never_answers_times_out(socket_dir: Path) -> None:
     async def silent(_reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await asyncio.sleep(1)
         writer.close()
 
-    socket_path = tmp_path / "herdr.sock"
+    socket_path = socket_dir / "herdr.sock"
     server = await asyncio.start_unix_server(silent, path=str(socket_path))
     async with server:
         host = HerdrPaneHost(HerdrSocket(socket_path, timeout_s=0.2))

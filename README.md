@@ -46,13 +46,15 @@ and each one is recorded with its reason in an event log.
 
 ## Quickstart
 
-On Linux, with [uv](https://docs.astral.sh/uv/), [herdr](https://github.com/herdrdev/herdr)
-≥ 0.9.1, and the agents installed and signed in once by you:
+On Linux, WSL or macOS (Windows without WSL: `install.ps1`, beta), with the agents you want
+installed and signed in to once by you:
 
 ```bash
-uv tool install git+https://github.com/selorito/baton-herdr
-baton setup
+curl -fsSLO https://raw.githubusercontent.com/selorito/baton-herdr/v1.4.0/install.sh
+bash install.sh     # uv, herdr (checksum checked) and baton; asks before each step
 ```
+
+Every system, step by step: [docs/INSTALL.md](docs/INSTALL.md).
 
 `baton setup` walks through the rest:
 - downloads `baton-detect` if it is missing;
@@ -294,11 +296,14 @@ baton: Claude 15 dakika boyunca ekranda değişiklik ve token olmadan durdu.
 
 you:   kafem için menülü tek sayfalık bir site yap
 baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] [Düzenle] [İptal]
+
+you:   cancel the cafe task
+baton: 🛑 Cancel t-1a2b3c4d "Cafe menu page" (running, claude)?   [Cancel it] [Keep it]
 ```
 
 - **The model only interprets.** It has no files, shell or herdr. Its answer must fit a
-  JSON schema of three intents (small talk, status, a project), or it is treated as small
-  talk saying it did not understand. Nothing it writes is acted on by itself.
+  JSON schema of five intents (small talk, status, a project, a cancel, a change of tier),
+  or it is treated as small talk saying it did not understand. Nothing it writes is acted on by itself.
 - **Status comes from the log.** A "why" is explained from a digest of the log, citing the
   events it relied on; a citation the digest does not hold is dropped. The digest never
   holds instructions, screens, directories or secrets. A plain question ("t-… ne
@@ -306,6 +311,18 @@ baton: 📝 Proje önerisi … Nerede · Ajan (şu an) · Katman      [Başlat] 
 - **Projects come as a card.** **Start** does exactly what `/new` does, once; the plan then
   comes for your approval as usual. **Edit** takes your next message as the change. A
   request missing something gets a question instead.
+- **Stop words act at once.** "dur", "iptal", "stop", alone or with "hemen" or
+  "hepsini", cancel the work under way without a card, read by baton before the model
+  (ADR 0024). With several pieces running, a button for each and one for all.
+- **Cancels and tiers come as a card too.** "t-1a2b3c4d'yi iptal et", "cancel the cafe
+  task", "t-1a2b3c4d ucuz modelde çalışsın": the card names the task and what will
+  happen, and its button does exactly what `/cancel` or `/tier` does. baton, not the
+  model, finds the task; a name that fits no open task, or several, gets a question.
+- **Work in a directory you name** ("~/src/calc içinde calc.py'ye bölme ekle", or a
+  project's id) comes as a card too, with the directory, a title and the instructions;
+  **Start** adds one task there, as `baton task add` does. Only a directory inside the
+  policy's `trusted_dirs`, or a project baton made, is offered; anything else is refused
+  with the reason. baton never creates, moves or deletes a directory for it.
 - **One message at a time**, within `timeout_seconds`; Telegram shows "typing…".
   Answers in the language you write in.
 
@@ -448,8 +465,9 @@ Details: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Install
 
-You need:
-- Linux;
+You need (every system step by step: [docs/INSTALL.md](docs/INSTALL.md)):
+- Linux, macOS, Windows with WSL2, WSL1 where virtualization is off (see [WSL1](#wsl1)
+  below), or native Windows (beta, ADR 0025);
 - [uv](https://docs.astral.sh/uv/);
 - [herdr](https://github.com/herdrdev/herdr) 0.9.1 or later;
 - the agents you want to use (Claude Code, Codex CLI, OpenCode), each signed in once by
@@ -458,10 +476,9 @@ You need:
 `baton-detect`, the Rust helper, comes either from a release or from source:
 
 ```bash
-# From a release (no Rust toolchain needed); x86_64 or aarch64:
-curl -fsSL -o ~/.local/bin/baton-detect \
-  https://github.com/selorito/baton-herdr/releases/latest/download/baton-detect-x86_64-unknown-linux-gnu
-chmod +x ~/.local/bin/baton-detect
+# From the release of your baton version (no Rust toolchain needed): baton setup
+# downloads the one for this system and checks it against the release's SHA256SUMS.
+baton setup
 
 # Or from source:
 cargo install --path crates/baton-detect --locked
@@ -477,6 +494,28 @@ herdr integration install codex       # these integrations report
 mkdir -p ~/.config/baton && cp baton.example.toml ~/.config/baton/baton.toml
 baton doctor
 ```
+
+### WSL1
+
+herdr cannot see a pane's processes on WSL1, so baton reads them itself
+(`[herdr] process_detection = "auto"`), and the database uses SQLite's rollback journal
+instead of WAL (ADR 0022). Neither needs a setting; `baton doctor` says so on a `wsl1` line.
+
+WSL1 has no systemd, and it ends every process of the distribution when the last
+`wsl.exe` attached to it exits, so batond must run under a `wsl.exe` that stays. There,
+`baton service install` (and `baton setup`) writes `~/.local/bin/baton-wsl1-start`, which
+runs the herdr server and batond and restarts each after it exits, and prints the
+PowerShell command that registers the Windows scheduled task `baton` to run it: at boot
+and at logon, signed in or not, with no time limit, restarted every minute after a
+failure. baton never runs Windows commands itself; paste that command into PowerShell as
+administrator.
+
+- `baton service status` shows whether the script is installed and whether herdr's
+  server and batond run;
+- the logs are in `~/.local/state/baton/` (`daemon.log`, `herdr-server.log`,
+  `wsl1-start.log`);
+- `baton service uninstall` removes the script and prints the command that removes the
+  task.
 
 Edit `~/.config/baton/baton.toml`. At least set `[scheduler] agents` (in order of
 preference) and `timezone`, because agents print limit reset times in local time. baton
@@ -498,7 +537,9 @@ It says how to fix what is missing.
   - `baton.service` runs `baton daemon` against it.
 
   Enable them with `systemctl --user enable --now baton.service` and
-  `loginctl enable-linger "$USER"`.
+  `loginctl enable-linger "$USER"`. `baton service status` says what is installed and
+  running; `baton service uninstall` stops and removes the units. On WSL1 a Windows
+  scheduled task runs a start script instead ([WSL1](#wsl1)).
 - **Foreground:** start `herdr --session baton server &` from a plain terminal, not from
   inside an agent, then `baton daemon`.
 - **Watch:**

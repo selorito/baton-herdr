@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from baton_herdr.core.detection import DetectionRequest, DetectionResult
+from baton_herdr.core.platform import executable_name
 from baton_herdr.detector import ProcessDetector
 
 REPO = Path(__file__).parents[2]
@@ -22,7 +23,7 @@ REPO = Path(__file__).parents[2]
 def detector() -> Path:
     candidates = [
         os.environ.get("BATON_DETECT_BIN"),
-        str(REPO / "target" / "debug" / "baton-detect"),
+        str(REPO / "target" / "debug" / executable_name("baton-detect")),
         shutil.which("baton-detect"),
     ]
     for candidate in candidates:

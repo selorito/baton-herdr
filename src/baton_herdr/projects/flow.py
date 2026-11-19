@@ -33,6 +33,7 @@ from baton_herdr.core.ports import RepositoryError
 from baton_herdr.core.projection import project
 from baton_herdr.projects import notices
 from baton_herdr.projects.create import create_project_dir, new_project_id
+from baton_herdr.projects.deliver import find_page
 from baton_herdr.projects.plan import (
     PLAN_FILE,
     Plan,
@@ -44,6 +45,7 @@ from baton_herdr.projects.plan import (
     step_prompt,
     step_title,
 )
+from baton_herdr.projects.publish import PublishError
 from baton_herdr.scheduler.operator import ActionRefusedError, cancel
 
 if TYPE_CHECKING:
@@ -208,15 +210,24 @@ class Show(Protocol):
     async def picture(self, url: str, workdir: Path) -> Path | None: ...
 
 
+class Publisher(Protocol):
+    """Publishes a project's page for anyone to open (``publish.VercelPublisher``, ADR
+    0023): its public link, or :class:`baton_herdr.projects.publish.PublishError`."""
+
+    async def publish(self, workdir: Path) -> str: ...
+
+
 async def deliver_projects(
     store: EventStore,
     *,
     clock: Clock,
     workspace: Workspace | None = None,
     show: Show | None = None,
+    publisher: Publisher | None = None,
 ) -> list[Notice]:
     """Deliver every project whose steps have all completed: record it, and say what it
-    changed, with its page's link and picture when it has a page."""
+    changed, with its page's link and picture when it has a page, and its public link
+    when a publisher is set. A page that could not be published is still delivered."""
     from pathlib import Path  # noqa: PLC0415 - only the type is needed at module level
 
     events = await store.read()
@@ -240,18 +251,38 @@ async def deliver_projects(
         changes = await workspace.changes(str(workdir), start) if workspace else None
         url = show.url(workdir) if show else None
         picture = await show.picture(url, workdir) if show and url else None
+        public_url, publish_error = await _publish(publisher, workdir)
         event = ProjectDelivered(
             occurred_at=clock.now(),
             task_id=steps[-1].task_id,
             project=project_id,
             preview_url=url,
+            public_url=public_url,
         )
-        found.append(
-            (event, notices.delivered(plan_task, steps, changes=changes, url=url, image=picture))
+        notice = notices.delivered(
+            plan_task,
+            steps,
+            changes=changes,
+            url=url,
+            image=picture,
+            public_url=public_url,
+            publish_error=publish_error,
         )
+        found.append((event, notice))
     if found:
         await store.append([event for event, _ in found])
     return [notice for _, notice in found]
+
+
+async def _publish(publisher: Publisher | None, workdir: Path) -> tuple[str | None, str | None]:
+    """(public link, why not): a project without a page is not published, and says nothing."""
+    if publisher is None or find_page(workdir) is None:
+        return None, None
+    try:
+        return await publisher.publish(workdir), None
+    except PublishError as err:
+        get_logger("baton.projects").warning("not published", workdir=str(workdir), error=str(err))
+        return None, str(err)
 
 
 def _first_head(events: Sequence[StoredEvent], task_id: TaskId) -> str | None:

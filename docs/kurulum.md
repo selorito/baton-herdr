@@ -20,7 +20,10 @@ izler:
 
 ## Gerekenler
 
-- Linux. Ubuntu 22.04 ve sonrası denendi.
+- Linux. Ubuntu 22.04 ve sonrası denendi. Windows'ta WSL2 ya da, sanallaştırma kapalıysa,
+  WSL1 olur. WSL1'de herdr pane'deki ajanı göremez; baton bunu kendisi okur (ADR 0022),
+  ayar gerekmez. WSL1'de systemd yoktur; baton'u bir Windows zamanlanmış görevi çalıştırır
+  (bkz. "WSL1'de servis").
 - [uv](https://docs.astral.sh/uv/getting-started/installation/):
   `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - [herdr](https://github.com/herdrdev/herdr) 0.9.1 veya sonrası.
@@ -52,10 +55,43 @@ baton setup
 5. **İzin politikası.** Ajanların hangi klasörlerde test ve derleme komutlarını sormadan
    çalıştırabileceği. Yalnızca **kendi** depolarını yaz.
 6. **Servis.** baton arka planda çalışır, bilgisayar açılınca kendiliğinden başlar.
+   WSL1'de bu adım bir başlatma betiği yazar ve PowerShell'e yapıştıracağın komutu verir
+   (bkz. "WSL1'de servis").
 
 Sonunda `baton doctor` her şeyi kontrol eder. `fail` ya da `warn` satırlarının altında ne
 yapman gerektiği yazar. `baton setup`'ı istediğin kadar tekrar çalıştırabilirsin; var olan
 ayarları bozmaz.
+
+### WSL1'de servis
+
+WSL1'de systemd yoktur. Üstelik WSL1, dağıtıma bağlı son `wsl.exe` kapanınca dağıtımdaki
+bütün süreçleri sonlandırır: SSH oturumundan `nohup` ya da `setsid` ile başlatılan baton
+oturum kapanınca ölür. Bu yüzden baton'u, açık kalan bir `wsl.exe` altında bir Windows
+zamanlanmış görevi çalıştırır.
+
+`baton setup` (ya da `baton service install`) WSL1'de şunu yapar:
+
+- `~/.local/bin/baton-wsl1-start` betiğini yazar. Betik önce herdr sunucusunu, sonra
+  batond'u başlatır; ikisinden biri kapanırsa yeniden başlatır.
+- Zamanlanmış görevi kaydeden PowerShell komutunu ekrana yazar. baton Windows komutlarını
+  kendisi çalıştırmaz: komutu Windows'ta **yönetici olarak açılmış PowerShell**'e yapıştır.
+
+Görevin adı `baton`. Bilgisayar açılınca ve oturum açınca başlar, oturum açık olmasa da
+çalışır, süre sınırı yoktur, hata olursa dakikada bir yeniden dener. Komut görevi hemen
+de başlatır.
+
+```bash
+baton service status      # betik kurulu mu, herdr sunucusu ve batond çalışıyor mu?
+baton doctor              # "wsl1" satırı: WSL1 algılandı mı?
+```
+
+Kayıtlar `~/.local/state/baton/` altında: `daemon.log`, `herdr-server.log`,
+`wsl1-start.log`. Görevin durumunu Windows'ta görmek için PowerShell'de:
+`Get-ScheduledTask -TaskName 'baton' | Get-ScheduledTaskInfo`.
+
+`baton doctor` WSL1'i tanır ve şunu söyler: pane'lerdeki süreçleri baton kendisi okur
+(`[herdr] process_detection`), veritabanı WAL yerine rollback journal kullanır. Bunlar
+için ayar gerekmez.
 
 ## Kullanım
 
@@ -151,7 +187,10 @@ Bilgisayarında çalışan bir model ([Ollama](https://ollama.com)) ile bot düz
 anlar: "t-1a2b3c4d neden takıldı?", "açık işler neler?", "kafem için menülü bir site yap".
 Model yalnızca mesajı yorumlar; dosyalara, terminale, ajanlara erişimi yoktur. Cevaplar
 baton'un kaydından gelir. Proje isteği bir kart olarak gelir: **Başlat**'a basmadan hiçbir
-şey başlamaz, sonra plan yine senin onayına gelir.
+şey başlamaz, sonra plan yine senin onayına gelir. "t-1a2b3c4d'yi iptal et" ya da
+"t-1a2b3c4d ucuz modelde çalışsın" gibi bir istek de işi ve ne olacağını yazan bir kart
+olarak gelir; düğmesi `/cancel` ya da `/tier` ne yapıyorsa onu yapar. Hangi işin
+kastedildiği belli değilse asistan tahmin etmez, sorar.
 
 1. Ollama'yı kur: `sudo snap install ollama` (ya da ollama.com'daki yöntem).
 2. Modeli indir: `ollama pull qwen3.5:4b` (3,3 GB). 15 GB RAM'li bir dizüstünde
@@ -175,6 +214,11 @@ Bilmen gerekenler:
 - Model, cevaptan sonra 5 dakika bellekte kalır (`keep_alive = "5m"`). Belleği hemen
   boşaltmak için `keep_alive = "0"` yaz; her cevap ~10 saniye uzar.
 - "Düzenle"ye basarsan bir sonraki mesajın isteğe yapılacak değişiklik olarak alınır.
+- Var olan bir klasörde iş de isteyebilirsin: "~/src/calc içinde calc.py'ye bölme ekle"
+  ya da "p-1a2b3c'de açılış saatlerini ekle". Kartta klasör, başlık ve talimat görünür;
+  **Başlat** orada bir iş açar (`baton task add` gibi). Yalnızca `policy.yaml`'daki
+  `trusted_dirs` içindeki klasörler ve baton'un açtığı projeler kabul edilir; gerisi
+  nedeniyle reddedilir. baton bunun için klasör açmaz, taşımaz, silmez.
 - Kart 30 dakika geçerlidir; baton yeniden başlarsa açık kartlar düşer.
 
 ## Gözetimsiz çalıştırma için öneriler
@@ -202,13 +246,14 @@ Bilmen gerekenler:
 | Durum | Ne yap |
 |---|---|
 | Herhangi bir sorun | `baton doctor`: neyin eksik olduğunu ve nasıl düzeltileceğini söyler |
-| baton ne yapıyor? | `journalctl --user -u baton -f` |
+| baton ne yapıyor? | `journalctl --user -u baton -f` (WSL1'de `tail -f ~/.local/state/baton/daemon.log`) |
 | Ajanı görmek istiyorum | `herdr --session baton` |
 | Telegram'dan mesaj gelmiyor | `baton doctor`'da `telegram` satırı. Bilgisayar internete bağlı mı? |
 | Bot butonlara tepki vermiyor | Bilgisayar yeni açıldıysa ağ gelince bot kendiliğinden bağlanır; bir dakika bekle |
 | Önizleme linki açılmıyor | Telefon aynı ağda mı, `preview_host = "0.0.0.0"` mı? `baton doctor` → `project preview` |
 | Görev takıldı, ne olduğu belli değil | `herdr --session baton` ile bak; gerekirse `/cancel t-…` |
 | baton'u durdur / başlat | `systemctl --user stop baton` / `systemctl --user start baton` |
+| WSL1'de baton'u durdur / başlat | PowerShell'de `Stop-ScheduledTask -TaskName 'baton'` / `Start-ScheduledTask -TaskName 'baton'` |
 
 Bir hata bulursan `baton doctor` çıktısını ve `journalctl --user -u baton --since "1 hour
 ago"` çıktısının ilgili kısmını paylaş. Bu çıktılarda token görünmez.
@@ -217,9 +262,12 @@ ago"` çıktısının ilgili kısmını paylaş. Bu çıktılarda token görünm
 
 ```bash
 uv tool upgrade baton-herdr && baton setup            # güncelle, ayarları gözden geçir
-systemctl --user disable --now baton baton-herdr      # kaldırmadan önce servisi durdur
+baton service uninstall                               # kaldırmadan önce servisi durdurup sil
 uv tool uninstall baton-herdr
 ```
+
+WSL1'de `baton service uninstall` betiği siler ve zamanlanmış görevi kaldıran PowerShell
+komutunu yazar; onu yönetici PowerShell'de çalıştır.
 
 Ayarların `~/.config/baton/`, görev geçmişin `~/.local/share/baton/` altında kalır; istersen
 elle silebilirsin.

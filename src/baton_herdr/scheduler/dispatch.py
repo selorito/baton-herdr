@@ -9,6 +9,7 @@ run in (``seen``), and says when a worker has ended, so a freed slot is filled a
 from __future__ import annotations
 
 import asyncio
+import functools
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,8 @@ class Dispatcher:
         self._workers: dict[TaskId, asyncio.Task[TaskStatus | None]] = {}
         # Set when a worker ends: a slot is free, or a task's follower may start.
         self.changed = asyncio.Event()
+        # Workers whose run left no event: nothing to start at once because of them.
+        self._quiet: set[TaskId] = set()
         self._log = get_logger("baton.dispatch")
 
     @property
@@ -74,7 +77,7 @@ class Dispatcher:
         )
         for task_id in started:
             worker = asyncio.create_task(self._work(task_id), name=f"baton-task-{task_id}")
-            worker.add_done_callback(lambda _: self.changed.set())
+            worker.add_done_callback(functools.partial(self._ended, task_id))
             self._workers[task_id] = worker
         if started:
             self._log.info("tasks started", tasks=list(started), running=len(self.running))
@@ -118,8 +121,17 @@ class Dispatcher:
         availability = fold_availability(events, cooldown=self._settings.limit_cooldown)
         return available_agents(availability, self._settings.agents, self._clock.now())
 
+    def _ended(self, task_id: TaskId, _worker: asyncio.Task[TaskStatus | None]) -> None:
+        # A run that changed nothing (an attempt re-attached that still waits for a
+        # person) does not wake the loop: woken, it would re-attach at once, forever.
+        if task_id in self._quiet:
+            self._quiet.discard(task_id)
+        else:
+            self.changed.set()
+
     async def _work(self, task_id: TaskId) -> TaskStatus | None:
         status: TaskStatus | None = None
+        before = task_positions(await self._store.read()).get(task_id, 0)
         try:
             status = await self._runner.run(task_id)
         except Exception:  # noqa: BLE001 - one task's fault must not stop the others
@@ -127,5 +139,8 @@ class Dispatcher:
             # a fault that repeats cannot loop batond.
             self._log.exception("task run failed", task_id=task_id)
         events = await self._store.read()
-        self._seen[task_id] = (task_positions(events).get(task_id, 0), self.available(events))
+        after = task_positions(events).get(task_id, 0)
+        self._seen[task_id] = (after, self.available(events))
+        if after == before:
+            self._quiet.add(task_id)
         return status

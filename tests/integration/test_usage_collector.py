@@ -14,6 +14,10 @@ from baton_herdr.core.config import UsageSettings
 from baton_herdr.core.fakes import InMemoryUsageStore
 from baton_herdr.core.usage import UsageRecord, UsageTokens
 
+from platform_marks import posix_only
+
+pytestmark = posix_only("the fake baton-detect is a shell script")
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
