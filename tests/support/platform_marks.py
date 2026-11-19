@@ -13,3 +13,7 @@ import pytest
 
 def posix_only(why: str) -> pytest.MarkDecorator:
     return pytest.mark.skipif(sys.platform == "win32", reason=f"POSIX only: {why}")
+
+
+def linux_only(why: str) -> pytest.MarkDecorator:
+    return pytest.mark.skipif(not sys.platform.startswith("linux"), reason=f"Linux only: {why}")

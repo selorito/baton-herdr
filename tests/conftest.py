@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +21,7 @@ from baton_herdr.herdr.transport import HerdrSocket
 from detector_binary import close_detectors
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Iterator
 
 
 @pytest.fixture(autouse=True)
@@ -46,6 +47,19 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("BATON_PROJECTS__PREVIEW_PORT", "0")
     user_dir = tmp_path / "user-config" / "baton"
     monkeypatch.setattr(config, "user_config_dir", lambda: user_dir)
+
+
+@pytest.fixture
+def socket_dir() -> Iterator[Path]:
+    """A short directory for a stand-in herdr's Unix socket. pytest's tmp_path on macOS
+    (/private/var/folders/.../pytest-of-<user>/pytest-N/<test name>/) passes the 104
+    bytes macOS allows a socket path."""
+    short = "/tmp" if os.name == "posix" else None  # noqa: S108 - mkdtemp: unique, mode 0700
+    path = Path(tempfile.mkdtemp(prefix="baton-", dir=short))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 # herdr sets these inside its panes; they would point the CLI at the user's server.

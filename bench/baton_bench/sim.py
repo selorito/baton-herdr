@@ -22,6 +22,7 @@ from baton_herdr.core.events import AttemptInterrupted, AttemptPrompted, TaskCre
 from baton_herdr.core.fakes import InMemoryEventStore, InMemoryUsageStore, RecordingNotifier
 from baton_herdr.core.model import AgentKind, TaskId, TaskStatus
 from baton_herdr.core.notify import NoticeKind
+from baton_herdr.core.platform import executable_name
 from baton_herdr.core.projection import project
 from baton_herdr.core.usage import RateLimitObservation, RateLimitWindow, UsageRecord, UsageTokens
 from baton_herdr.daemon import Runtime, runner_settings, serve
@@ -91,7 +92,7 @@ def detector_path() -> str:
     if explicit := os.environ.get("BATON_DETECT_BIN"):
         return explicit
     for build in ("release", "debug"):
-        if (path := REPO / "target" / build / "baton-detect").is_file():
+        if (path := REPO / "target" / build / executable_name("baton-detect")).is_file():
             return str(path)
     return "baton-detect"
 

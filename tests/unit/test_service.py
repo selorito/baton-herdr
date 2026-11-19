@@ -70,7 +70,7 @@ def test_units_run_herdr_in_its_own_session_and_baton_against_it() -> None:
 
 @posix_only("systemd units and the WSL1 bash script")
 def test_path_puts_the_found_binaries_first_without_duplicates() -> None:
-    assert search_path(["/a/bin/herdr", None, "/a/bin/claude", "/b/baton"]) == (
+    assert search_path(["/a/bin/herdr", None, "/a/bin/claude", "/b/baton"], "linux") == (
         "/a/bin:/b:/usr/local/bin:/usr/bin:/bin"
     )
 

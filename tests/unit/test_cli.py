@@ -10,7 +10,7 @@ from baton_herdr import cli
 from baton_herdr.cli import app
 
 from detector_binary import detector
-from platform_marks import posix_only
+from platform_marks import linux_only
 
 if TYPE_CHECKING:
     import pytest
@@ -85,7 +85,7 @@ def test_policy_check_says_what_would_happen_and_why() -> None:
     assert runner.invoke(app, ["policy", "check", "ls", "--agent", "gpt"]).exit_code == 2
 
 
-@posix_only("the WSL1 bash script")
+@linux_only("WSL1 is Linux; status reads /proc")
 def test_service_install_on_wsl1_writes_the_start_script_and_prints_the_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

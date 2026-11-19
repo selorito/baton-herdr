@@ -110,9 +110,9 @@ class ManyPanes:
 
 
 @pytest.fixture
-async def herdr(tmp_path: Path) -> AsyncIterator[tuple[ManyPanes, HerdrPaneHost]]:
+async def herdr(socket_dir: Path) -> AsyncIterator[tuple[ManyPanes, HerdrPaneHost]]:
     stand_in = ManyPanes()
-    socket_path = tmp_path / "herdr.sock"
+    socket_path = socket_dir / "herdr.sock"
     server = await asyncio.start_unix_server(stand_in.handle, path=str(socket_path))
     async with server:
         yield stand_in, HerdrPaneHost(HerdrSocket(socket_path, timeout_s=5))
