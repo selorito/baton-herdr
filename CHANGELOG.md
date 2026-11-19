@@ -105,6 +105,9 @@ word. macOS and native Windows are beta.
 - A preview port another program holds moves to the next free one; Chrome is found in its
   macOS and Windows install locations. On Windows the port is bound exclusively: a shared
   bind had let a second batond take the same port, and a held port was not recognised.
+- baton-detect reads new usage lines within one poll (2 s) on every system. On macOS and
+  Windows the file watcher's events missed appended lines, which then waited for the
+  30 s rescan. It now also reads every followed file whose length changed.
 - baton-detect knows every zone baton accepts. It falls back to the time zone database
   built into it where the system has none, or lacks old names such as `US/Eastern`
   (Ubuntu moved them to `tzdata-legacy`). Before, it stopped on them while `doctor`

@@ -249,6 +249,10 @@ impl<W: Write> Collector<W> {
                     collect_paths(event, &mut paths);
                 }
             }
+            // Every followed file whose length changed, whether or not an event said so:
+            // the watcher's events alone missed appended lines on macOS and Windows (CI),
+            // which then waited for the rescan.
+            paths.extend(self.changed_files());
             paths.sort();
             paths.dedup();
             self.read_paths(&paths)?;
@@ -260,6 +264,14 @@ impl<W: Write> Collector<W> {
                 self.poll_opencode(false)?;
             }
         }
+    }
+
+    fn changed_files(&self) -> Vec<PathBuf> {
+        self.files
+            .iter()
+            .filter(|(_, followed)| followed.tail.has_changed())
+            .map(|(path, _)| path.clone())
+            .collect()
     }
 
     fn follow_file(&mut self, path: PathBuf, kind: Kind) {
