@@ -26,14 +26,11 @@ could be dropped.
 
 ## Skill
 
-`skills/baton/SKILL.md`, packed by `tools/skill/pack.sh` with a copy of the troubleshooting
-guide, so that the agent needs no download to read it. The script:
-
-- refuses a version that does not match;
-- refuses anything that looks like a token;
-- gives the same bytes on every run.
-
-The release job attaches `baton-skill-<version>.zip`.
+The skill's source and its zip are private (selorito/baton-skill). `just skill-zip` packs
+it with `docs/TROUBLESHOOTING.md`, and nothing here publishes it. For its first hours,
+v1.4.0 carried the zip, and `skills/baton/` was in this repository. The asset was then
+removed and `SHA256SUMS` regenerated. History was not rewritten, so the first version
+stays in the history.
 
 ## Open
 

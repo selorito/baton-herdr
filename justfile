@@ -74,3 +74,8 @@ fmt:
 test:
     uv run pytest
     cargo test --workspace --locked
+
+# The skill's zip, from its private repository (../baton-skill, or BATON_SKILL_DIR), into
+# that repository's dist/. Never part of a release.
+skill-zip:
+    tools/skill/pack.sh "$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)"

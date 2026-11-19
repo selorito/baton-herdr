@@ -3,12 +3,17 @@
 #
 #   bash install.sh            # asks before each step
 #   bash install.sh --yes      # no questions; the same steps
+#   bash install.sh --yes --no-setup   # the same, without step 4
+#
+# Without a terminal (run by a program), every question is answered "no", so nothing is
+# installed without --yes, and step 4, which asks for your bot token, is never run.
 #
 # What it does, in order. Each step is skipped when its tool is already there.
 #   1. uv (Python's package manager), with its official installer, into ~/.local/bin.
 #   2. herdr (the terminal multiplexer the agents run in), version $HERDR_VERSION, into
 #      ~/.local/bin, checked against its known SHA-256.
-#   3. baton itself, with uv, on Python 3.12, into ~/.local/bin.
+#   3. baton itself, with uv, on Python 3.12, into ~/.local/bin, its wheel checked against
+#      its known SHA-256.
 #   4. `baton setup`, which asks for your Telegram bot and writes ~/.config/baton.
 #
 # What it never does: use sudo, install system packages, change files outside your home
@@ -18,8 +23,17 @@ set -euo pipefail
 
 BATON_VERSION="${BATON_VERSION:-1.4.0}"
 HERDR_VERSION="0.9.5"
-# Where baton comes from; another wheel or a checkout can be given (tests use one).
-BATON_SOURCE="${BATON_SOURCE:-https://github.com/selorito/baton-herdr/releases/download/v${BATON_VERSION}/baton_herdr-${BATON_VERSION}-py3-none-any.whl}"
+# Where baton comes from. BATON_SOURCE names another wheel or a checkout (tests use one),
+# installed unchecked.
+BATON_RELEASE="https://github.com/selorito/baton-herdr/releases/download/v${BATON_VERSION}"
+BATON_WHEEL="baton_herdr-${BATON_VERSION}-py3-none-any.whl"
+# The wheel's SHA-256 for the versions this script knows; another version is checked
+# against its release's SHA256SUMS instead.
+baton_sha() {
+    case "$1" in
+        1.4.0) echo 1599b7139daf44845157d30f62bdab374a518bf0e17543af32ecf6cf10d63481 ;;
+    esac
+}
 BIN="$HOME/.local/bin"
 YES=0
 SETUP=1
@@ -27,7 +41,7 @@ for arg in "$@"; do
     case "$arg" in
         --yes|-y) YES=1 ;;
         --no-setup) SETUP=0 ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -35,8 +49,15 @@ done
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 fail() { printf '\n\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# A terminal to ask in. Run by a program (a coding agent, CI) there is none: questions
+# are answered "no", and --yes is the way to accept every step.
+if { : </dev/tty; } 2>/dev/null; then TTY=1; else TTY=0; fi
 ask() {
     [ "$YES" = 1 ] && return 0
+    if [ "$TTY" = 0 ]; then
+        note "$1 -> no (no terminal to ask in; run with --yes to accept every step)"
+        return 1
+    fi
     local answer
     read -r -p "    $1 [Y/n] " answer </dev/tty || answer=n
     case "$answer" in ""|y|Y|yes|evet|e) return 0 ;; *) return 1 ;; esac
@@ -126,10 +147,27 @@ if command -v baton >/dev/null 2>&1 && [ "$(baton version 2>/dev/null)" = "baton
     say "baton: found $(command -v baton) ($BATON_VERSION)"
 else
     say "baton $BATON_VERSION"
-    note "From: $BATON_SOURCE"
+    source="${BATON_SOURCE:-$BATON_RELEASE/$BATON_WHEEL}"
+    note "From: $source"
+    [ -n "${BATON_SOURCE:-}" ] || note "SHA-256 checked before it is installed"
     note "With: uv tool install --python 3.12 (uv downloads Python 3.12 if it is missing)"
     ask "Install baton now?" || fail "nothing more to do without baton"
-    uv tool install --force --python 3.12 "$BATON_SOURCE"
+    if [ -z "${BATON_SOURCE:-}" ]; then
+        wheel_dir="$(mktemp -d)"
+        fetch "$source" "$wheel_dir/$BATON_WHEEL"
+        expected="$(baton_sha "$BATON_VERSION")"
+        if [ -z "$expected" ]; then
+            fetch "$BATON_RELEASE/SHA256SUMS" "$wheel_dir/SHA256SUMS"
+            expected="$(awk -v f="$BATON_WHEEL" '$2 == f || $2 == "*" f { print $1 }' "$wheel_dir/SHA256SUMS")"
+        fi
+        if [ -z "$expected" ] || [ "$(sha256 "$wheel_dir/$BATON_WHEEL")" != "$expected" ]; then
+            rm -rf "$wheel_dir"
+            fail "the baton download does not match its checksum; nothing was installed"
+        fi
+        source="$wheel_dir/$BATON_WHEEL"
+    fi
+    uv tool install --force --python 3.12 "$source"
+    [ -z "${wheel_dir:-}" ] || rm -rf "$wheel_dir"
 fi
 
 # --- What is left --------------------------------------------------------------------
@@ -148,7 +186,11 @@ case " ${missing[*]} " in *" git "*)
     if [ "$system" = macos ]; then note "git: xcode-select --install"; else note "git: install it with your package manager (sudo apt install git)"; fi ;;
 esac
 
-if [ "$SETUP" = 1 ]; then
+if [ "$SETUP" = 1 ] && [ "$TTY" = 0 ]; then
+    say "baton setup"
+    note "It asks for your Telegram bot token, so it needs you at a terminal; it was not"
+    note "run. Next, in a terminal: baton setup"
+elif [ "$SETUP" = 1 ]; then
     say "baton setup"
     note "It finds your agents, sets up Telegram (you will need a bot token from"
     note "@BotFather), writes ~/.config/baton, and installs the service. Safe to run again."

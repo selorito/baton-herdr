@@ -2,6 +2,10 @@
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1          # asks before each step
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Yes     # no questions
+#   ... install.ps1 -Yes -NoSetup                                   # the same, without step 5
+#
+# Without a terminal (run by a program), every question is answered "no", so nothing is
+# installed without -Yes, and step 5, which asks for your bot token, is never run.
 #
 # What it does, in order. Each step is skipped when its tool is already there.
 #   1. Checks for Git for Windows (Claude Code needs its Git Bash; baton needs git). If it
@@ -9,7 +13,7 @@
 #   2. uv (Python's package manager), with its official installer, into ~\.local\bin.
 #   3. herdr $HerdrVersion, checked against its known SHA-256, into
 #      %LOCALAPPDATA%\Programs\herdr, which is added to your user PATH.
-#   4. baton itself, with uv, on Python 3.12.
+#   4. baton itself, with uv, on Python 3.12, its wheel checked against its known SHA-256.
 #   5. `baton setup`, which asks for your Telegram bot and writes ~\.config\baton.
 #
 # What it never does: ask for administrator rights, change system settings or files
@@ -29,9 +33,17 @@ $ProgressPreference = "SilentlyContinue"
 
 $HerdrVersion = "0.9.5"
 $HerdrSha256 = "d2c6c9c971c43a0bfdde8c692a9a1a7a45c3e4807cd01ae45662b4734fac1cbf"
-if (-not $BatonSource) {
-    $BatonSource = "https://github.com/selorito/baton-herdr/releases/download/v$BatonVersion/baton_herdr-$BatonVersion-py3-none-any.whl"
-}
+$BatonRelease = "https://github.com/selorito/baton-herdr/releases/download/v$BatonVersion"
+$BatonWheel = "baton_herdr-$BatonVersion-py3-none-any.whl"
+# The wheel's SHA-256 for the versions this script knows; another version is checked
+# against its release's SHA256SUMS. A BatonSource given by hand (tests) is not checked.
+$BatonSha256 = @{ "1.4.0" = "1599b7139daf44845157d30f62bdab374a518bf0e17543af32ecf6cf10d63481" }
+$CheckBaton = -not $BatonSource
+if (-not $BatonSource) { $BatonSource = "$BatonRelease/$BatonWheel" }
+# A terminal to ask in. Run by a program (a coding agent, CI) there is none: questions are
+# answered "no", -Yes accepts every step, and baton setup, which asks for the bot token,
+# is left to you.
+$Interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
 $Bin = Join-Path $HOME ".local\bin"
 $HerdrHome = Join-Path $env:LOCALAPPDATA "Programs\herdr"
 
@@ -40,6 +52,10 @@ function Note([string] $text) { Write-Host "    $text" }
 function Fail([string] $text) { Write-Host ""; Write-Host "error: $text" -ForegroundColor Red; exit 1 }
 function Ask([string] $question) {
     if ($Yes) { return $true }
+    if (-not $Interactive) {
+        Note "$question -> no (no terminal to ask in; run with -Yes to accept every step)"
+        return $false
+    }
     $answer = Read-Host "    $question [Y/n]"
     return ($answer -eq "" -or $answer -match "^(y|yes|e|evet)$")
 }
@@ -124,8 +140,29 @@ if ($installed -eq "baton $BatonVersion") {
 } else {
     Say "baton $BatonVersion"
     Note "From: $BatonSource"
+    if ($CheckBaton) { Note "SHA-256 checked before it is installed" }
     Note "With: uv tool install --python 3.12 (uv downloads Python 3.12 if it is missing)"
     if (-not (Ask "Install baton now?")) { Fail "nothing more to do without baton" }
+    if ($CheckBaton) {
+        $wheelDir = Join-Path $env:TEMP "baton-$BatonVersion"
+        New-Item -ItemType Directory -Force $wheelDir | Out-Null
+        $wheel = Join-Path $wheelDir $BatonWheel
+        Invoke-WebRequest -UseBasicParsing $BatonSource -OutFile $wheel
+        $expected = $BatonSha256[$BatonVersion]
+        if (-not $expected) {
+            $sums = (Invoke-WebRequest -UseBasicParsing "$BatonRelease/SHA256SUMS").Content
+            if ($sums -is [byte[]]) { $sums = [Text.Encoding]::UTF8.GetString($sums) }
+            foreach ($line in ($sums -split "`n")) {
+                $parts = $line.Trim() -split "\s+"
+                if ($parts.Count -eq 2 -and $parts[1].TrimStart("*") -eq $BatonWheel) { $expected = $parts[0] }
+            }
+        }
+        if (-not $expected -or (Get-FileHash $wheel -Algorithm SHA256).Hash.ToLower() -ne $expected) {
+            Remove-Item -Recurse -Force $wheelDir
+            Fail "the baton download does not match its checksum; nothing was installed"
+        }
+        $BatonSource = $wheel
+    }
     uv tool install --force --python 3.12 $BatonSource
     if ($LASTEXITCODE -ne 0) { Fail "uv could not install baton; see the output above" }
     Add-UserPath $Bin
@@ -140,7 +177,11 @@ foreach ($tool in "claude", "codex", "opencode") {
 if (-not (Have claude)) { Note "Claude Code: irm https://claude.ai/install.ps1 | iex   then: claude (sign in)" }
 if (-not (Have codex)) { Note "Codex CLI:   npm install -g @openai/codex   then: codex (sign in)" }
 
-if (-not $NoSetup) {
+if (-not $NoSetup -and -not $Interactive) {
+    Say "baton setup"
+    Note "It asks for your Telegram bot token, so it needs you at a terminal; it was not"
+    Note "run. Next, in a terminal: baton setup"
+} elseif (-not $NoSetup) {
     Say "baton setup"
     Note "It finds your agents, sets up Telegram (you need a bot token from @BotFather),"
     Note "writes ~\.config\baton, and prints the command that starts baton at boot."
