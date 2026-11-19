@@ -221,6 +221,19 @@ impl<W: Write> Collector<W> {
     /// # Errors
     /// When stdout cannot be written, or no file watcher can be created.
     pub fn follow(&mut self, poll: Duration, rescan: Duration) -> io::Result<()> {
+        // Events name the real path: macOS's FSEvents reports /private/var/... for a
+        // directory given as /var/..., and a path that differs from the scanned one is not
+        // recognised as a source, so its lines waited for the next rescan.
+        self.sources.claude_dir = self.sources.claude_dir.take().map(real_path);
+        self.sources.codex_dir = self.sources.codex_dir.take().map(real_path);
+        self.sources.claude_status =
+            self.sources
+                .claude_status
+                .take()
+                .map(|log| match (log.parent(), log.file_name()) {
+                    (Some(dir), Some(name)) => real_path(dir.to_path_buf()).join(name),
+                    _ => log,
+                });
         let (sender, events) = mpsc::channel();
         let mut watcher = notify::recommended_watcher(sender).map_err(io::Error::other)?;
         let mut watching: HashSet<PathBuf> = HashSet::new();
@@ -417,6 +430,11 @@ fn jsonl_files(dir: &Path, kind: Kind, found: &mut Vec<PathBuf>) {
             _ => {}
         }
     }
+}
+
+/// The path with its links resolved, or as given when it does not exist (yet).
+fn real_path(path: PathBuf) -> PathBuf {
+    std::fs::canonicalize(&path).unwrap_or(path)
 }
 
 fn collect_paths(event: notify::Result<notify::Event>, paths: &mut Vec<PathBuf>) {
