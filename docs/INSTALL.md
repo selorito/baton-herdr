@@ -13,9 +13,12 @@ says how to fix what is missing.
 
 | System | Status | How |
 |--------|--------|-----|
-| Linux x86_64 (Ubuntu, Debian, Fedora, Arch, others) | supported | [install.sh](#linux-and-macos) |
-| Linux aarch64 | built and released, not yet run end to end by us | [install.sh](#linux-and-macos) |
-| Windows 10/11 with WSL (1 or 2) | supported | [install.sh inside WSL](#windows-with-wsl-recommended) |
+| Linux x86_64, Ubuntu | supported (the development machine, and clean installs) | [install.sh](#linux-and-macos) |
+| Linux x86_64, Debian 12, Fedora 42, Arch | beta: clean install and one task pass in containers, not run on a real machine | [install.sh](#linux-and-macos) |
+| Other Linux distributions | not tested (the static binary should run) | [install.sh](#linux-and-macos) |
+| Linux aarch64 | beta: the binary is built by the release job, not yet run end to end by us | [install.sh](#linux-and-macos) |
+| Windows 10/11 with WSL1 | supported (one machine, unattended since 2026-11-10, reboots included) | [install.sh inside WSL](#windows-with-wsl-recommended) |
+| Windows 10/11 with WSL2 | beta: the same Linux path, not yet run end to end by us | [install.sh inside WSL](#windows-with-wsl-recommended) |
 | Windows 10/11, native | beta | [install.ps1](#windows-native-beta) |
 | macOS (Apple Silicon, Intel) | beta, not yet run end to end by us | [install.sh](#linux-and-macos) |
 
@@ -71,7 +74,7 @@ It asks before each step; `bash install.sh --yes` asks nothing.
 
 ## Windows with WSL (recommended)
 
-baton is proven on Windows through WSL. In PowerShell:
+baton is proven on Windows through WSL1, and WSL2 uses the same Linux path. In PowerShell:
 
 ```powershell
 wsl --install -d Ubuntu-24.04     # once; restart when asked
@@ -130,6 +133,35 @@ herdr --session baton              # watch the agents work
 
 From your phone, write to your bot. Send `/status`, or ask in your own words, for
 example "make me a one-page site for my cafe".
+
+## Release binaries
+
+baton itself is Python and the same on every system. Its screen reader, `baton-detect`,
+is a Rust program, and baton needs it on every system: without it baton cannot read the
+agents' screens (limits, questions, prompts), and `baton doctor` fails. Each release
+publishes one per target, built natively on GitHub's runners because its bundled SQLite
+is C:
+
+| Asset | System | Built on | Tested by us |
+|-------|--------|----------|--------------|
+| `baton-detect-x86_64-unknown-linux-musl` | Linux x86_64, WSL (static, any distribution) | `ubuntu-24.04` | yes: the same musl build, made locally, in clean installs on Ubuntu, Debian, Fedora, Arch |
+| `baton-detect-aarch64-unknown-linux-musl` | Linux ARM64 (static) | `ubuntu-24.04-arm` | built and run by the release job only |
+| `baton-detect-aarch64-apple-darwin` | macOS, Apple Silicon | `macos-15` | built and run by the release job only |
+| `baton-detect-x86_64-apple-darwin` | macOS, Intel | `macos-15-intel` | built and run by the release job only |
+| `baton-detect-x86_64-pc-windows-msvc.exe` | Windows x64, native | `windows-2025` | partly: a binary built on Windows 11 for this target ran the suite and an end-to-end task there; the release job's own build has not been tried |
+
+"Built and run by the release job" means that the job checks that the binary starts and
+reports the right version on that runner. Nothing more has been run on those systems.
+1.4.0 is the first release with the musl, macOS and Windows assets, so `baton setup`'s
+download of them is first exercised against that release.
+`baton setup` picks the asset for your system, downloads the one of baton's own version,
+and checks it against the release's `SHA256SUMS`. Systems outside this table (32-bit,
+Windows on ARM natively) get no binary. There `baton setup` says so, and you can build
+one from a checkout with `cargo install --path crates/baton-detect --locked`.
+
+The binaries are not code-signed. The macOS ones carry the ad-hoc signature that Apple's
+linker adds, which is enough to run them when they are downloaded by `baton setup`. A copy
+downloaded with a browser is quarantined; see [TROUBLESHOOTING](TROUBLESHOOTING.md#macos).
 
 ## Updating and removing
 
