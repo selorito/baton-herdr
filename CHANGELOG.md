@@ -13,6 +13,15 @@ is:
 
 ### Changed
 
+- **The install scripts check baton's wheel** against its SHA-256 (known for 1.4.0, else
+  the release's `SHA256SUMS`), as they already did herdr's.
+- **Run without a terminal** (by a coding agent, by CI), the install scripts answer every
+  question "no" and say so, instead of failing on a missing terminal (`install.sh`) or
+  waiting on a question forever (`install.ps1` on an open pipe). `--yes` / `-Yes` accept
+  every step. `baton setup`, which asks for the bot token, is then left to the user.
+- **`baton setup` refuses without a terminal**, in one line, instead of waiting on its
+  first question forever when its input is a pipe that stays open.
+
 - The agent skill is no longer part of this repository or its releases. Its zip was
   attached to the v1.4.0 release for its first hours, and has been removed from it, with
   `SHA256SUMS` regenerated without it; the other files' checksums are unchanged. The

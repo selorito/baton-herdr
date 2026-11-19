@@ -120,3 +120,10 @@ def test_service_install_on_wsl1_writes_the_start_script_and_prints_the_task(
     assert f"removed {script}" in removed.stdout
     assert "Unregister-ScheduledTask" in removed.stdout
     assert not script.exists()
+
+
+def test_setup_without_a_terminal_says_so_instead_of_waiting_on_a_question() -> None:
+    # CliRunner's stdin is not a terminal, as an agent's or a CI's is not.
+    result = runner.invoke(app, ["setup"])
+    assert result.exit_code == 2
+    assert "needs a terminal" in result.stderr
