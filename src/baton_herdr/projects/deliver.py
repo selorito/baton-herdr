@@ -27,6 +27,17 @@ from baton_herdr.core.logging import get_logger
 
 # Ports tried from the configured one up, when another program holds it.
 PORT_TRIES = 10
+# Errors for a port another program holds. Windows reports them as Winsock codes
+# (WSAEADDRINUSE 10048), and answers WSAEACCES (10013, errno 13) for a port held without
+# sharing or reserved (Hyper-V's excluded ranges).
+_PORT_TAKEN = {errno.EADDRINUSE} | (
+    {errno.EACCES, 10048, 10013} if sys.platform == "win32" else set()
+)
+
+
+def _port_taken(err: OSError) -> bool:
+    return bool({err.errno, getattr(err, "winerror", None)} & _PORT_TAKEN)
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -194,6 +205,20 @@ class Showcase:
         return out if await screenshot(self._browser, url, out) else None
 
 
+class _ExclusiveHTTPServer(ThreadingHTTPServer):
+    """An HTTP server that fails on a port another program holds. ``HTTPServer`` sets
+    ``SO_REUSEADDR``, which on Windows lets a second program bind a port already in
+    use instead of failing, so the preview never moved to a free port there; Windows'
+    ``SO_EXCLUSIVEADDRUSE`` makes the port its own."""
+
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class PreviewServer:
     """The read-only preview, in a thread of batond's process."""
 
@@ -243,9 +268,9 @@ class PreviewServer:
         ports = [self.port] if self.port == 0 else range(self.port, self.port + PORT_TRIES)
         for port in ports:
             try:
-                return ThreadingHTTPServer((self.host, port), handler)
+                return _ExclusiveHTTPServer((self.host, port), handler)
             except OSError as err:
-                if err.errno != errno.EADDRINUSE or port == ports[-1]:
+                if not _port_taken(err) or port == ports[-1]:
                     raise
         raise AssertionError  # pragma: no cover - the loop returns or raises
 
