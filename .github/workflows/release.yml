@@ -1,7 +1,7 @@
 name: Release
 
 # A tag v<version> builds baton-detect for Linux (x86_64, aarch64), macOS (Apple Silicon,
-# Intel) and Windows (x86_64), the Python wheel and the skill (skills/baton),
+# Intel) and Windows (x86_64), and the Python wheel,
 # and publishes them as a GitHub release with that version's CHANGELOG section. Run by hand
 # (workflow_dispatch), it builds and checks everything for the version in pyproject.toml
 # and publishes nothing: a rehearsal before tagging.
@@ -105,8 +105,6 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: The skill, with SKILL.md at the zip's root
-        run: tools/skill/pack.sh "${{ needs.check.outputs.version }}" dist
       - name: Checksums (baton setup checks its download against them)
         run: cd dist && sha256sum * > SHA256SUMS
       - name: This version's notes from CHANGELOG.md
