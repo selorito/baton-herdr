@@ -23,6 +23,8 @@ The files in `fixtures/herdr/` are herdr's, under its own Apache-2.0 license.
 A real run: Claude Code adds a function and its test, baton asks on Telegram before the
 tests run, and the task completes. Sped-up parts are marked in the picture.
 
+The full demo video (39 s): https://youtu.be/n8ng7doyO1A
+
 **Coding agents that keep working while you are away.** baton runs a queue of coding tasks on
 Claude Code, Codex CLI and OpenCode in [herdr](https://github.com/herdrdev/herdr), several at
 once, and keeps them moving: when an agent hits its usage limit, crashes or stalls, baton
