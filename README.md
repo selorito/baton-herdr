@@ -1,6 +1,6 @@
 # baton-herdr
 
-[![Get it on Agensi](https://img.shields.io/badge/Get%20it%20on-Agensi-2563eb)](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-run-claude-code-codex-opencode-from-telegram)
+[![Get it on Agensi](https://img.shields.io/badge/Get%20it%20on-Agensi-2563eb)](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-never-lose-a-claude-code-task-to-usage-limits)
 [![CI](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/selorito/baton-herdr)](https://github.com/selorito/baton-herdr/releases/latest)
 [![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
@@ -40,7 +40,7 @@ resumes the task or hands it to another agent, and tells you on Telegram.
 | **Spends the right budget** | Agents chosen by what each has left; routine steps on a cheaper model, moved up when they fail. |
 | **Safe to leave alone** | Risky commands ask you first, secrets are masked, and every decision is in an event log with its reason. |
 
-> **Easiest way to run it:** get the [baton skill on Agensi](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-run-claude-code-codex-opencode-from-telegram).
+> **Easiest way to run it:** get the [baton skill on Agensi](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-never-lose-a-claude-code-task-to-usage-limits).
 > Your coding agent installs baton with checked downloads, runs `baton doctor` and fixes what
 > it finds, connects the Telegram bot, and queues, cancels and retargets tasks for you.
 > Updates included, and buying it keeps baton maintained.
