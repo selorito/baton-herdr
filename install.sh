@@ -21,7 +21,7 @@
 # Those you install and sign in to yourself; the end of this script says how.
 set -euo pipefail
 
-BATON_VERSION="${BATON_VERSION:-1.4.0}"
+BATON_VERSION="${BATON_VERSION:-1.5.0}"
 HERDR_VERSION="0.9.5"
 # Where baton comes from. BATON_SOURCE names another wheel or a checkout (tests use one),
 # installed unchecked.
@@ -32,6 +32,7 @@ BATON_WHEEL="baton_herdr-${BATON_VERSION}-py3-none-any.whl"
 baton_sha() {
     case "$1" in
         1.4.0) echo 1599b7139daf44845157d30f62bdab374a518bf0e17543af32ecf6cf10d63481 ;;
+        1.5.0) echo 019172cb3c22690825a12492517adb88e5e13b4e5164795b8a913a4d9597cd41 ;;
     esac
 }
 BIN="$HOME/.local/bin"

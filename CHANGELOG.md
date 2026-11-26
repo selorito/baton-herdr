@@ -11,6 +11,11 @@ is:
 
 ## [Unreleased]
 
+### Changed
+
+- **The install scripts install 1.5.0 by default**, its wheel checked against a pinned
+  SHA-256.
+
 ## [1.5.0] - 2026-11-26
 
 ### Fixed
