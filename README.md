@@ -1,5 +1,6 @@
 # baton-herdr
 
+[![Get it on Agensi](https://img.shields.io/badge/Get%20it%20on-Agensi-2563eb)](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-run-claude-code-codex-opencode-from-telegram)
 [![CI](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/selorito/baton-herdr/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/selorito/baton-herdr)](https://github.com/selorito/baton-herdr/releases/latest)
 [![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue.svg)](LICENSE)
