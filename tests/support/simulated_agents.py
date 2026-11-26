@@ -68,6 +68,7 @@ class SimulatedAgents(FakePaneHost):
         permission_screen: str = PERMISSION_SCREEN,
         end_mark: str | None = "⏺ Done.\n  [[BATON:END status=done]]",
         session_per_pane: bool = False,
+        instant_turn: bool = False,
     ) -> None:
         super().__init__()
         self._clock = clock
@@ -86,6 +87,9 @@ class SimulatedAgents(FakePaneHost):
         self.end_mark = end_mark
         # One session id per pane, so that many panes of one agent are told apart.
         self._session_per_pane = session_per_pane
+        # Finish a turn as the prompt arrives, with no working screen in between: an
+        # agent whose whole turn falls between two observations (issue #3).
+        self._instant_turn = instant_turn
         # Script played by a freshly launched agent; resumed sessions always finish.
         self._fresh_scripts = SCRIPT_FILES | (scripts or {})
         self.dialog_answers: list[tuple[str, ...]] = []
@@ -157,6 +161,10 @@ class SimulatedAgents(FakePaneHost):
         await super().send_prompt(pane_id, text)
         agent, _ = self._running[pane_id]
         self.prompts.append((agent, text))
+        if self._instant_turn:
+            self._running[pane_id] = (agent, len(HOST_STATES[agent]) - 1)
+            self._show(pane_id, prompt=text)
+            return
         self._running[pane_id] = (agent, 1)
         self._show(pane_id, prompt=text)
         self._tasks.append(asyncio.create_task(self._finish_turn(pane_id, text)))

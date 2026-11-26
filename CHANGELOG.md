@@ -11,6 +11,13 @@ is:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A turn that ends between two observations completes its task** (#3). An agent that
+  worked and went idle again within one poll was never seen working, so its task stayed
+  `running` until the turn timeout. A new end mark on screen since the prompt was sent now
+  counts as a finished turn.
+
 ### Changed
 
 - **The install scripts check baton's wheel** against its SHA-256 (known for 1.4.0, else
