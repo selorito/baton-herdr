@@ -81,6 +81,12 @@ def parse_end(screen: str) -> EndMark | None:
     return None
 
 
+def count_end_marks(screen: str) -> int:
+    """How many end marks ``screen`` shows. More than when a prompt was sent means a
+    turn ended since, even if the agent was never seen working (issue #3)."""
+    return len(_MARK.findall(screen))
+
+
 def _context(lines: list[str]) -> str:
     kept: list[str] = []
     for line in reversed(lines):

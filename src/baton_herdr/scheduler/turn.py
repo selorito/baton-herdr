@@ -48,6 +48,9 @@ class TurnState:
     startup_answers_left: int = MAX_STARTUP_ANSWERS
     # The operator denied a permission in this turn and has not said what to do instead.
     denied: bool = False
+    # End marks on screen when the prompt was sent; None when unknown (a re-attach, a
+    # nudge). A new mark shows a turn that ended between two observations.
+    marks_at_prompt: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

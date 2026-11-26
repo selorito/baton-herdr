@@ -38,6 +38,7 @@ from baton_herdr.core.contract import (
     MISSING_EVIDENCE,
     QUESTION_EVIDENCE,
     EndStatus,
+    count_end_marks,
     one_line,
     parse_end,
 )
@@ -467,19 +468,21 @@ class TaskRunner:
         turn: TurnState,
         *,
         saw_agent: bool,
-    ) -> tuple[AgentState, str, datetime | None, str, str, bool]:
-        """What the agent shows now, read against its turn: the state, its evidence, a
-        limit's reset time, the screen, the agent's own words, and whether to nudge it."""
+    ) -> tuple[TurnState, AgentState, str, datetime | None, str, str, bool]:
+        """What the agent shows now, read against its turn: the turn as now known, the
+        state, its evidence, a limit's reset time, the screen, the agent's own words, and
+        whether to nudge it."""
         state, evidence, resets_at, screen = await self._classify(
             adapter, observation, pane_id, saw_agent=saw_agent
         )
+        turn = _worked_unseen(turn, state, screen)
         state, evidence, detail = _read_end_mark(state, evidence, screen, turn)
         state, evidence, detail, nudge = await self._unmarked_end(
             attempt_id, turn, screen, (state, evidence, detail)
         )
         if state is AgentState.BLOCKED_PERMISSION:
             detail = adapter.permission_summary(screen) or ""
-        return state, evidence, resets_at, screen, detail, nudge
+        return turn, state, evidence, resets_at, screen, detail, nudge
 
     async def _unmarked_end(
         self,
@@ -882,7 +885,7 @@ class TaskRunner:
                     observation = await feed.next()
                 except PaneNotFoundError:
                     observation = None
-                state, evidence, resets_at, screen, detail, nudge = await self._read_turn(
+                turn, state, evidence, resets_at, screen, detail, nudge = await self._read_turn(
                     adapter, observation, pane_id, attempt_id, turn, saw_agent=saw_agent
                 )
                 saw_agent = saw_agent or (observation is not None and observation.agent is not None)
@@ -946,6 +949,7 @@ class TaskRunner:
                     continue
                 if step.action is Action.SEND_PROMPT:
                     deadline = loop.time() + self._settings.turn_timeout_s
+                    turn = replace(turn, marks_at_prompt=count_end_marks(screen))
                 outcome = await self._carry_out(
                     step,
                     _Context(
@@ -1465,6 +1469,21 @@ _END_STATES = {
     EndStatus.QUESTION: AgentState.BLOCKED_QUESTION,
     EndStatus.BLOCKED: AgentState.BLOCKED_OTHER,
 }
+
+
+def _worked_unseen(turn: TurnState, state: AgentState, screen: str) -> TurnState:
+    """A turn that ended between two observations: the agent is idle again and shows an
+    end mark that was not there when the prompt was sent, though it was never seen
+    working (issue #3). Counted as worked, so its mark is read like any other."""
+    if (
+        state is AgentState.IDLE
+        and turn.prompt_sent
+        and not turn.worked
+        and turn.marks_at_prompt is not None
+        and count_end_marks(screen) > turn.marks_at_prompt
+    ):
+        return replace(turn, worked=True)
+    return turn
 
 
 def _unmarked(turn: TurnState, screen: str) -> bool:

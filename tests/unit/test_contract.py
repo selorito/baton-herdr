@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from baton_herdr.core.contract import END_CONTRACT, EndMark, EndStatus, one_line, parse_end
+from baton_herdr.core.contract import (
+    END_CONTRACT,
+    EndMark,
+    EndStatus,
+    count_end_marks,
+    one_line,
+    parse_end,
+)
 
 
 def test_the_last_mark_counts_and_the_paragraph_above_it_is_kept() -> None:
@@ -41,3 +48,9 @@ def test_prompts_are_sent_as_one_line() -> None:
         "Fix the bug. Then run the tests. Report back."
     )
     assert "\n" not in END_CONTRACT
+
+
+def test_end_marks_are_counted_but_the_placeholder_in_the_prompt_is_not() -> None:
+    assert count_end_marks(END_CONTRACT) == 0
+    screen = f"> {END_CONTRACT}\n[[BATON:END status=done]]\n> next\n[[BATON:END status=question]]"
+    assert count_end_marks(screen) == 2

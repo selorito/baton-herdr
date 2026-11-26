@@ -489,3 +489,39 @@ async def test_notices_give_times_in_the_configured_zone() -> None:
 
     moved = next(n for n in notifier.notices if n.kind is NoticeKind.TASK_HANDED_OFF)
     assert moved.details[0] == "claude hit its usage limit; available again at Sat 09:30 +03."
+
+
+async def test_a_turn_finished_between_two_observations_completes_the_task() -> None:
+    """Issue #3: an agent that works and goes idle within one poll is never seen working;
+    its fresh end mark still shows the turn finished."""
+    clock = FixedClock(NOW)
+    store = InMemoryEventStore()
+    await store.append(
+        [
+            TaskCreated(
+                occurred_at=NOW,
+                task_id=TASK,
+                title="power function",
+                instructions=INSTRUCTIONS,
+                workdir="/work/calc",
+            )
+        ]
+    )
+    host = SimulatedAgents(
+        clock, scripts={AgentKind.CLAUDE: "claude-finish.toml"}, instant_turn=True
+    )
+    runner = TaskRunner(
+        detector=rust_detector(),
+        store=store,
+        host=host,
+        adapters=ADAPTERS,
+        notifier=RecordingNotifier(),
+        clock=clock,
+        settings=replace(SETTINGS, agents=(AgentKind.CLAUDE,)),
+    )
+
+    assert await runner.run(TASK) is TaskStatus.COMPLETED
+    events = [s.event for s in await store.read()]
+    observed = [e.state for e in events if isinstance(e, AgentStateObserved)]
+    assert AgentState.WORKING not in observed  # the work itself was never seen
+    assert not any(isinstance(e, AttemptInterrupted) for e in events)
