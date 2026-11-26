@@ -11,6 +11,8 @@ is:
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-26
+
 ### Fixed
 
 - **A turn that ends between two observations completes its task** (#3). An agent that
@@ -485,7 +487,8 @@ across Claude Code, Codex CLI and OpenCode in herdr.
 - Rule patterns that need look-around run with a backtracking limit; all others run on a
   linear-time regex engine. A hostile screen cannot stall the classifier.
 
-[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/selorito/baton-herdr/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/selorito/baton-herdr/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/selorito/baton-herdr/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/selorito/baton-herdr/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/selorito/baton-herdr/compare/v1.1.0...v1.2.0

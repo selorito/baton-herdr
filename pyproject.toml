@@ -1,6 +1,6 @@
 [project]
 name = "baton-herdr"
-version = "1.4.0"
+version = "1.5.0"
 description = "Orchestrator that keeps coding agents running on herdr until their tasks are done."
 readme = "README.md"
 license = "BUSL-1.1"
