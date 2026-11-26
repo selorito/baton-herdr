@@ -19,6 +19,13 @@ after it is published.
 baton 1.4.0 and earlier stay under [Apache-2.0](https://github.com/selorito/baton-herdr/blob/v1.4.0/LICENSE).
 The files in `fixtures/herdr/` are herdr's, under its own Apache-2.0 license.
 
+![baton running a task on the real Claude Code, with the approval asked and given on Telegram](docs/assets/baton-demo.gif)
+
+A real run: Claude Code adds a function and its test, baton asks on Telegram before the
+tests run, and the task completes. Sped-up parts are marked in the picture.
+
+The full demo video (39 s): https://youtu.be/n8ng7doyO1A
+
 **Coding agents that keep working while you are away.** baton runs a queue of coding tasks on
 Claude Code, Codex CLI and OpenCode in [herdr](https://github.com/herdrdev/herdr), several at
 once, and keeps them moving: when an agent hits its usage limit, crashes or stalls, baton
@@ -33,7 +40,7 @@ resumes the task or hands it to another agent, and tells you on Telegram.
 | **Spends the right budget** | Agents chosen by what each has left; routine steps on a cheaper model, moved up when they fail. |
 | **Safe to leave alone** | Risky commands ask you first, secrets are masked, and every decision is in an event log with its reason. |
 
-> **Easiest way to run it:** get the [baton skill on Agensi](https://agensi.io/skills/baton-run-claude-code-codex-opencode-from-telegram).
+> **Easiest way to run it:** get the [baton skill on Agensi](https://www.agensi.io/r/SELMANZDEMIR?to=/skills/baton-run-claude-code-codex-opencode-from-telegram).
 > Your coding agent installs baton with checked downloads, runs `baton doctor` and fixes what
 > it finds, connects the Telegram bot, and queues, cancels and retargets tasks for you.
 > Updates included, and buying it keeps baton maintained.
