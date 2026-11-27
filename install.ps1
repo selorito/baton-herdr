@@ -24,7 +24,7 @@ param(
     [switch] $NoSetup,
     # Leave the user PATH in the registry alone (for tests in a throwaway profile).
     [switch] $NoUserPath,
-    [string] $BatonVersion = $(if ($env:BATON_VERSION) { $env:BATON_VERSION } else { "1.4.0" }),
+    [string] $BatonVersion = $(if ($env:BATON_VERSION) { $env:BATON_VERSION } else { "1.5.0" }),
     [string] $BatonSource = $env:BATON_SOURCE
 )
 $ErrorActionPreference = "Stop"
@@ -37,7 +37,10 @@ $BatonRelease = "https://github.com/selorito/baton-herdr/releases/download/v$Bat
 $BatonWheel = "baton_herdr-$BatonVersion-py3-none-any.whl"
 # The wheel's SHA-256 for the versions this script knows; another version is checked
 # against its release's SHA256SUMS. A BatonSource given by hand (tests) is not checked.
-$BatonSha256 = @{ "1.4.0" = "1599b7139daf44845157d30f62bdab374a518bf0e17543af32ecf6cf10d63481" }
+$BatonSha256 = @{
+    "1.4.0" = "1599b7139daf44845157d30f62bdab374a518bf0e17543af32ecf6cf10d63481"
+    "1.5.0" = "019172cb3c22690825a12492517adb88e5e13b4e5164795b8a913a4d9597cd41"
+}
 $CheckBaton = -not $BatonSource
 if (-not $BatonSource) { $BatonSource = "$BatonRelease/$BatonWheel" }
 # A terminal to ask in. Run by a program (a coding agent, CI) there is none: questions are
